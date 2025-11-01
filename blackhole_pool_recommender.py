@@ -21,14 +21,18 @@ from datetime import datetime
 import argparse
 import sys
 
-# Import logger from utils if available, otherwise create one
+# Import logger and config loading from utils if available, otherwise create one
 try:
-    from avalanche_utils import logger, InvalidInputError
+    from avalanche_utils import logger, InvalidInputError, load_config
+    _config = load_config()
 except ImportError:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     class InvalidInputError(Exception):
         pass
+    _config = {}
+    def load_config():
+        return {}
 
 # Try to import selenium, fall back to requests + BeautifulSoup if not available
 try:
@@ -50,8 +54,9 @@ try:
 except ImportError:
     BS4_AVAILABLE = False
 
-# Set precision for decimal calculations
-getcontext().prec = 50
+# Set precision for decimal calculations (from config)
+_precision = _config.get('decimal_precision', 50)
+getcontext().prec = _precision
 
 
 @dataclass
@@ -126,9 +131,16 @@ class Pool:
 
 
 class BlackholePoolRecommender:
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: Optional[bool] = None):
         self.url = "https://blackhole.xyz/vote"
-        self.headless = headless
+        # Use config value if headless not explicitly provided
+        _pool_config = _config.get('pool_recommender', {})
+        _selenium_config = _pool_config.get('selenium', {})
+        if headless is None:
+            self.headless = _selenium_config.get('headless', True)
+        else:
+            self.headless = headless
+        self.implicit_wait = _selenium_config.get('implicit_wait', 10)
         self.pools: List[Pool] = []
         
     def fetch_pools_selenium(self, quiet: bool = False) -> List[Pool]:
@@ -148,6 +160,7 @@ class BlackholePoolRecommender:
         driver = None
         try:
             driver = webdriver.Chrome(options=options)
+            driver.implicitly_wait(self.implicit_wait)
             if not quiet:
                 print(f"Loading {self.url}...")
             driver.get(self.url)
@@ -1030,7 +1043,10 @@ def main():
     args = parser.parse_args()
     
     try:
-        recommender = BlackholePoolRecommender(headless=not args.no_headless)
+        # Use config default for headless, but CLI flag can override
+        # If --no-headless is set, force headless=False; otherwise use config default
+        headless_param = False if args.no_headless else None
+        recommender = BlackholePoolRecommender(headless=headless_param)
         recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, quiet=args.json or args.output)
         
         if not recommendations:

@@ -37,6 +37,55 @@ tokens:
   SUPER: "0x09fa58228bb791ea355c90da1e4783452b9bd8c3"
 ```
 
+### CoinGecko Token Mapping
+
+Map token contract addresses to CoinGecko IDs for price lookups:
+
+```yaml
+coingecko:
+  "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "avalanche-2"  # AVAX
+  "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": "usd-coin"     # USDC
+  "0xcd94a87696fac69edae3a70fe5725307ae1c43f6": "blackhole"    # BLACK
+  "0x152b9d0fdc40c096757f570a51e494bd4b943e50": "bitcoin"      # BTC.b
+```
+
+### Known Token Metadata
+
+Pre-configure token metadata (name, decimals) for faster lookups without API calls:
+
+```yaml
+known_tokens:
+  "0xcd94a87696fac69edae3a70fe5725307ae1c43f6":
+    name: "BLACKHOLE (BLACK)"
+    decimals: 18
+  "0x152b9d0fdc40c096757f570a51e494bd4b943e50":
+    name: "Bitcoin (BTC.b)"
+    decimals: 8
+  "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7":
+    name: "Wrapped AVAX (WAVAX)"
+    decimals: 18
+  "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e":
+    name: "USD Coin (USDC)"
+    decimals: 6
+```
+
+### Pool Recommender Settings
+
+Configure default settings for the Blackhole Pool Recommender:
+
+```yaml
+pool_recommender:
+  default_top_n: 5  # Default number of top pools to recommend
+  selenium:
+    headless: true       # Run browser in headless mode (can override with --no-headless)
+    implicit_wait: 10    # Selenium implicit wait time in seconds
+```
+
+**Notes:**
+- `default_top_n`: Can be overridden with the `--top` command-line argument
+- `headless`: Set to `false` to show the browser window by default (can override with `--no-headless`)
+- `implicit_wait`: How long Selenium waits for elements to appear before timing out
+
 ### Logging Configuration
 
 Control logging output:

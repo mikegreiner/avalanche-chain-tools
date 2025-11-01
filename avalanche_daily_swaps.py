@@ -17,7 +17,7 @@ import argparse
 import pytz
 
 from avalanche_utils import (
-    SNOWTRACE_API_BASE, DEFAULT_HEADERS, TOKEN_ADDRESSES,
+    SNOWTRACE_API_BASE, DEFAULT_HEADERS, TOKEN_ADDRESSES, API_KEY_TOKEN,
     get_token_info, get_token_price, format_amount, format_timestamp,
     AvalancheAPIError, NetworkError, BlockNotFoundError, logger
 )
@@ -38,10 +38,10 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
         offset = 10000  # Max per page
         
         while True:
-            url = f"{self.snowtrace_api_base}?module=account&action=txlist&address={address}&startblock={start_block}&endblock={end_block}&page={page}&offset={offset}&sort=desc&apikey=YourApiKeyToken"
+            url = f"{self.snowtrace_api_base}?module=account&action=txlist&address={address}&startblock={start_block}&endblock={end_block}&page={page}&offset={offset}&sort=desc&apikey={API_KEY_TOKEN}"
             
             try:
-                response = requests.get(url, headers=self.headers, timeout=10)
+                response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
                 response.raise_for_status()
                 data = response.json()
                 
@@ -75,10 +75,10 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
     
     def get_latest_block_number(self) -> int:
         """Get the latest block number"""
-        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_blockNumber&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_blockNumber&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
@@ -93,8 +93,8 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
         """Get block number closest to a given timestamp using Snowtrace API"""
         try:
             # Use Snowtrace API to get block by timestamp
-            url = f"{self.snowtrace_api_base}?module=block&action=getblocknobytime&timestamp={timestamp}&closest=before&apikey=YourApiKeyToken"
-            response = requests.get(url, headers=self.headers, timeout=10)
+            url = f"{self.snowtrace_api_base}?module=block&action=getblocknobytime&timestamp={timestamp}&closest=before&apikey={API_KEY_TOKEN}"
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
@@ -123,10 +123,10 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
     
     def get_token_balance(self, address: str, token_address: str) -> int:
         """Get current token balance for an address"""
-        url = f"{self.snowtrace_api_base}?module=account&action=tokenbalance&contractaddress={token_address}&address={address}&tag=latest&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=account&action=tokenbalance&contractaddress={token_address}&address={address}&tag=latest&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
@@ -148,9 +148,9 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
         try:
             # Get transaction receipt to check for token transfers
             tx_hash = tx['hash']
-            receipt_url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey=YourApiKeyToken"
+            receipt_url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey={API_KEY_TOKEN}"
             
-            response = requests.get(receipt_url, headers=self.headers, timeout=10)
+            response = requests.get(receipt_url, headers=self.headers, timeout=self.get_api_timeout())
             if response.status_code != 200:
                 return None
                 

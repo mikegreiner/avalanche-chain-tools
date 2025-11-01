@@ -8,7 +8,7 @@ Base class providing common functionality for all Avalanche chain analysis tools
 from typing import Dict, Optional
 from abc import ABC, abstractmethod
 
-from avalanche_utils import SNOWTRACE_API_BASE, DEFAULT_HEADERS
+from avalanche_utils import SNOWTRACE_API_BASE, DEFAULT_HEADERS, API_TIMEOUT_DEFAULT, API_TIMEOUT_QUICK
 
 
 class AvalancheTool(ABC):
@@ -32,15 +32,15 @@ class AvalancheTool(ABC):
     
     def get_api_timeout(self, quick: bool = False) -> int:
         """
-        Get API timeout value.
+        Get API timeout value from config.
         
         Args:
-            quick: If True, return quick timeout (5s), otherwise default (10s)
+            quick: If True, return quick timeout, otherwise default timeout
             
         Returns:
-            Timeout value in seconds
+            Timeout value in seconds (from config or defaults)
         """
-        return 5 if quick else 10
+        return API_TIMEOUT_QUICK if quick else API_TIMEOUT_DEFAULT
     
     def __repr__(self) -> str:
         """String representation of the tool"""

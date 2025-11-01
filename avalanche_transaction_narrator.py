@@ -17,7 +17,7 @@ import argparse
 import pytz
 
 from avalanche_utils import (
-    SNOWTRACE_API_BASE, DEFAULT_HEADERS, KNOWN_TOKEN_METADATA,
+    SNOWTRACE_API_BASE, DEFAULT_HEADERS, KNOWN_TOKEN_METADATA, API_KEY_TOKEN,
     get_token_info, format_amount, format_timestamp,
     AvalancheAPIError, NetworkError, logger
 )
@@ -62,10 +62,10 @@ class AvalancheTransactionNarrator(AvalancheTool):
         offset = 10000
         
         while True:
-            url = f"{self.snowtrace_api_base}?module=account&action=txlist&address={address}&startblock={start_block}&endblock={end_block}&page={page}&offset={offset}&sort=desc&apikey=YourApiKeyToken"
+            url = f"{self.snowtrace_api_base}?module=account&action=txlist&address={address}&startblock={start_block}&endblock={end_block}&page={page}&offset={offset}&sort=desc&apikey={API_KEY_TOKEN}"
             
             try:
-                response = requests.get(url, headers=self.headers, timeout=15)
+                response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
                 response.raise_for_status()
                 data = response.json()
                 
@@ -93,10 +93,10 @@ class AvalancheTransactionNarrator(AvalancheTool):
     
     def get_latest_block_number(self) -> int:
         """Get the latest block number"""
-        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_blockNumber&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_blockNumber&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             return int(data.get('result', '0x0'), 16)
@@ -115,8 +115,8 @@ class AvalancheTransactionNarrator(AvalancheTool):
         """
         try:
             # Use Snowtrace API to get block by timestamp
-            url = f"{self.snowtrace_api_base}?module=block&action=getblocknobytime&timestamp={timestamp}&closest=before&apikey=YourApiKeyToken"
-            response = requests.get(url, headers=self.headers, timeout=10)
+            url = f"{self.snowtrace_api_base}?module=block&action=getblocknobytime&timestamp={timestamp}&closest=before&apikey={API_KEY_TOKEN}"
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
@@ -153,10 +153,10 @@ class AvalancheTransactionNarrator(AvalancheTool):
     
     def get_transaction_receipt(self, tx_hash: str) -> Optional[Dict]:
         """Get transaction receipt with logs"""
-        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             

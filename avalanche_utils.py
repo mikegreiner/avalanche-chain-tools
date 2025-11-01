@@ -105,6 +105,11 @@ getcontext().prec = _precision
 SNOWTRACE_API_BASE = _config.get('api', {}).get('snowtrace_base', "https://api.snowtrace.io/api")
 API_KEY_TOKEN = _config.get('api', {}).get('api_key', "YourApiKeyToken")
 
+# Timeout values (with config override support)
+_api_timeout_config = _config.get('api', {}).get('timeout', {})
+API_TIMEOUT_DEFAULT = _api_timeout_config.get('default', 10)
+API_TIMEOUT_QUICK = _api_timeout_config.get('quick', 5)
+
 # Default headers for API requests
 DEFAULT_HEADERS = _config.get('api', {}).get('headers', {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -186,7 +191,7 @@ def get_token_info(token_address: str, headers: Optional[Dict] = None,
     url = f"{SNOWTRACE_API_BASE}?module=token&action=tokeninfo&contractaddress={token_address}&apikey={API_KEY_TOKEN}"
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=API_TIMEOUT_DEFAULT)
         response.raise_for_status()
         data = response.json()
         
@@ -238,7 +243,7 @@ def get_token_price(token_address: str, headers: Optional[Dict] = None) -> float
     if token_address_lower == TOKEN_ADDRESSES['WAVAX'].lower():
         try:
             url = f"{SNOWTRACE_API_BASE}?module=stats&action=ethprice&apikey={API_KEY_TOKEN}"
-            response = requests.get(url, headers=headers, timeout=5)
+            response = requests.get(url, headers=headers, timeout=API_TIMEOUT_QUICK)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status') == '1':
@@ -249,7 +254,7 @@ def get_token_price(token_address: str, headers: Optional[Dict] = None) -> float
     # Try CoinGecko contract address search first (more reliable for Avalanche tokens)
     try:
         search_url = f"https://api.coingecko.com/api/v3/coins/avalanche/contract/{token_address_lower}"
-        response = requests.get(search_url, timeout=10)
+        response = requests.get(search_url, timeout=API_TIMEOUT_DEFAULT)
         if response.status_code == 200:
             data = response.json()
             price = data.get('market_data', {}).get('current_price', {}).get('usd', 0.0)
@@ -265,7 +270,7 @@ def get_token_price(token_address: str, headers: Optional[Dict] = None) -> float
             # Add a small delay to avoid rate limiting
             time.sleep(0.5)
             price_url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd"
-            response = requests.get(price_url, timeout=10)
+            response = requests.get(price_url, timeout=API_TIMEOUT_DEFAULT)
             if response.status_code == 200:
                 data = response.json()
                 if 'status' not in data:  # No error status

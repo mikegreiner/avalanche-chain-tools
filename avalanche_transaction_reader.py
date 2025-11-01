@@ -16,7 +16,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import argparse
 
 from avalanche_utils import (
-    SNOWTRACE_API_BASE, DEFAULT_HEADERS,
+    SNOWTRACE_API_BASE, DEFAULT_HEADERS, API_KEY_TOKEN,
     get_token_info, get_token_price, format_amount, format_timestamp_from_hex,
     AvalancheAPIError, NetworkError, TransactionNotFoundError, BlockNotFoundError,
     InvalidInputError, logger
@@ -64,10 +64,10 @@ class AvalancheTransactionReader(AvalancheTool):
             AvalancheAPIError: If API returns an error
             NetworkError: If network request fails
         """
-        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionByHash&txhash={tx_hash}&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionByHash&txhash={tx_hash}&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
@@ -80,10 +80,10 @@ class AvalancheTransactionReader(AvalancheTool):
     
     def get_transaction_receipt(self, tx_hash: str) -> Dict:
         """Fetch transaction receipt to get logs (token transfers)"""
-        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
@@ -99,10 +99,10 @@ class AvalancheTransactionReader(AvalancheTool):
     
     def get_block_info(self, block_number: str) -> Dict[str, Any]:
         """Fetch block information to get timestamp"""
-        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getBlockByNumber&tag={block_number}&boolean=true&apikey=YourApiKeyToken"
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getBlockByNumber&tag={block_number}&boolean=true&apikey={API_KEY_TOKEN}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
             
