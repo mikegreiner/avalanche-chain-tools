@@ -135,27 +135,27 @@ For **Blackhole Pool Recommender**, you'll also need ChromeDriver:
 
 ```
 .
-??? README.md                           # This file
-??? requirements.txt                    # Python dependencies
-?
-??? avalanche_transaction_reader.py     # Transaction reader tool
-??? avalanche_transaction_narrator.py   # Transaction narrator tool
-??? avalanche_daily_swaps.py           # Daily swap analyzer
-??? blackhole_pool_recommender.py      # Pool recommender
-?
-??? scripts/                            # Helper scripts
-?   ??? inspect_blackhole_page.py      # Page inspection helper
-?   ??? find_api_endpoint.py           # API endpoint finder
-?
-??? docs/                               # Documentation
-?   ??? README_avalanche_reader.md
-?   ??? README_daily_swaps.md
-?   ??? README_pool_recommender.md
-?   ??? IMPLEMENTATION_NOTES.md
-?   ??? TEST_RESULTS.md
-?
-??? debug/                              # Debug scripts (development)
-    ??? ...
+├── README.md                           # This file
+├── requirements.txt                    # Python dependencies
+│
+├── avalanche_transaction_reader.py     # Transaction reader tool
+├── avalanche_transaction_narrator.py   # Transaction narrator tool
+├── avalanche_daily_swaps.py           # Daily swap analyzer
+├── blackhole_pool_recommender.py      # Pool recommender
+│
+├── scripts/                            # Helper scripts
+│   ├── inspect_blackhole_page.py      # Page inspection helper
+│   └── find_api_endpoint.py           # API endpoint finder
+│
+├── docs/                               # Documentation
+│   ├── README_avalanche_reader.md
+│   ├── README_daily_swaps.md
+│   ├── README_pool_recommender.md
+│   ├── IMPLEMENTATION_NOTES.md
+│   └── TEST_RESULTS.md
+│
+└── debug/                              # Debug scripts (development)
+    └── ...
 ```
 
 ## Notes
