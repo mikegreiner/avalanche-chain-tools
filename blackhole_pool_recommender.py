@@ -9,21 +9,26 @@ Usage:
     python3 blackhole_pool_recommender.py [--top N]
 """
 
-import warnings
-# Suppress requests dependency warnings
-warnings.filterwarnings('ignore', message='.*urllib3.*')
-warnings.filterwarnings('ignore', message='.*chardet.*')
-
 import requests
 import time
 import re
 import json
+import logging
 from typing import List, Dict, Optional
 from decimal import Decimal, getcontext
 from dataclasses import dataclass
 from datetime import datetime
 import argparse
 import sys
+
+# Import logger from utils if available, otherwise create one
+try:
+    from avalanche_utils import logger, InvalidInputError
+except ImportError:
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    class InvalidInputError(Exception):
+        pass
 
 # Try to import selenium, fall back to requests + BeautifulSoup if not available
 try:
@@ -177,7 +182,7 @@ class BlackholePoolRecommender:
                     
             except Exception as e:
                 if not quiet:
-                    print(f"Error setting pagination: {e}, will try scrolling instead")
+                    logger.warning(f"Error setting pagination: {e}, will try scrolling instead")
             
             # Click TOTAL REWARDS column header to sort by it (descending)
             if not quiet:
@@ -275,7 +280,7 @@ class BlackholePoolRecommender:
                         pools = self._extract_pools_from_elements(main_pools, driver)
                 
             except Exception as e:
-                print(f"Error extracting from DOM elements: {e}")
+                logger.error(f"Error extracting from DOM elements: {e}")
             
             # Method 2: Try to extract from page text using regex patterns
             if not pools:
@@ -305,7 +310,7 @@ class BlackholePoolRecommender:
                 try:
                     pools = self._extract_from_network_logs(driver)
                 except Exception as e:
-                    print(f"Error extracting from network: {e}")
+                    logger.error(f"Error extracting from network: {e}")
             
             return pools
             
@@ -818,7 +823,7 @@ class BlackholePoolRecommender:
                 print("API not available, using Selenium to scrape page...")
             return self.fetch_pools_selenium(quiet=quiet)
         else:
-            raise Exception("Selenium not available and API endpoint not found. Please install selenium: pip install selenium")
+            raise InvalidInputError("Selenium not available and API endpoint not found. Please install selenium: pip install selenium")
     
     def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, quiet: bool = False) -> List[Pool]:
         """
@@ -873,31 +878,37 @@ class BlackholePoolRecommender:
         
         return sorted_pools[:top_n]
     
-    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, output_json: bool = False):
+    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, output_json: bool = False, return_output: bool = False):
         """Print formatted recommendations"""
         if not pools:
+            if return_output:
+                return "No pools to recommend."
             print("No pools to recommend.")
-            return
+            return None
         
         if output_json:
-            self._print_json_output(pools, user_voting_power)
-            return
+            output = self._get_json_output(pools, user_voting_power)
+            if return_output:
+                return output
+            print(output)
+            return None
         
-        print("\n" + "="*80)
-        print("BLACKHOLE DEX POOL RECOMMENDATIONS")
-        print("="*80)
-        print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        output_lines = []
+        output_lines.append("\n" + "="*80)
+        output_lines.append("BLACKHOLE DEX POOL RECOMMENDATIONS")
+        output_lines.append("="*80)
+        output_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if user_voting_power:
-            print(f"Estimated rewards based on voting power: {user_voting_power:,.0f} veBLACK")
-            print("Note: Estimates assume you vote ALL your voting power in each pool individually")
-            print("      In reality, votes dilute rewards as more people vote")
-            print(f"\nTop {len(pools)} Pools (sorted by estimated reward):\n")
+            output_lines.append(f"Estimated rewards based on voting power: {user_voting_power:,.0f} veBLACK")
+            output_lines.append("Note: Estimates assume you vote ALL your voting power in each pool individually")
+            output_lines.append("      In reality, votes dilute rewards as more people vote")
+            output_lines.append(f"\nTop {len(pools)} Pools (sorted by estimated reward):\n")
         else:
-            print(f"\nTop {len(pools)} Most Profitable Pools:\n")
+            output_lines.append(f"\nTop {len(pools)} Most Profitable Pools:\n")
         
         for i, pool in enumerate(pools, 1):
             score = pool.profitability_score()
-            print(f"{i}. {pool.name}")
+            output_lines.append(f"{i}. {pool.name}")
             if pool.pool_type:
                 # Convert pool type to human-readable format
                 type_name_map = {
@@ -909,24 +920,32 @@ class BlackholePoolRecommender:
                 type_info = f" {human_readable_type} ({pool.pool_type})"
                 if pool.fee_percentage:
                     type_info += f" {pool.fee_percentage}"
-                print(f"   Type:{type_info}")
-            print(f"   Total Rewards: ${pool.total_rewards:,.2f}")
-            print(f"   VAPR: {pool.vapr:.2f}%")
+                output_lines.append(f"   Type:{type_info}")
+            output_lines.append(f"   Total Rewards: ${pool.total_rewards:,.2f}")
+            output_lines.append(f"   VAPR: {pool.vapr:.2f}%")
             if pool.current_votes is not None:
-                print(f"   Current Votes: {pool.current_votes:,.0f}")
+                output_lines.append(f"   Current Votes: {pool.current_votes:,.0f}")
                 # Calculate and display rewards per vote
                 rewards_per_vote = pool.total_rewards / pool.current_votes
-                print(f"   Rewards per Vote: ${rewards_per_vote:.4f}")
+                output_lines.append(f"   Rewards per Vote: ${rewards_per_vote:.4f}")
             if user_voting_power:
                 estimated_reward = pool.estimate_user_rewards(user_voting_power)
                 new_total_votes = (pool.current_votes or 0) + user_voting_power
                 user_share_pct = (user_voting_power / new_total_votes * 100) if new_total_votes > 0 else 0
-                print(f"   Your Estimated Reward: ${estimated_reward:,.2f} ({user_share_pct:.2f}% share)")
-            print(f"   Profitability Score: {score:.2f}")
-            print()
+                output_lines.append(f"   Your Estimated Reward: ${estimated_reward:,.2f} ({user_share_pct:.2f}% share)")
+            output_lines.append(f"   Profitability Score: {score:.2f}")
+            output_lines.append("")
+        
+        output_text = "\n".join(output_lines)
+        
+        if return_output:
+            return output_text
+        else:
+            print(output_text)
+            return None
     
-    def _print_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None):
-        """Print recommendations as JSON"""
+    def _get_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None) -> str:
+        """Get recommendations as JSON string"""
         from datetime import datetime
         
         output = {
@@ -964,7 +983,12 @@ class BlackholePoolRecommender:
             
             output["pools"].append(pool_data)
         
-        print(json.dumps(output, indent=2))
+        return json.dumps(output, indent=2)
+    
+    def _print_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None):
+        """Print recommendations as JSON (legacy method for backward compatibility)"""
+        output = self._get_json_output(pools, user_voting_power)
+        print(output)
 
 
 def main():
@@ -998,13 +1022,16 @@ def main():
         action='store_true',
         help='Output results as JSON (useful for post-processing)'
     )
+    parser.add_argument(
+        '-o', '--output',
+        help='Output file (optional)'
+    )
     
     args = parser.parse_args()
     
     try:
         recommender = BlackholePoolRecommender(headless=not args.no_headless)
-        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, quiet=args.json)
-        recommender.print_recommendations(recommendations, user_voting_power=args.voting_power, output_json=args.json)
+        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, quiet=args.json or args.output)
         
         if not recommendations:
             print("\nNo recommendations generated. This may be because:")
@@ -1013,9 +1040,23 @@ def main():
             print("3. Network connectivity issues")
             print("\nTo debug, try running with --no-headless to see the browser.")
             sys.exit(1)
-            
+        
+        # Get output (either JSON or text)
+        output = recommender.print_recommendations(
+            recommendations, 
+            user_voting_power=args.voting_power, 
+            output_json=args.json,
+            return_output=bool(args.output)
+        )
+        
+        # Write to file if specified
+        if args.output:
+            with open(args.output, 'w') as f:
+                f.write(output)
+            print(f"Results written to {args.output}")
+        
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -1,0 +1,61 @@
+# Avalanche Chain Tools Configuration
+
+# API Settings
+api:
+  snowtrace_base: "https://api.snowtrace.io/api"
+  api_key: "YourApiKeyToken"  # Replace with your Snowtrace API key
+  timeout:
+    default: 10  # Default timeout in seconds
+    quick: 5     # Quick timeout for simple price checks
+  
+  headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+# Token Addresses (Avalanche C-Chain)
+tokens:
+  WAVAX: "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7"
+  USDC: "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
+  BLACK: "0xcd94a87696fac69edae3a70fe5725307ae1c43f6"
+  BTC_B: "0x152b9d0fdc40c096757f570a51e494bd4b943e50"
+  SUPER: "0x09fa58228bb791ea355c90da1e4783452b9bd8c3"
+
+# CoinGecko Token Mapping
+coingecko:
+  "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "avalanche-2"  # AVAX
+  "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": "usd-coin"     # USDC
+  "0xcd94a87696fac69edae3a70fe5725307ae1c43f6": "blackhole"    # BLACK
+  "0x152b9d0fdc40c096757f570a51e494bd4b943e50": "bitcoin"      # BTC.b
+
+# Known Token Metadata
+known_tokens:
+  "0xcd94a87696fac69edae3a70fe5725307ae1c43f6":
+    name: "BLACKHOLE (BLACK)"
+    decimals: 18
+  "0x152b9d0fdc40c096757f570a51e494bd4b943e50":
+    name: "Bitcoin (BTC.b)"
+    decimals: 8
+  "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7":
+    name: "Wrapped AVAX (WAVAX)"
+    decimals: 18
+  "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e":
+    name: "USD Coin (USDC)"
+    decimals: 6
+  "0x09fa58228bb791ea355c90da1e4783452b9bd8c3":
+    name: "SuperVerse (SUPER)"
+    decimals: 18
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  datefmt: "%Y-%m-%d %H:%M:%S"
+
+# Decimal Precision
+decimal_precision: 50
+
+# Blackhole Pool Recommender Settings
+pool_recommender:
+  default_top_n: 5
+  selenium:
+    headless: true
+    implicit_wait: 10

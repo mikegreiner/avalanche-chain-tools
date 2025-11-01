@@ -57,6 +57,18 @@ This will filter out all vAMM pools from the results.
 python3 blackhole_pool_recommender.py --no-headless
 ```
 
+### Save to File
+```bash
+# Save text output to file
+python3 blackhole_pool_recommender.py --voting-power 15000 -o recommendations.txt
+
+# Save JSON output to file
+python3 blackhole_pool_recommender.py --voting-power 15000 --json -o recommendations.json
+
+# Or save to an output directory (recommended, gitignored)
+python3 blackhole_pool_recommender.py -o output/pool_recommendations.txt
+```
+
 ## How It Works
 
 ### Profitability Scoring

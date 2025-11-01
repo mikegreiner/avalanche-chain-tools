@@ -109,6 +109,9 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --hide-vamm
 
 # Debug mode (shows browser)
 python3 blackhole_pool_recommender.py --no-headless
+
+# Save to file
+python3 blackhole_pool_recommender.py --voting-power 15000 -o recommendations.txt
 ```
 
 **Documentation:** See [docs/README_pool_recommender.md](docs/README_pool_recommender.md)
@@ -131,13 +134,34 @@ For **Blackhole Pool Recommender**, you'll also need ChromeDriver:
 - **macOS:** `brew install chromedriver`
 - **Windows:** Download from https://chromedriver.chromium.org/
 
+### Configuration (Optional)
+
+All tools work with default settings, but you can customize behavior via `config.yaml`:
+
+```bash
+# Edit the configuration file
+nano config.yaml
+```
+
+**Key settings you might want to change:**
+- **API Key**: Replace `"YourApiKeyToken"` with your Snowtrace API key for higher rate limits
+- **Logging Level**: Change from `"INFO"` to `"DEBUG"` for detailed debugging output
+- **Token Addresses**: Add or modify token addresses if needed
+
+The config file is optional - all tools will work with sensible defaults if `config.yaml` doesn't exist or has errors.
+
+**Note:** If you're adding API keys or sensitive data to `config.yaml`, consider adding it to `.gitignore` to avoid committing secrets.
+
 ## Project Structure
 
 ```
 .
 ├── README.md                           # This file
 ├── requirements.txt                    # Python dependencies
+├── config.yaml                         # Configuration file (optional)
 │
+├── avalanche_base.py                   # Base class for all tools
+├── avalanche_utils.py                  # Shared utilities
 ├── avalanche_transaction_reader.py     # Transaction reader tool
 ├── avalanche_transaction_narrator.py   # Transaction narrator tool
 ├── avalanche_daily_swaps.py           # Daily swap analyzer
@@ -151,12 +175,32 @@ For **Blackhole Pool Recommender**, you'll also need ChromeDriver:
 │   ├── README_avalanche_reader.md
 │   ├── README_daily_swaps.md
 │   ├── README_pool_recommender.md
+│   ├── CONFIGURATION.md                # Configuration guide
 │   ├── IMPLEMENTATION_NOTES.md
 │   └── TEST_RESULTS.md
+├── CONTRIBUTING.md                     # Contributing guidelines
+│
+├── tests/                              # Test suite
+│   ├── test_utils.py
+│   ├── test_transaction_reader.py
+│   ├── test_daily_swaps.py
+│   ├── test_transaction_narrator.py
+│   └── test_pool_recommender.py
 │
 └── debug/                              # Debug scripts (development)
     └── ...
 ```
+
+## Configuration
+
+All tools support optional configuration via `config.yaml`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
+
+**Quick setup:**
+- Add your Snowtrace API key to `config.yaml` for higher rate limits
+- Adjust logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
+- Customize token addresses or other settings as needed
+
+The config file is optional - tools work with defaults if not present.
 
 ## Notes
 
@@ -166,6 +210,7 @@ For **Blackhole Pool Recommender**, you'll also need ChromeDriver:
 - All addresses, transactions, and contracts in outputs are clickable links to Snowtrace.io
 - Timestamps are shown in both local timezone and UTC
 - **Output files**: You can save generated files to an `output/` directory (gitignored) or any location you prefer
+- **Logging**: All tools use Python's logging module - adjust levels via `config.yaml` or environment
 
 ## License
 
@@ -173,4 +218,31 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! We appreciate your help in improving these tools.
+
+### Quick Start
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes following our [contributing guidelines](CONTRIBUTING.md)
+4. Write tests and ensure all tests pass (`pytest tests/`)
+5. Submit a pull request
+
+### What We're Looking For
+
+- **Bug fixes**: Fix issues and improve reliability
+- **New features**: Add functionality that aligns with the project goals
+- **Documentation**: Improve docs, examples, or code comments
+- **Tests**: Increase test coverage or add edge case tests
+- **Code quality**: Refactoring, type hints, error handling improvements
+
+### Development Setup
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Complete development setup guide
+- Code style guidelines
+- Architecture overview
+- Testing requirements
+- Pull request process
+
+**Before submitting**: Ensure all tests pass and follow the project's code style.

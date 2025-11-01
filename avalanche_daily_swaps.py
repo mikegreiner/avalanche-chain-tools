@@ -12,24 +12,26 @@ import sys
 import re
 import time
 from datetime import datetime, timedelta
-from decimal import Decimal, getcontext
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import argparse
 import pytz
 
-# Set precision for decimal calculations
-getcontext().prec = 50
+from avalanche_utils import (
+    SNOWTRACE_API_BASE, DEFAULT_HEADERS, TOKEN_ADDRESSES,
+    get_token_info, get_token_price, format_amount, format_timestamp,
+    AvalancheAPIError, NetworkError, BlockNotFoundError, logger
+)
+from avalanche_base import AvalancheTool
 
-class AvalancheDailySwapAnalyzer:
-    def __init__(self):
-        self.snowtrace_api_base = "https://api.snowtrace.io/api"
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+class AvalancheDailySwapAnalyzer(AvalancheTool):
+    def __init__(self, snowtrace_api_base: Optional[str] = None, 
+                 headers: Optional[Dict[str, str]] = None) -> None:
+        """Initialize the daily swap analyzer"""
+        super().__init__(snowtrace_api_base, headers)
         # BTC.b contract address
-        self.btc_b_address = "0x152b9d0fdc40c096757f570a51e494bd4b943e50"
+        self.btc_b_address: str = TOKEN_ADDRESSES['BTC_B']
         
-    def get_address_transactions(self, address: str, start_block: int, end_block: int) -> List[Dict]:
+    def get_address_transactions(self, address: str, start_block: int, end_block: int) -> List[Dict[str, Any]]:
         """Fetch all transactions for an address within a block range"""
         all_transactions = []
         page = 1
@@ -39,12 +41,12 @@ class AvalancheDailySwapAnalyzer:
             url = f"{self.snowtrace_api_base}?module=account&action=txlist&address={address}&startblock={start_block}&endblock={end_block}&page={page}&offset={offset}&sort=desc&apikey=YourApiKeyToken"
             
             try:
-                response = requests.get(url, headers=self.headers, timeout=15)
+                response = requests.get(url, headers=self.headers, timeout=10)
                 response.raise_for_status()
                 data = response.json()
                 
                 if data.get('status') != '1':
-                    print(f"Warning: API returned status {data.get('status')}: {data.get('message', 'Unknown error')}")
+                    logger.warning(f"API returned status {data.get('status')}: {data.get('message', 'Unknown error')}")
                     break
                 
                 transactions = data.get('result', [])
@@ -52,7 +54,7 @@ class AvalancheDailySwapAnalyzer:
                     break
                     
                 all_transactions.extend(transactions)
-                print(f"Fetched page {page}: {len(transactions)} transactions")
+                logger.debug(f"Fetched page {page}: {len(transactions)} transactions")
                 
                 # If we got fewer than the offset, we've reached the end
                 if len(transactions) < offset:
@@ -81,11 +83,11 @@ class AvalancheDailySwapAnalyzer:
             data = response.json()
             
             if 'error' in data:
-                raise Exception(f"API Error: {data['error']}")
+                raise AvalancheAPIError(f"API Error: {data['error']}", api_error=str(data['error']))
             
             return int(data.get('result', '0x0'), 16)
         except requests.RequestException as e:
-            raise Exception(f"Failed to fetch latest block: {e}")
+            raise NetworkError(f"Failed to fetch latest block: {e}", original_error=e)
     
     def get_block_by_timestamp(self, timestamp: int) -> int:
         """Get block number closest to a given timestamp using Snowtrace API"""
@@ -99,11 +101,11 @@ class AvalancheDailySwapAnalyzer:
             if data.get('status') == '1':
                 return int(data.get('result', '0'))
             else:
-                print(f"Warning: API error getting block for timestamp {timestamp}: {data.get('message', 'Unknown error')}")
+                logger.warning(f"API error getting block for timestamp {timestamp}: {data.get('message', 'Unknown error')}")
                 # Fallback to estimation
                 return self._estimate_block_by_timestamp(timestamp)
         except Exception as e:
-            print(f"Warning: Error fetching block by timestamp: {e}")
+            logger.warning(f"Error fetching block by timestamp: {e}")
             # Fallback to estimation
             return self._estimate_block_by_timestamp(timestamp)
     
@@ -117,29 +119,7 @@ class AvalancheDailySwapAnalyzer:
     
     def get_token_info(self, token_address: str) -> Dict:
         """Get token information (name, symbol, decimals)"""
-        url = f"{self.snowtrace_api_base}?module=token&action=tokeninfo&contractaddress={token_address}&apikey=YourApiKeyToken"
-        
-        try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'error' in data or data.get('status') != '1':
-                return {'name': 'Unknown', 'symbol': 'UNKNOWN', 'decimals': 18}
-            
-            result = data.get('result', [])
-            if isinstance(result, list) and len(result) > 0:
-                token_data = result[0]
-                return {
-                    'name': token_data.get('tokenName', 'Unknown'),
-                    'symbol': token_data.get('symbol', 'UNKNOWN'),
-                    'decimals': int(token_data.get('divisor', 18))
-                }
-            else:
-                return {'name': 'Unknown', 'symbol': 'UNKNOWN', 'decimals': 18}
-        except Exception as e:
-            print(f"Warning: Error fetching token info for {token_address}: {e}")
-            return {'name': 'Unknown', 'symbol': 'UNKNOWN', 'decimals': 18}
+        return get_token_info(token_address, headers=self.headers)
     
     def get_token_balance(self, address: str, token_address: str) -> int:
         """Get current token balance for an address"""
@@ -161,56 +141,9 @@ class AvalancheDailySwapAnalyzer:
     
     def get_token_price(self, token_address: str) -> float:
         """Get current token price in USD from multiple sources"""
-        token_address_lower = token_address.lower()
-        
-        # Try Snowtrace API first for AVAX price
-        if token_address_lower == '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7':  # WAVAX
-            try:
-                url = f"{self.snowtrace_api_base}?module=stats&action=ethprice&apikey=YourApiKeyToken"
-                response = requests.get(url, headers=self.headers, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('status') == '1':
-                        return float(data['result']['ethusd'])
-            except:
-                pass
-        
-        # Try CoinGecko contract address search first (more reliable for Avalanche tokens)
-        try:
-            search_url = f"https://api.coingecko.com/api/v3/coins/avalanche/contract/{token_address_lower}"
-            response = requests.get(search_url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                price = data.get('market_data', {}).get('current_price', {}).get('usd', 0.0)
-                if price > 0:
-                    return price
-        except Exception as e:
-            print(f"Warning: Contract search failed for {token_address}: {e}")
-        
-        # Try CoinGecko simple price API as fallback (with rate limiting)
-        try:
-            token_mapping = {
-                '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7': 'avalanche-2',  # AVAX
-                '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e': 'usd-coin',     # USDC
-                '0xcd94a87696fac69edae3a70fe5725307ae1c43f6': 'blackhole',    # BLACK
-                '0x152b9d0fdc40c096757f570a51e494bd4b943e50': 'bitcoin',      # BTC.b
-            }
-            
-            coingecko_id = token_mapping.get(token_address_lower)
-            if coingecko_id:
-                time.sleep(0.5)  # Rate limiting
-                price_url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd"
-                response = requests.get(price_url, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    if 'status' not in data:
-                        return data.get(coingecko_id, {}).get('usd', 0.0)
-        except Exception as e:
-            print(f"Warning: Simple price API failed for {token_address}: {e}")
-        
-        return 0.0
+        return get_token_price(token_address, headers=self.headers)
     
-    def parse_swap_transaction(self, tx: Dict) -> Optional[Dict]:
+    def parse_swap_transaction(self, tx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse a transaction to extract swap information"""
         try:
             # Get transaction receipt to check for token transfers
@@ -286,35 +219,17 @@ class AvalancheDailySwapAnalyzer:
                 return swap_data
                 
         except Exception as e:
-            print(f"Warning: Error parsing transaction {tx.get('hash', 'unknown')}: {e}")
+            logger.warning(f"Error parsing transaction {tx.get('hash', 'unknown')}: {e}")
             
         return None
     
     def format_amount(self, amount: int, decimals: int) -> str:
         """Format token amount with proper decimal places"""
-        divisor = 10 ** decimals
-        formatted = Decimal(amount) / Decimal(divisor)
-        return f"{formatted:.6f}".rstrip('0').rstrip('.')
+        return format_amount(amount, decimals, precision='standard')
     
     def format_timestamp(self, timestamp: int) -> str:
         """Convert timestamp to human-readable format with both local and UTC times"""
-        try:
-            # Create UTC datetime
-            dt_utc = datetime.fromtimestamp(timestamp, tz=pytz.UTC)
-            
-            # Get local timezone
-            local_tz = datetime.now().astimezone().tzinfo
-            
-            # Convert to local time
-            dt_local = dt_utc.astimezone(local_tz)
-            
-            # Format both times
-            utc_str = dt_utc.strftime("%B %d, %Y at %I:%M:%S %p UTC")
-            local_str = dt_local.strftime("%B %d, %Y at %I:%M:%S %p %Z")
-            
-            return f"{local_str} / {utc_str}"
-        except Exception as e:
-            return f"Unknown timestamp (Error: {e})"
+        return format_timestamp(timestamp, include_utc=True)
     
     def analyze_daily_swaps(self, address: str, target_date: str = None) -> str:
         """Analyze daily swap transactions for the given address"""
@@ -341,11 +256,11 @@ class AvalancheDailySwapAnalyzer:
             search_start_timestamp = int(search_start.timestamp())
             search_end_timestamp = int(search_end.timestamp())
             
-            print(f"Analyzing swaps for {address} on {target_dt.strftime('%Y-%m-%d')}")
-            print(f"Target time range: {start_of_day} to {end_of_day} UTC")
-            print(f"Search time range: {search_start} to {search_end} UTC")
-            print(f"Target timestamp range: {start_timestamp} to {end_timestamp}")
-            print(f"Search timestamp range: {search_start_timestamp} to {search_end_timestamp}")
+            logger.info(f"Analyzing swaps for {address} on {target_dt.strftime('%Y-%m-%d')}")
+            logger.debug(f"Target time range: {start_of_day} to {end_of_day} UTC")
+            logger.debug(f"Search time range: {search_start} to {search_end} UTC")
+            logger.debug(f"Target timestamp range: {start_timestamp} to {end_timestamp}")
+            logger.debug(f"Search timestamp range: {search_start_timestamp} to {search_end_timestamp}")
             
             # Get block range for the wider search
             start_block = self.get_block_by_timestamp(search_start_timestamp)
@@ -413,17 +328,17 @@ class AvalancheDailySwapAnalyzer:
                         nearby_swaps.append(swap_data)
             
             print(f"Found {len(daily_transactions)} transactions on target date")
-            print(f"Found {len(nearby_transactions)} transactions in nearby range (±3 days)")
+            print(f"Found {len(nearby_transactions)} transactions in nearby range (?3 days)")
             print(f"Found {len(nearby_swaps)} swap transactions in nearby range")
             
-            print(f"Found {len(daily_swaps)} swap transactions to BTC.b")
+            logger.info(f"Found {len(daily_swaps)} swap transactions to BTC.b")
             
             if not daily_swaps and not nearby_swaps:
-                return f"# Daily Swap Analysis - {target_dt.strftime('%B %d, %Y')}\n\n**Address:** [{address}](https://snowtrace.io/address/{address})\n\nNo swap transactions to BTC.b found for this date or nearby dates (±3 days).\n"
+                return f"# Daily Swap Analysis - {target_dt.strftime('%B %d, %Y')}\n\n**Address:** [{address}](https://snowtrace.io/address/{address})\n\nNo swap transactions to BTC.b found for this date or nearby dates (?3 days).\n"
             elif not daily_swaps and nearby_swaps:
                 # Use nearby swaps if no exact date matches
                 daily_swaps = nearby_swaps
-                print(f"Using {len(nearby_swaps)} nearby swap transactions since none found on exact date")
+                logger.info(f"Using {len(nearby_swaps)} nearby swap transactions since none found on exact date")
             
             # Get BTC.b info for totals
             btc_b_info = self.get_token_info(self.btc_b_address)

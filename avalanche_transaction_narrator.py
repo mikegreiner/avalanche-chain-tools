@@ -12,29 +12,25 @@ import sys
 import re
 import time
 from datetime import datetime, timedelta
-from decimal import Decimal, getcontext
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any, Union
 import argparse
 import pytz
 
-# Set precision for decimal calculations
-getcontext().prec = 50
+from avalanche_utils import (
+    SNOWTRACE_API_BASE, DEFAULT_HEADERS, KNOWN_TOKEN_METADATA,
+    get_token_info, format_amount, format_timestamp,
+    AvalancheAPIError, NetworkError, logger
+)
+from avalanche_base import AvalancheTool
 
-class AvalancheTransactionNarrator:
-    def __init__(self):
-        self.snowtrace_api_base = "https://api.snowtrace.io/api"
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+class AvalancheTransactionNarrator(AvalancheTool):
+    def __init__(self, snowtrace_api_base: Optional[str] = None, 
+                 headers: Optional[Dict[str, str]] = None) -> None:
+        """Initialize the transaction narrator"""
+        super().__init__(snowtrace_api_base, headers)
         
-        # Known contract addresses for classification with correct decimals
-        self.known_contracts = {
-            '0xcd94a87696fac69edae3a70fe5725307ae1c43f6': {'name': 'BLACKHOLE (BLACK)', 'decimals': 18},
-            '0x152b9d0fdc40c096757f570a51e494bd4b943e50': {'name': 'Bitcoin (BTC.b)', 'decimals': 8},
-            '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7': {'name': 'Wrapped AVAX (WAVAX)', 'decimals': 18},
-            '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e': {'name': 'USD Coin (USDC)', 'decimals': 6},
-            '0x09fa58228bb791ea355c90da1e4783452b9bd8c3': {'name': 'SuperVerse (SUPER)', 'decimals': 18},
-        }
+        # Known contract addresses for classification with correct decimals (matches utility module)
+        self.known_contracts: Dict[str, Dict[str, Union[str, int]]] = KNOWN_TOKEN_METADATA
         
         # Blackhole DEX specific contract addresses (add known ones)
         self.blackhole_contracts = {
@@ -105,42 +101,55 @@ class AvalancheTransactionNarrator:
             data = response.json()
             return int(data.get('result', '0x0'), 16)
         except requests.RequestException as e:
-            raise Exception(f"Failed to fetch latest block: {e}")
+            raise NetworkError(f"Failed to fetch latest block: {e}", original_error=e)
     
-    def get_token_info(self, token_address: str) -> Dict:
-        """Get token information (name, symbol, decimals)"""
-        if token_address in self.known_contracts:
-            contract_info = self.known_contracts[token_address]
-            return {
-                'name': contract_info['name'], 
-                'symbol': contract_info['name'].split(' ')[-1].strip('()'), 
-                'decimals': contract_info['decimals']
-            }
+    def get_block_by_timestamp(self, timestamp: int) -> int:
+        """
+        Get block number closest to a given timestamp using Snowtrace API.
         
-        url = f"{self.snowtrace_api_base}?module=token&action=tokeninfo&contractaddress={token_address}&apikey=YourApiKeyToken"
-        
+        Args:
+            timestamp: Unix timestamp
+            
+        Returns:
+            Block number closest to the timestamp
+        """
         try:
+            # Use Snowtrace API to get block by timestamp
+            url = f"{self.snowtrace_api_base}?module=block&action=getblocknobytime&timestamp={timestamp}&closest=before&apikey=YourApiKeyToken"
             response = requests.get(url, headers=self.headers, timeout=10)
             response.raise_for_status()
             data = response.json()
             
-            if data.get('status') != '1':
-                return {'name': 'Unknown Token', 'symbol': 'UNKNOWN', 'decimals': 18}
-            
-            result = data.get('result', [])
-            if isinstance(result, list) and len(result) > 0:
-                token_data = result[0]
-                
-                
-                return {
-                    'name': token_data.get('tokenName', 'Unknown Token'),
-                    'symbol': token_data.get('symbol', 'UNKNOWN'),
-                    'decimals': int(token_data.get('divisor', 18))
-                }
+            if data.get('status') == '1':
+                return int(data.get('result', '0'))
             else:
-                return {'name': 'Unknown Token', 'symbol': 'UNKNOWN', 'decimals': 18}
+                logger.warning(f"API error getting block for timestamp {timestamp}: {data.get('message', 'Unknown error')}")
+                # Fallback to estimation
+                return self._estimate_block_by_timestamp(timestamp)
         except Exception as e:
-            return {'name': 'Unknown Token', 'symbol': 'UNKNOWN', 'decimals': 18}
+            logger.warning(f"Error fetching block by timestamp: {e}")
+            # Fallback to estimation
+            return self._estimate_block_by_timestamp(timestamp)
+    
+    def _estimate_block_by_timestamp(self, timestamp: int) -> int:
+        """
+        Fallback method to estimate block number by timestamp.
+        
+        Args:
+            timestamp: Unix timestamp
+            
+        Returns:
+            Estimated block number
+        """
+        latest_block = self.get_latest_block_number()
+        current_time = int(time.time())
+        time_diff = current_time - timestamp
+        blocks_ago = time_diff // 2  # 2 seconds per block for Avalanche
+        return max(0, latest_block - blocks_ago)
+    
+    def get_token_info(self, token_address: str) -> Dict[str, Any]:
+        """Get token information (name, symbol, decimals)"""
+        return get_token_info(token_address, headers=self.headers, known_contracts=self.known_contracts)
     
     def get_transaction_receipt(self, tx_hash: str) -> Optional[Dict]:
         """Get transaction receipt with logs"""
@@ -160,27 +169,11 @@ class AvalancheTransactionNarrator:
     
     def format_amount(self, amount: int, decimals: int) -> str:
         """Format token amount with proper decimal places"""
-        divisor = 10 ** decimals
-        formatted = Decimal(amount) / Decimal(divisor)
-        
-        # Use more precision for small amounts to avoid showing 0
-        if formatted >= 1:
-            return f"{formatted:.6f}".rstrip('0').rstrip('.')
-        elif formatted >= 0.000001:
-            return f"{formatted:.8f}".rstrip('0').rstrip('.')
-        else:
-            # For very small amounts, show more decimal places
-            return f"{formatted:.12f}".rstrip('0').rstrip('.')
+        return format_amount(amount, decimals, precision='standard')
     
     def format_timestamp(self, timestamp: int) -> str:
-        """Convert timestamp to human-readable format"""
-        try:
-            dt_utc = datetime.fromtimestamp(timestamp, tz=pytz.UTC)
-            local_tz = datetime.now().astimezone().tzinfo
-            dt_local = dt_utc.astimezone(local_tz)
-            return dt_local.strftime("%B %d, %Y at %I:%M:%S %p %Z")
-        except Exception as e:
-            return f"Unknown time (Error: {e})"
+        """Convert timestamp to human-readable format with both local and UTC times"""
+        return format_timestamp(timestamp, include_utc=True)
     
     def classify_transaction(self, tx: Dict, receipt: Optional[Dict] = None) -> Dict:
         """Classify a transaction and extract relevant information"""
@@ -333,8 +326,8 @@ class AvalancheTransactionNarrator:
                     path_tokens.append(transfer)
             
             if len(path_tokens) > 2:
-                path_desc = " → ".join([t['token_info']['symbol'] for t in path_tokens])
-                return f"Blackhole DEX multi-step swap: {sent_desc} → {path_desc} → {received_desc}"
+                path_desc = " ? ".join([t['token_info']['symbol'] for t in path_tokens])
+                return f"Blackhole DEX multi-step swap: {sent_desc} ? {path_desc} ? {received_desc}"
             else:
                 return f"Blackhole DEX swap: {sent_desc} for {received_desc}"
         else:
@@ -447,8 +440,8 @@ class AvalancheTransactionNarrator:
                         path_tokens.append(transfer)
                 
                 if len(path_tokens) > 2:
-                    path_desc = " → ".join([t['token_info']['symbol'] for t in path_tokens])
-                    return f"Blackhole DEX multi-step swap: {sent_desc} → {path_desc} → {received_desc}"
+                    path_desc = " ? ".join([t['token_info']['symbol'] for t in path_tokens])
+                    return f"Blackhole DEX multi-step swap: {sent_desc} ? {path_desc} ? {received_desc}"
                 else:
                     return f"Blackhole DEX swap: {sent_desc} for {received_desc}"
             else:
@@ -622,8 +615,8 @@ class AvalancheTransactionNarrator:
                     path_tokens.append(transfer)
             
             if len(path_tokens) > 2:
-                path_desc = " → ".join([t['token_info']['symbol'] for t in path_tokens])
-                return f"Blackhole DEX multi-step swap: {sent_desc} → {path_desc} → {received_desc}"
+                path_desc = " ? ".join([t['token_info']['symbol'] for t in path_tokens])
+                return f"Blackhole DEX multi-step swap: {sent_desc} ? {path_desc} ? {received_desc}"
             else:
                 return f"Blackhole DEX swap: {sent_desc} for {received_desc}"
         else:
@@ -671,15 +664,28 @@ class AvalancheTransactionNarrator:
             
             print(f"Analyzing transactions for {address} from {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')}")
             
-            # Get block range
+            # Get block range using API (more accurate than estimation)
             latest_block = self.get_latest_block_number()
-            # Estimate blocks (2 seconds per block for Avalanche)
-            blocks_ago = (int(time.time()) - start_timestamp) // 2
-            start_block = max(0, latest_block - blocks_ago - 1000)  # Add buffer
+            
+            # Use API to get exact block numbers for timestamps (more accurate)
+            try:
+                start_block = self.get_block_by_timestamp(start_timestamp)
+                end_block = self.get_block_by_timestamp(end_timestamp)
+                # Add buffer to ensure we don't miss transactions
+                start_block = max(0, start_block - 1000)  # 1000 blocks before start
+                end_block = min(latest_block, end_block + 1000)  # 1000 blocks after end
+            except Exception as e:
+                # Fallback to estimation if API call fails
+                logger.warning(f"Failed to get blocks by timestamp, using estimation: {e}")
+                blocks_ago = (int(time.time()) - start_timestamp) // 2
+                start_block = max(0, latest_block - blocks_ago - 2000)  # Larger buffer for estimation
+                end_block = latest_block
+            
+            logger.debug(f"Block range: {start_block} to {end_block}")
             
             # Fetch transactions
-            transactions = self.get_address_transactions(address, start_block, latest_block)
-            print(f"Found {len(transactions)} total transactions")
+            transactions = self.get_address_transactions(address, start_block, end_block)
+            logger.info(f"Found {len(transactions)} total transactions in block range")
             
             # Filter for recent transactions
             recent_transactions = []
@@ -688,10 +694,53 @@ class AvalancheTransactionNarrator:
                 if start_timestamp <= tx_timestamp <= end_timestamp:
                     recent_transactions.append(tx)
             
-            print(f"Found {len(recent_transactions)} transactions in the last {days} day(s)")
+            logger.info(f"Found {len(recent_transactions)} transactions in the last {days} day(s)")
             
             if not recent_transactions:
-                return f"# Transaction Narrative - {address}\n\nNo transactions found in the last {days} day(s).\n"
+                # If no transactions found in narrow range, try wider range to see if address has any recent activity
+                if not transactions:
+                    # Try a much wider range (last 30 days) to check if address is active
+                    logger.debug("No transactions in narrow range, checking wider range...")
+                    wider_start_block = max(0, latest_block - (30 * 24 * 60 * 60 // 2))  # ~30 days
+                    wider_transactions = self.get_address_transactions(address, wider_start_block, latest_block)
+                    
+                    if wider_transactions:
+                        # Address has transactions but not in requested range
+                        newest_tx = max(wider_transactions, key=lambda x: int(x.get('timeStamp', 0)))
+                        newest_ts = int(newest_tx.get('timeStamp', 0))
+                        newest_dt = datetime.fromtimestamp(newest_ts) if newest_ts else None
+                        
+                        msg = f"# Transaction Narrative - {address}\n\n"
+                        msg += f"No transactions found in the last {days} day(s).\n\n"
+                        if newest_dt:
+                            days_since_last = (datetime.now() - newest_dt).days
+                            msg += f"**Note:** This address has transactions, but the most recent one was {days_since_last} day(s) ago.\n"
+                            msg += f"- Most recent transaction: {newest_dt.strftime('%B %d, %Y at %I:%M %p UTC')}\n"
+                            msg += f"- Requested range: {start_time.strftime('%B %d, %Y')} to {end_time.strftime('%B %d, %Y')}\n\n"
+                            msg += f"Try using `-d {days_since_last + 1}` or more days to see these transactions.\n"
+                        else:
+                            msg += f"Try increasing the days with `-d {days + 7}`.\n"
+                        return msg
+                    else:
+                        # No transactions found at all
+                        return f"# Transaction Narrative - {address}\n\nNo transactions found in the last {days} day(s).\n\n**Note:** No transactions were found for this address. The address may be inactive or new.\n"
+                else:
+                    # Found transactions but outside date range - provide helpful message
+                    newest_tx = max(transactions, key=lambda x: int(x.get('timeStamp', 0)))
+                    newest_ts = int(newest_tx.get('timeStamp', 0))
+                    newest_dt = datetime.fromtimestamp(newest_ts) if newest_ts else None
+                    
+                    msg = f"# Transaction Narrative - {address}\n\n"
+                    msg += f"No transactions found in the last {days} day(s).\n\n"
+                    if newest_dt:
+                        days_since = (datetime.now() - newest_dt).days
+                        msg += f"**Note:** This address has transactions, but they are outside the requested date range.\n"
+                        msg += f"- Most recent transaction: {newest_dt.strftime('%B %d, %Y at %I:%M %p UTC')} ({days_since} day(s) ago)\n"
+                        msg += f"- Requested range: {start_time.strftime('%B %d, %Y')} to {end_time.strftime('%B %d, %Y')}\n\n"
+                        msg += f"Try using `-d {days_since + 1}` or more days to see these transactions.\n"
+                    else:
+                        msg += f"Try increasing the days with `-d {days + 7}`.\n"
+                    return msg
             
             # Group transactions into sequences (especially swap sequences)
             sequences = self.group_swap_sequences(recent_transactions)
@@ -721,7 +770,7 @@ class AvalancheTransactionNarrator:
             
             # Group by activity type for summary
             if activities['supermassive_claims']:
-                narrative += f"### 🎯 Supermassive NFT Activities ({len(activities['supermassive_claims'])})\n"
+                narrative += f"### ?? Supermassive NFT Activities ({len(activities['supermassive_claims'])})\n"
                 for seq in activities['supermassive_claims']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -729,7 +778,7 @@ class AvalancheTransactionNarrator:
                 narrative += "\n"
             
             if activities['voting_rewards']:
-                narrative += f"### 🗳️ Voting Rewards ({len(activities['voting_rewards'])})\n"
+                narrative += f"### ??? Voting Rewards ({len(activities['voting_rewards'])})\n"
                 for seq in activities['voting_rewards']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -737,7 +786,7 @@ class AvalancheTransactionNarrator:
                 narrative += "\n"
             
             if activities['swaps']:
-                narrative += f"### 🔄 Token Swaps ({len(activities['swaps'])})\n"
+                narrative += f"### ?? Token Swaps ({len(activities['swaps'])})\n"
                 for seq in activities['swaps']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -745,7 +794,7 @@ class AvalancheTransactionNarrator:
                 narrative += "\n"
             
             if activities['other']:
-                narrative += f"### 📋 Other Activities ({len(activities['other'])})\n"
+                narrative += f"### ?? Other Activities ({len(activities['other'])})\n"
                 for seq in activities['other']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -778,11 +827,11 @@ class AvalancheTransactionNarrator:
                     tx_link = f"[{tx['hash'][:10]}...](https://snowtrace.io/tx/{tx['hash']})"
                     
                     activity_emoji = {
-                        'supermassive_claims': '🎯',
-                        'voting_rewards': '🗳️',
-                        'swaps': '🔄',
-                        'other': '📋'
-                    }.get(activity_type, '📋')
+                        'supermassive_claims': '??',
+                        'voting_rewards': '???',
+                        'swaps': '??',
+                        'other': '??'
+                    }.get(activity_type, '??')
                     
                     narrative += f"### {timestamp_str} - {activity_emoji} {sequence['type'].replace('_', ' ').title()}\n\n"
                     narrative += f"**Transaction:** {tx_link}\n"
