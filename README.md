@@ -5,7 +5,8 @@ A collection of Python tools for analyzing Avalanche C-Chain transactions, swaps
 ## Tools
 
 ### 1. Avalanche Transaction Reader
-**Script:** `avalanche_transaction_reader.py`
+**Script:** `avalanche_transaction_reader.py`  
+**Version:** 1.0.0
 
 Reads Avalanche C-Chain transactions from Snowtrace.io and extracts token transfer information with USD value calculations.
 
@@ -28,14 +29,13 @@ python3 avalanche_transaction_reader.py "0x..." -o analysis.md
 python3 avalanche_transaction_reader.py --version
 ```
 
-**Version:** 1.0.0
-
 **Documentation:** See [docs/README_avalanche_reader.md](docs/README_avalanche_reader.md)
 
 ---
 
 ### 2. Avalanche Transaction Narrator
-**Script:** `avalanche_transaction_narrator.py`
+**Script:** `avalanche_transaction_narrator.py`  
+**Version:** 1.1.0
 
 Generates human-friendly descriptions of recent transactions for a given Avalanche C-Chain address, organizing activities by type (swaps, voting rewards, Supermassive NFT activities, etc.).
 
@@ -58,12 +58,18 @@ python3 avalanche_transaction_narrator.py "0x12345678901234567890123456789012345
 
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_transaction_narrator.py "0x..." -o narrative.md
+
+# Check version
+python3 avalanche_transaction_narrator.py --version
 ```
+
+**Documentation:** *(Note: Transaction Narrator documentation coming soon)*
 
 ---
 
 ### 3. Avalanche Daily Swap Analyzer
-**Script:** `avalanche_daily_swaps.py`
+**Script:** `avalanche_daily_swaps.py`  
+**Version:** 1.0.0
 
 Analyzes daily swap transactions for a given Avalanche C-Chain address, focusing on swaps to BTC.b.
 
@@ -88,14 +94,13 @@ python3 avalanche_daily_swaps.py "0x..." -o swaps_analysis.md
 python3 avalanche_daily_swaps.py --version
 ```
 
-**Version:** 1.0.0
-
 **Documentation:** See [docs/README_daily_swaps.md](docs/README_daily_swaps.md)
 
 ---
 
 ### 4. Blackhole DEX Pool Recommender
-**Script:** `blackhole_pool_recommender.py`
+**Script:** `blackhole_pool_recommender.py`  
+**Version:** 1.1.2
 
 Analyzes liquidity pools on Blackhole DEX and recommends the most profitable pools for voting, accounting for dilution and estimating personal rewards.
 
@@ -129,11 +134,11 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 500 --h
 # Debug mode (shows browser)
 python3 blackhole_pool_recommender.py --no-headless
 
-# Check version
-python3 blackhole_pool_recommender.py --version
-
 # Save to file
 python3 blackhole_pool_recommender.py --voting-power 15000 -o recommendations.txt
+
+# Check version
+python3 blackhole_pool_recommender.py --version
 ```
 
 **Documentation:** See [docs/README_pool_recommender.md](docs/README_pool_recommender.md)
