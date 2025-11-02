@@ -69,25 +69,6 @@ python3 scripts/show_voting_history.py
 
 ## Script-Specific Usage
 
-### Voting History Script
-
-```bash
-# Default (uses .env or placeholder)
-python3 scripts/show_voting_history.py
-
-# Friendly output
-python3 scripts/show_voting_history.py --friendly
-
-# Short format
-python3 scripts/show_voting_history.py --friendly --short
-
-# Limit to last N epochs
-python3 scripts/show_voting_history.py --friendly --limit 5
-
-# Explicit wallet
-python3 scripts/show_voting_history.py 0xYourWalletAddressHere --friendly
-```
-
 ### Transaction Narrator
 
 The narrator takes wallet address as a required argument:
@@ -103,33 +84,47 @@ python3 avalanche_transaction_narrator.py 0xYourWalletAddressHere -d 7
 python3 avalanche_transaction_narrator.py 0xYourWalletAddressHere -o narrative.md
 ```
 
-### Blackhole Voter (Automated Voting)
+### Transaction Reader
 
-The voter requires a private key (for signing transactions):
-
-```bash
-# Private key from .env
-python3 blackhole_voter.py --pools-json recommendations.json --dry-run
-
-# Explicit private key (NOT RECOMMENDED - use env var)
-python3 blackhole_voter.py --pools-json recommendations.json --private-key 0x... --dry-run
-```
-
-**Security Note:** Always use environment variables for private keys. Never pass them on the command line where they might be visible in process lists.
-
-### Validation Scripts
+Reads and analyzes individual transactions:
 
 ```bash
-# Validate past transactions (uses wallet from .env or argument)
-python3 scripts/validate_all_past_transactions.py
+# Using transaction hash
+python3 avalanche_transaction_reader.py 0xYourTransactionHashHere
 
-# With explicit wallet
-python3 scripts/validate_all_past_transactions.py 0xYourWalletAddressHere
+# Save to file
+python3 avalanche_transaction_reader.py 0xYourTransactionHashHere -o analysis.md
 ```
+
+### Daily Swap Analyzer
+
+Analyzes daily swap transactions for a wallet:
+
+```bash
+# Analyze today's swaps
+python3 avalanche_daily_swaps.py 0xYourWalletAddressHere
+
+# Analyze specific date
+python3 avalanche_daily_swaps.py 0xYourWalletAddressHere -d "2025-10-22"
+```
+
+### Pool Recommender
+
+The pool recommender doesn't require wallet addresses (it analyzes all pools):
+
+```bash
+# Recommend top pools
+python3 blackhole_pool_recommender.py
+
+# With custom voting power
+python3 blackhole_pool_recommender.py --voting-power 15000
+```
+
+**Note:** Voting automation scripts (like `blackhole_voter.py` and `show_voting_history.py`) are available on the `feature/automated-voting` branch and use similar environment variable patterns.
 
 ## Testing
 
-For running tests, wallet addresses are now placeholders by default. To test with your actual wallet:
+For running tests with wallet addresses:
 
 ```bash
 # Set environment variable for tests
@@ -137,16 +132,16 @@ export BLACKHOLE_WALLET_ADDRESS=0xYourWalletAddressHere
 pytest tests/
 
 # Or use pytest's env variable support
-BLACKHOLE_WALLET_ADDRESS=0xYourWalletAddressHere pytest tests/test_voter_transaction_matching.py
+BLACKHOLE_WALLET_ADDRESS=0xYourWalletAddressHere pytest tests/
 ```
 
 ## Environment Variables Reference
 
 | Variable | Purpose | Required For |
 |----------|---------|--------------|
-| `BLACKHOLE_WALLET_ADDRESS` | Your wallet address | Voting history, transaction analysis, validation |
-| `BLACKHOLE_VOTER_PRIVATE_KEY` | Private key for signing | Automated voting (production) |
-| `BLACKHOLE_TEST_WALLET_KEY` | Test wallet private key | Automated voting (testing) |
+| `BLACKHOLE_WALLET_ADDRESS` | Your wallet address | Transaction analysis, testing (optional - can use command-line args) |
+| `BLACKHOLE_VOTER_PRIVATE_KEY` | Private key for signing | Automated voting (production - feature branch only) |
+| `BLACKHOLE_TEST_WALLET_KEY` | Test wallet private key | Automated voting (testing - feature branch only) |
 
 ## Security Best Practices
 

@@ -229,6 +229,17 @@ All tools support optional configuration via `config.yaml`. See [docs/CONFIGURAT
 
 The config file is optional - tools work with defaults if not present.
 
+### Environment Variables
+
+For tools that need wallet addresses or private keys, you can use a `.env` file for secure configuration. See [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md) for details.
+
+**Quick start:**
+```bash
+cp .env.example .env
+# Edit .env and add your wallet address
+# The .env file is gitignored and won't be committed
+```
+
 ## Notes
 
 - All scripts use the Snowtrace.io API for transaction data
