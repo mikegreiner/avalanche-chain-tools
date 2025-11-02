@@ -964,7 +964,7 @@ def main():
         'wallet',
         nargs='?',
         default=DEFAULT_WALLET,
-        help='Wallet address (default: your wallet)'
+        help='Wallet address (default: from BLACKHOLE_WALLET_ADDRESS env var or placeholder)'
     )
     parser.add_argument(
         '--limit',
