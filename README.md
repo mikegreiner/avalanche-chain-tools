@@ -63,7 +63,7 @@ python3 avalanche_transaction_narrator.py "0x..." -o narrative.md
 python3 avalanche_transaction_narrator.py --version
 ```
 
-**Documentation:** *(Note: Transaction Narrator documentation coming soon)*
+**Documentation:** See [docs/README_transaction_narrator.md](docs/README_transaction_narrator.md)
 
 ---
 
