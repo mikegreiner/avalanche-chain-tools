@@ -148,6 +148,7 @@ Then update `blackhole_pool_recommender.py` with the correct:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
+Version: 1.1.1
 Generated: 2025-01-15 14:30:00
 
 Top 5 Most Profitable Pools:
@@ -166,7 +167,7 @@ Top 5 Most Profitable Pools:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.1.0
+Version: 1.1.1
 Generated: 2025-01-15 14:30:00
 Estimated rewards based on voting power: 15,763 veBLACK
 Note: Estimates assume you vote ALL your voting power in each pool individually
@@ -192,6 +193,46 @@ Top 5 Pools (sorted by estimated reward):
    Your Estimated Reward: $282.77 (5.16% share)
    Profitability Score: 37.69
 ```
+
+### JSON Output Example
+```json
+{
+  "version": "1.1.1",
+  "generated": "2025-01-15 14:30:00",
+  "user_voting_power": 15000,
+  "filters": {
+    "hide_vamm": true,
+    "min_rewards": 1000.0
+  },
+  "pools": [
+    {
+      "name": "CL200-WETH.e/USDt",
+      "pool_type": "CL200",
+      "fee_percentage": "0.1%",
+      "total_rewards": 9181.0,
+      "vapr": 731.7,
+      "current_votes": 544798,
+      "rewards_per_vote": 0.0169,
+      "profitability_score": 44.94,
+      "estimated_user_reward": 250.32,
+      "estimated_share_percent": 2.73,
+      "new_total_votes_if_you_vote": 559798
+    }
+  ]
+}
+```
+
+**JSON Output Fields:**
+- **version**: Script version number
+- **generated**: Timestamp when recommendations were generated
+- **user_voting_power**: Your voting power in veBLACK (null if not provided)
+- **filters**: Object showing which filters were applied:
+  - **hide_vamm**: Boolean indicating if vAMM pools were filtered out
+  - **min_rewards**: Minimum total rewards threshold (null if not used)
+- **pools**: Array of recommended pools, each containing:
+  - Pool identification (name, pool_type, fee_percentage)
+  - Metrics (total_rewards, vapr, current_votes, rewards_per_vote, profitability_score)
+  - Estimated rewards (if user_voting_power provided): estimated_user_reward, estimated_share_percent, new_total_votes_if_you_vote
 
 **Output Fields:**
 - **Type**: Pool type (vAMM, CL200, CL1) and fee percentage

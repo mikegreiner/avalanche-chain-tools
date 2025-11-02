@@ -55,7 +55,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -903,7 +903,7 @@ class BlackholePoolRecommender:
         
         return sorted_pools[:top_n]
     
-    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, output_json: bool = False, return_output: bool = False):
+    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, output_json: bool = False, return_output: bool = False):
         """Print formatted recommendations"""
         if not pools:
             if return_output:
@@ -912,7 +912,7 @@ class BlackholePoolRecommender:
             return None
         
         if output_json:
-            output = self._get_json_output(pools, user_voting_power)
+            output = self._get_json_output(pools, user_voting_power, hide_vamm, min_rewards)
             if return_output:
                 return output
             print(output)
@@ -970,7 +970,7 @@ class BlackholePoolRecommender:
             print(output_text)
             return None
     
-    def _get_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None) -> str:
+    def _get_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None) -> str:
         """Get recommendations as JSON string"""
         from datetime import datetime
         
@@ -978,6 +978,10 @@ class BlackholePoolRecommender:
             "version": __version__,
             "generated": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             "user_voting_power": user_voting_power,
+            "filters": {
+                "hide_vamm": hide_vamm,
+                "min_rewards": min_rewards
+            },
             "pools": []
         }
         
@@ -1085,7 +1089,9 @@ def main():
         # Get output (either JSON or text)
         output = recommender.print_recommendations(
             recommendations, 
-            user_voting_power=args.voting_power, 
+            user_voting_power=args.voting_power,
+            hide_vamm=args.hide_vamm,
+            min_rewards=args.min_rewards,
             output_json=args.json,
             return_output=bool(args.output)
         )
