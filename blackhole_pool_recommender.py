@@ -839,13 +839,26 @@ class BlackholePoolRecommender:
         return pools
     
     def fetch_pools_api(self) -> List[Pool]:
-        """Try to fetch pools from a direct API endpoint"""
+        """
+        Try to fetch pools from a direct API endpoint.
+        
+        Note: This currently tries generic endpoints. To find the actual API:
+        1. Run scripts/find_api_endpoint.py to discover endpoints via network inspection
+        2. Check browser DevTools Network tab on https://blackhole.xyz/vote
+        3. Look for GraphQL/subgraph endpoints (The Graph is common for DEXes)
+        4. Consider querying pool contracts directly via web3.py
+        
+        TODO: Discover and implement actual Blackhole DEX API endpoint.
+        """
         # Common API endpoints to try
         api_endpoints = [
             "https://api.blackhole.xyz/vote",
             "https://blackhole.xyz/api/vote",
             "https://api.blackhole.xyz/pools",
             "https://blackhole.xyz/api/pools",
+            # GraphQL endpoints (if discovered via network inspection)
+            # "https://api.thegraph.com/subgraphs/name/blackhole/avalanche",
+            # Add discovered endpoints here
         ]
         
         headers = {
@@ -858,7 +871,9 @@ class BlackholePoolRecommender:
                 response = requests.get(endpoint, headers=headers, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
-                    return self._parse_api_response(data)
+                    pools = self._parse_api_response(data)
+                    if pools:
+                        return pools
             except Exception as e:
                 continue
         
