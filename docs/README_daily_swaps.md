@@ -92,6 +92,15 @@ python3 avalanche_daily_swaps.py "0x..." -o output/swaps_analysis.md
 4. **Calculates Values**: Gets current USD prices and calculates total values
 5. **Formats Output**: Creates a comprehensive markdown report with clickable links
 
+## Version
+
+Check the script version:
+```bash
+python3 avalanche_daily_swaps.py --version
+```
+
+Current version: **1.0.0**
+
 ## Notes
 
 - The script focuses specifically on swaps TO BTC.b (Bitcoin on Avalanche)

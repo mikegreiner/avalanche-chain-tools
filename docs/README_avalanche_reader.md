@@ -67,6 +67,15 @@ python3 avalanche_transaction_reader.py "0x..." -o output/analysis.md
   - Contract: [0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7](https://snowtrace.io/token/0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7)
 ```
 
+## Version
+
+Check the script version:
+```bash
+python3 avalanche_transaction_reader.py --version
+```
+
+Current version: **1.0.0**
+
 ## Notes
 
 - The script accepts either full Snowtrace.io URLs or just transaction hashes (0x...)

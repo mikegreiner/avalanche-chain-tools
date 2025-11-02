@@ -23,6 +23,9 @@ from avalanche_utils import (
 )
 from avalanche_base import AvalancheTool
 
+# Version number (semantic versioning: MAJOR.MINOR.PATCH)
+__version__ = "1.1.0"
+
 class AvalancheTransactionNarrator(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
                  headers: Optional[Dict[str, str]] = None) -> None:
@@ -32,11 +35,20 @@ class AvalancheTransactionNarrator(AvalancheTool):
         # Known contract addresses for classification with correct decimals (matches utility module)
         self.known_contracts: Dict[str, Dict[str, Union[str, int]]] = KNOWN_TOKEN_METADATA
         
-        # Blackhole DEX specific contract addresses (add known ones)
+        # Blackhole DEX specific contract addresses
         self.blackhole_contracts = {
-            # Add known Blackhole DEX contract addresses here
-            # These would be the staking, rewards, and Supermassive NFT contracts
+            '0xeac562811cc6abdbb2c9ee88719eca4ee79ad763': 'VotingEscrow',
+            '0x88a49cfcee0ed5b176073dde12186c4c922a9cd0': 'RewardsClaimer',
+            '0x59aa177312ff6bdf39c8af6f46dae217bf76cbf6': 'RewardsDistributor',
+            # Pool addresses
+            '0xfd9a46c213532401ef61f8d34e67a3653b70837a': 'BlackholePool',
+            '0x40435bdffa4e5b936788b33a2fd767105c67bef7': 'BlackholePool',
+            # Router
+            '0x04e1dee021cd12bba022a72806441b43d8212fec': 'BlackholeRouter',
         }
+        
+        # Cache for contract names we've looked up
+        self._contract_name_cache = {}
         
         # Common function signatures for transaction classification
         self.function_signatures = {
@@ -52,7 +64,11 @@ class AvalancheTransactionNarrator(AvalancheTool):
             '0x4e71d92d': 'claim',
             '0x2e1a7d4d': 'withdraw',
             '0x3d18b912': 'getReward',
-            '0x379607f5': 'claimReward',
+            '0x379607f5': 'claimReward',  # Blackhole rewards claimer
+            # Blackhole voting functions
+            '0x7ac09bf7': 'vote',  # vote(uint256,address[],uint256[]) on Voter contract
+            '0xd1c2babb': 'merge',  # merge(uint256,uint256) on VotingEscrow - merges locks
+            '0x7715ee75': 'distributeRewards',  # Rewards distribution function
         }
     
     def get_address_transactions(self, address: str, start_block: int, end_block: int) -> List[Dict]:
@@ -99,7 +115,10 @@ class AvalancheTransactionNarrator(AvalancheTool):
             response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
-            return int(data.get('result', '0x0'), 16)
+            result = data.get('result', '0x0') or '0x0'
+            if result == '0x':
+                result = '0x0'
+            return int(result, 16)
         except requests.RequestException as e:
             raise NetworkError(f"Failed to fetch latest block: {e}", original_error=e)
     
@@ -198,6 +217,22 @@ class AvalancheTransactionNarrator(AvalancheTool):
         if not receipt:
             receipt = self.get_transaction_receipt(tx['hash'])
         
+        # Check transaction status (success/failure) from receipt
+        if receipt:
+            status_hex = receipt.get('status', '')
+            if status_hex == '0x1':
+                classification['status'] = 'success'
+            elif status_hex == '0x0':
+                classification['status'] = 'failed'
+            
+            # Get gas information
+            if receipt.get('gasUsed'):
+                gas_used_hex = receipt['gasUsed']
+                classification['gas_used'] = int(gas_used_hex, 16) if isinstance(gas_used_hex, str) else gas_used_hex
+            if receipt.get('gas'):
+                gas_limit_hex = receipt['gas']
+                classification['gas_limit'] = int(gas_limit_hex, 16) if isinstance(gas_limit_hex, str) else gas_limit_hex
+        
         if not receipt:
             classification['type'] = 'simple_transfer'
             classification['description'] = f"Simple AVAX transfer of {classification['value_eth']:.4f} AVAX"
@@ -211,8 +246,15 @@ class AvalancheTransactionNarrator(AvalancheTool):
             if len(log.get('topics', [])) >= 3 and log['topics'][0] == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
                 from_addr = '0x' + log['topics'][1][-40:]
                 to_addr = '0x' + log['topics'][2][-40:]
-                value_hex = log['data']
-                value = int(value_hex, 16)
+                value_hex = log.get('data', '0x0')
+                # Handle empty hex string ('0x')
+                if value_hex == '0x' or not value_hex or len(value_hex) <= 2:
+                    value = 0
+                else:
+                    try:
+                        value = int(value_hex, 16)
+                    except ValueError:
+                        value = 0
                 token_addr = log['address']
                 
                 if value > 0:  # Only include non-zero transfers
@@ -260,6 +302,15 @@ class AvalancheTransactionNarrator(AvalancheTool):
                 elif func_name in ['claim', 'getReward', 'claimReward']:
                     classification['type'] = 'claim'
                     classification['description'] = self.describe_claim(token_transfers, tx)
+                elif func_name == 'vote':
+                    classification['type'] = 'vote'
+                    classification['description'] = self.describe_vote(tx, token_transfers)
+                elif func_name == 'merge':
+                    classification['type'] = 'merge'
+                    classification['description'] = self.describe_merge(tx, token_transfers, classification.get('status', 'unknown'))
+                elif func_name == 'distributeRewards':
+                    classification['type'] = 'claim'
+                    classification['description'] = self.describe_claim(token_transfers, tx)
                 elif func_name in ['transfer', 'transferFrom']:
                     classification['type'] = 'transfer'
                     classification['description'] = self.describe_transfer(token_transfers, tx)
@@ -270,17 +321,45 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     classification['type'] = 'contract_interaction'
                     classification['description'] = f"Contract interaction: {func_name}"
             else:
+                # Try to classify based on contract address (Blackhole contracts)
+                to_addr = tx.get('to', '').lower()
+                if to_addr in self.blackhole_contracts:
+                    contract_name = self.blackhole_contracts[to_addr]
+                    if contract_name == 'VotingEscrow' and classification['type'] == 'unknown':
+                        # Check function signature to distinguish vote vs merge
+                        input_data = tx.get('input', '')
+                        func_sig = input_data[:10] if len(input_data) >= 10 else ''
+                        if func_sig == '0x7ac09bf7':
+                            classification['type'] = 'vote'
+                            classification['description'] = self.describe_vote(tx, token_transfers)
+                        elif func_sig == '0xd1c2babb':
+                            classification['type'] = 'merge'
+                            classification['description'] = self.describe_merge(tx, token_transfers)
+                        else:
+                            # Could be a vote, but check transaction input length
+                            # vote() has long input (arrays), merge() is short (2 uint256)
+                            if len(input_data) > 200:
+                                classification['type'] = 'vote'
+                                classification['description'] = self.describe_vote(tx, token_transfers)
+                            elif len(input_data) >= 138:
+                                classification['type'] = 'merge'
+                                classification['description'] = self.describe_merge(tx, token_transfers, classification.get('status', 'unknown'))
+                    elif contract_name in ['RewardsClaimer', 'RewardsDistributor'] and classification['type'] == 'unknown':
+                        classification['type'] = 'claim'
+                        classification['description'] = self.describe_claim(token_transfers, tx)
+                
                 # Try to classify based on token transfers
-                if len(token_transfers) == 0:
-                    if classification['value_eth'] > 0:
-                        classification['type'] = 'simple_transfer'
-                        classification['description'] = f"Simple AVAX transfer of {classification['value_eth']:.4f} AVAX"
+                if classification['type'] == 'unknown':
+                    if len(token_transfers) == 0:
+                        if classification['value_eth'] > 0:
+                            classification['type'] = 'simple_transfer'
+                            classification['description'] = f"Simple AVAX transfer of {classification['value_eth']:.4f} AVAX"
+                        else:
+                            classification['type'] = 'contract_interaction'
+                            classification['description'] = "Contract interaction (unknown function)"
                     else:
-                        classification['type'] = 'contract_interaction'
-                        classification['description'] = "Contract interaction (unknown function)"
-                else:
-                    classification['type'] = 'token_operation'
-                    classification['description'] = self.describe_token_operation(token_transfers, tx)
+                        classification['type'] = 'token_operation'
+                        classification['description'] = self.describe_token_operation(token_transfers, tx)
         
         classification['tokens_involved'] = token_transfers
         return classification
@@ -399,11 +478,124 @@ class AvalancheTransactionNarrator(AvalancheTool):
     
     def describe_approval(self, token_transfers: List[Dict], tx: Dict) -> str:
         """Describe an approval transaction"""
-        if not token_transfers:
-            return "Token approval (no token involved)"
+        # The token address is the 'to' address in the transaction
+        token_address = tx.get('to', '')
+        if not token_address:
+            return "Token approval (no token address)"
         
-        token = token_transfers[0]['token_info']['symbol']
-        return f"Approved spending of {token} tokens"
+        # Get token info
+        token_info = self.get_token_info(token_address)
+        token_symbol = token_info.get('symbol', 'Unknown Token')
+        
+        # Decode approval parameters: approve(address spender, uint256 amount)
+        # Function signature: 0x095ea7b3
+        # Input: 0x095ea7b3 + 32 bytes spender + 32 bytes amount
+        input_data = tx.get('input', '')
+        if len(input_data) >= 138:  # 10 (function sig) + 64 (spender) + 64 (amount)
+            try:
+                spender_hex = input_data[10:74]  # Skip function sig (10 chars)
+                amount_hex = input_data[74:138]
+                
+                spender_address = '0x' + spender_hex[-40:].lower()
+                amount = int(amount_hex, 16)
+                
+                # Format amount based on token decimals
+                decimals = token_info.get('decimals', 18)
+                formatted_amount = self.format_amount(amount, decimals)
+                
+                # Get spender info if it's a known contract
+                spender_name = None
+                spender_address_lower = spender_address.lower()
+                
+                # Check cache first
+                if spender_address_lower in self._contract_name_cache:
+                    spender_name = self._contract_name_cache[spender_address_lower]
+                else:
+                    # Check blackhole contracts first
+                    spender_name = self.blackhole_contracts.get(spender_address_lower)
+                    # Also check known contracts (for tokens, but some might be contracts)
+                    if not spender_name:
+                        spender_info = self.known_contracts.get(spender_address_lower, {})
+                        spender_name = spender_info.get('name', '')
+                    
+                    # If still not found, try looking up from Snowtrace API
+                    if not spender_name:
+                        try:
+                            url = f"{self.snowtrace_api_base}?module=contract&action=getsourcecode&address={spender_address}&apikey={API_KEY_TOKEN}"
+                            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
+                            if response.status_code == 200:
+                                data = response.json()
+                                result = data.get('result', [{}])
+                                if result:
+                                    contract_name = result[0].get('ContractName', '')
+                                    if contract_name and contract_name != '':
+                                        spender_name = contract_name
+                        except Exception:
+                            pass  # Silently fail - we'll just show the address
+                    
+                    # Cache the result (even if None)
+                    self._contract_name_cache[spender_address_lower] = spender_name
+                
+                if spender_name:
+                    spender_desc = spender_name
+                else:
+                    spender_desc = f"{spender_address[:8]}...{spender_address[-6:]}"
+                
+                # Handle infinite approvals (max uint256 = 2^256 - 1)
+                # Typical infinite approvals are exactly max uint256 or very close to it
+                MAX_UINT256 = 2**256 - 1
+                if amount == MAX_UINT256 or amount >= MAX_UINT256 - 10**15:
+                    return f"Approved {spender_desc} to spend unlimited {token_symbol}"
+                elif amount == 0:
+                    return f"Revoked approval for {spender_desc} to spend {token_symbol}"
+                else:
+                    return f"Approved {spender_desc} to spend {formatted_amount} {token_symbol}"
+            except (ValueError, IndexError):
+                pass
+        
+        # Fallback: at least show the token
+        return f"Approved spending of {token_symbol} tokens"
+    
+    def describe_vote(self, tx: Dict, token_transfers: List[Dict]) -> str:
+        """Describe a voting transaction"""
+        to_address = tx.get('to', '').lower()
+        
+        # Check if this is a Blackhole voting transaction
+        # vote() goes to voter contract, not VotingEscrow
+        voter_contracts = [
+            '0xe30d0c8532721551a51a9fec7fb233759964d9e3',  # Voter proxy
+            '0x6bd81e7eafa4b21d5ad069b452ab4b8bb40c4525'    # Voter implementation
+        ]
+        
+        if to_address in [c.lower() for c in voter_contracts]:
+            return "Voted on Blackhole DEX pools"
+        
+        return "Voted on pools"
+    
+    def describe_merge(self, tx: Dict, token_transfers: List[Dict], status: str = 'unknown') -> str:
+        """Describe a merge transaction (merging NFT locks)"""
+        to_address = tx.get('to', '').lower()
+        voting_escrow = '0xeac562811cc6abdbb2c9ee88719eca4ee79ad763'
+        
+        base_desc = "Merged veBLACK locks"
+        if to_address == voting_escrow.lower():
+            # Try to decode merge parameters
+            input_data = tx.get('input', '')
+            if len(input_data) >= 138:
+                try:
+                    from_token = int(input_data[10:74], 16)
+                    to_token = int(input_data[74:138], 16)
+                    base_desc = f"Merged veBLACK lock #{from_token} into lock #{to_token}"
+                except (ValueError, IndexError):
+                    pass
+        
+        # Add status indicator
+        if status == 'failed':
+            return f"{base_desc} [FAILED]"
+        elif status == 'success':
+            return base_desc
+        
+        return base_desc
     
     def describe_token_operation(self, token_transfers: List[Dict], tx: Dict) -> str:
         """Describe a general token operation"""
@@ -537,8 +729,15 @@ class AvalancheTransactionNarrator(AvalancheTool):
             if len(log.get('topics', [])) >= 3 and log['topics'][0] == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
                 from_addr = '0x' + log['topics'][1][-40:]
                 to_addr = '0x' + log['topics'][2][-40:]
-                value_hex = log['data']
-                value = int(value_hex, 16)
+                value_hex = log.get('data', '0x0')
+                # Handle empty hex string ('0x')
+                if value_hex == '0x' or not value_hex or len(value_hex) <= 2:
+                    value = 0
+                else:
+                    try:
+                        value = int(value_hex, 16)
+                    except ValueError:
+                        value = 0
                 token_addr = log['address']
                 
                 if value > 0:  # Only non-zero transfers
@@ -575,8 +774,15 @@ class AvalancheTransactionNarrator(AvalancheTool):
             if len(log.get('topics', [])) >= 3 and log['topics'][0] == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
                 from_addr = '0x' + log['topics'][1][-40:]
                 to_addr = '0x' + log['topics'][2][-40:]
-                value_hex = log['data']
-                value = int(value_hex, 16)
+                value_hex = log.get('data', '0x0')
+                # Handle empty hex string ('0x')
+                if value_hex == '0x' or not value_hex or len(value_hex) <= 2:
+                    value = 0
+                else:
+                    try:
+                        value = int(value_hex, 16)
+                    except ValueError:
+                        value = 0
                 token_addr = log['address']
                 
                 if value > 0:
@@ -745,6 +951,13 @@ class AvalancheTransactionNarrator(AvalancheTool):
             # Group transactions into sequences (especially swap sequences)
             sequences = self.group_swap_sequences(recent_transactions)
             
+            # Classify all transactions to get status info before organizing
+            # This ensures status is available when generating descriptions
+            for sequence in sequences:
+                for tx in sequence['transactions']:
+                    # Pre-classify to ensure status is available
+                    _ = self.classify_transaction(tx)
+            
             # Organize sequences into activity groups
             activities = self.organize_activities(sequences)
             
@@ -770,7 +983,7 @@ class AvalancheTransactionNarrator(AvalancheTool):
             
             # Group by activity type for summary
             if activities['supermassive_claims']:
-                narrative += f"### ?? Supermassive NFT Activities ({len(activities['supermassive_claims'])})\n"
+                narrative += f"### [NFT] Supermassive NFT Activities ({len(activities['supermassive_claims'])})\n"
                 for seq in activities['supermassive_claims']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -786,7 +999,7 @@ class AvalancheTransactionNarrator(AvalancheTool):
                 narrative += "\n"
             
             if activities['swaps']:
-                narrative += f"### ?? Token Swaps ({len(activities['swaps'])})\n"
+                narrative += f"### [SWAP] Token Swaps ({len(activities['swaps'])})\n"
                 for seq in activities['swaps']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -794,7 +1007,7 @@ class AvalancheTransactionNarrator(AvalancheTool):
                 narrative += "\n"
             
             if activities['other']:
-                narrative += f"### ?? Other Activities ({len(activities['other'])})\n"
+                narrative += f"### [TX] Other Activities ({len(activities['other'])})\n"
                 for seq in activities['other']:
                     tx = seq['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
@@ -826,16 +1039,39 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
                     tx_link = f"[{tx['hash'][:10]}...](https://snowtrace.io/tx/{tx['hash']})"
                     
-                    activity_emoji = {
-                        'supermassive_claims': '??',
-                        'voting_rewards': '???',
-                        'swaps': '??',
-                        'other': '??'
-                    }.get(activity_type, '??')
+                    activity_indicator = {
+                        'supermassive_claims': '[NFT]',
+                        'voting_rewards': '[REWARD]',
+                        'swaps': '[SWAP]',
+                        'other': '[TX]'
+                    }.get(activity_type, '[TX]')
                     
-                    narrative += f"### {timestamp_str} - {activity_emoji} {sequence['type'].replace('_', ' ').title()}\n\n"
+                    # Get transaction status
+                    tx_classification = self.classify_transaction(tx)
+                    status = tx_classification.get('status', 'unknown')
+                    status_indicator = ''
+                    if status == 'failed':
+                        status_indicator = ' [FAILED]'
+                    elif status == 'success':
+                        status_indicator = ' [SUCCESS]'
+                    
+                    narrative += f"### {timestamp_str} - {activity_indicator} {sequence['type'].replace('_', ' ').title()}{status_indicator}\n\n"
                     narrative += f"**Transaction:** {tx_link}\n"
                     narrative += f"**Description:** {sequence['description']}\n"
+                    
+                    # Add gas information for failed transactions
+                    if status == 'failed':
+                        gas_used = tx_classification.get('gas_used')
+                        gas_limit = tx_classification.get('gas_limit')
+                        if gas_used:
+                            narrative += f"**Gas Used:** {gas_used:,}"
+                            if gas_limit:
+                                pct = (gas_used / gas_limit * 100) if gas_limit > 0 else 0
+                                narrative += f" / {gas_limit:,} ({pct:.1f}%)\n"
+                            else:
+                                narrative += "\n"
+                        narrative += "**Reason:** Transaction reverted (likely insufficient gas limit)\n"
+                    
                     narrative += "\n"
             
             return narrative
@@ -848,6 +1084,11 @@ def main():
     parser.add_argument('address', help='Avalanche C-Chain address to analyze')
     parser.add_argument('-d', '--days', type=int, default=1, help='Number of days to analyze (default: 1)')
     parser.add_argument('-o', '--output', help='Output file (optional)')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
     
     args = parser.parse_args()
     

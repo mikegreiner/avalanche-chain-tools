@@ -55,7 +55,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -367,6 +367,7 @@ class BlackholePoolRecommender:
                 name = "Unknown"
                 pool_type = None
                 fee_percentage = None
+                pool_id = None  # Pool contract address or identifier
                 
                 try:
                     # Pool name is in a div with class "name" inside the left section
@@ -383,6 +384,29 @@ class BlackholePoolRecommender:
                             pool_type = 'CL200'
                         elif name.startswith('CL1'):
                             pool_type = 'CL1'
+                    
+                    # Try to extract pool ID/address from data attributes
+                    try:
+                        # Check for data attributes that might contain pool address
+                        pool_id = (
+                            element.get_attribute('data-pool-id') or
+                            element.get_attribute('data-pool-address') or
+                            element.get_attribute('data-address') or
+                            element.get_attribute('data-id')
+                        )
+                        # Also check child elements
+                        if not pool_id:
+                            try:
+                                id_element = element.find_element(By.XPATH, ".//*[@data-pool-id or @data-pool-address or @data-address]")
+                                pool_id = (
+                                    id_element.get_attribute('data-pool-id') or
+                                    id_element.get_attribute('data-pool-address') or
+                                    id_element.get_attribute('data-address')
+                                )
+                            except:
+                                pass
+                    except:
+                        pass
                     
                     # Extract fee percentage
                     try:
@@ -607,6 +631,7 @@ class BlackholePoolRecommender:
                         total_rewards=total_rewards,
                         vapr=vapr,
                         current_votes=votes,
+                        pool_id=pool_id,  # May be None if not found
                         pool_type=pool_type,
                         fee_percentage=fee_percentage
                     ))
@@ -988,6 +1013,7 @@ class BlackholePoolRecommender:
         for pool in pools:
             pool_data = {
                 "name": pool.name,
+                "pool_id": pool.pool_id,  # Pool contract address (if found)
                 "pool_type": pool.pool_type,
                 "fee_percentage": pool.fee_percentage,
                 "total_rewards": pool.total_rewards,

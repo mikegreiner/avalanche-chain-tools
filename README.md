@@ -23,7 +23,12 @@ python3 avalanche_transaction_reader.py "0xabcdef1234567890abcdef1234567890abcde
 
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_transaction_reader.py "0x..." -o analysis.md
+
+# Check version
+python3 avalanche_transaction_reader.py --version
 ```
+
+**Version:** 1.0.0
 
 **Documentation:** See [docs/README_avalanche_reader.md](docs/README_avalanche_reader.md)
 
@@ -37,8 +42,11 @@ Generates human-friendly descriptions of recent transactions for a given Avalanc
 **Features:**
 - Analyzes recent transactions for an address
 - Organizes transactions into meaningful activity types
-- Generates chronological narrative with emoji indicators
+- Generates chronological narrative with activity indicators ([NFT], [SWAP], [TX], [REWARD])
 - Identifies Blackhole DEX swaps, voting rewards, and Supermassive NFT activities
+- Shows transaction status (SUCCESS/FAILED) with gas information for failed transactions
+- Enhanced approval descriptions showing token and contract names (e.g., "Approved BlackholeRouter to spend WAVAX")
+- Correctly distinguishes between merge() and vote() transactions
 
 **Usage:**
 ```bash
@@ -75,7 +83,12 @@ python3 avalanche_daily_swaps.py "0x1234567890123456789012345678901234567890" -d
 
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_daily_swaps.py "0x..." -o swaps_analysis.md
+
+# Check version
+python3 avalanche_daily_swaps.py --version
 ```
+
+**Version:** 1.0.0
 
 **Documentation:** See [docs/README_daily_swaps.md](docs/README_daily_swaps.md)
 

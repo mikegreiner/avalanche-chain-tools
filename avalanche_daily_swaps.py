@@ -23,6 +23,9 @@ from avalanche_utils import (
 )
 from avalanche_base import AvalancheTool
 
+# Version number (semantic versioning: MAJOR.MINOR.PATCH)
+__version__ = "1.0.0"
+
 class AvalancheDailySwapAnalyzer(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
                  headers: Optional[Dict[str, str]] = None) -> None:
@@ -435,6 +438,11 @@ def main():
     parser.add_argument('address', help='Avalanche C-Chain address to analyze')
     parser.add_argument('-d', '--date', help='Target date in YYYY-MM-DD format (default: today)')
     parser.add_argument('-o', '--output', help='Output file (optional)')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
     
     args = parser.parse_args()
     

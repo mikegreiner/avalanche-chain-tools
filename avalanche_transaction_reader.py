@@ -23,6 +23,9 @@ from avalanche_utils import (
 )
 from avalanche_base import AvalancheTool
 
+# Version number (semantic versioning: MAJOR.MINOR.PATCH)
+__version__ = "1.0.0"
+
 class AvalancheTransactionReader(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
                  headers: Optional[Dict[str, str]] = None) -> None:
@@ -278,6 +281,11 @@ def main():
     parser = argparse.ArgumentParser(description='Read Avalanche C-Chain transaction from Snowtrace.io')
     parser.add_argument('input', help='Snowtrace.io transaction URL or transaction hash (0x...)')
     parser.add_argument('-o', '--output', help='Output file (optional)')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
     
     args = parser.parse_args()
     
