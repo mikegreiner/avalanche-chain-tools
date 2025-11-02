@@ -54,6 +54,9 @@ try:
 except ImportError:
     BS4_AVAILABLE = False
 
+# Version number (semantic versioning: MAJOR.MINOR.PATCH)
+__version__ = "1.1.0"
+
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
 getcontext().prec = _precision
@@ -838,7 +841,7 @@ class BlackholePoolRecommender:
         else:
             raise InvalidInputError("Selenium not available and API endpoint not found. Please install selenium: pip install selenium")
     
-    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, quiet: bool = False) -> List[Pool]:
+    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, quiet: bool = False) -> List[Pool]:
         """
         Fetch pools and recommend top N most profitable.
         
@@ -849,6 +852,7 @@ class BlackholePoolRecommender:
             top_n: Number of top pools to return
             user_voting_power: User's voting power in veBLACK for reward estimation
             hide_vamm: If True, filter out vAMM pools
+            min_rewards: Minimum total rewards in USD to include (filters out smaller pools)
             quiet: If True, suppress progress messages (useful for JSON output)
         """
         if not quiet:
@@ -870,6 +874,14 @@ class BlackholePoolRecommender:
             filtered_count = original_count - len(pools)
             if filtered_count > 0 and not quiet:
                 print(f"Filtered out {filtered_count} vAMM pool(s)")
+        
+        # Filter out pools below minimum rewards threshold
+        if min_rewards is not None:
+            original_count = len(pools)
+            pools = [p for p in pools if p.total_rewards >= min_rewards]
+            filtered_count = original_count - len(pools)
+            if filtered_count > 0 and not quiet:
+                print(f"Filtered out {filtered_count} pool(s) with total rewards < ${min_rewards:,.2f}")
         
         # Calculate profitability scores (for display purposes)
         for pool in pools:
@@ -910,6 +922,7 @@ class BlackholePoolRecommender:
         output_lines.append("\n" + "="*80)
         output_lines.append("BLACKHOLE DEX POOL RECOMMENDATIONS")
         output_lines.append("="*80)
+        output_lines.append(f"Version: {__version__}")
         output_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if user_voting_power:
             output_lines.append(f"Estimated rewards based on voting power: {user_voting_power:,.0f} veBLACK")
@@ -962,6 +975,7 @@ class BlackholePoolRecommender:
         from datetime import datetime
         
         output = {
+            "version": __version__,
             "generated": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             "user_voting_power": user_voting_power,
             "pools": []
@@ -1009,6 +1023,11 @@ def main():
         description='Recommend most profitable Blackhole DEX liquidity pools'
     )
     parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
+    parser.add_argument(
         '--top',
         type=int,
         default=5,
@@ -1031,6 +1050,12 @@ def main():
         help='Hide vAMM pools from results (if you cannot vote for them)'
     )
     parser.add_argument(
+        '--min-rewards',
+        type=float,
+        default=None,
+        help='Minimum total rewards in USD to include (e.g., 1000). Filters out smaller pools to focus on more stable rewards.'
+    )
+    parser.add_argument(
         '--json',
         action='store_true',
         help='Output results as JSON (useful for post-processing)'
@@ -1047,7 +1072,7 @@ def main():
         # If --no-headless is set, force headless=False; otherwise use config default
         headless_param = False if args.no_headless else None
         recommender = BlackholePoolRecommender(headless=headless_param)
-        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, quiet=args.json or args.output)
+        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, quiet=args.json or args.output)
         
         if not recommendations:
             print("\nNo recommendations generated. This may be because:")

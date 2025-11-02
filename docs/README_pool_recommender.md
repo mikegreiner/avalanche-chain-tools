@@ -52,6 +52,22 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --hide-vamm
 
 This will filter out all vAMM pools from the results.
 
+### Filter by Minimum Total Rewards
+```bash
+python3 blackhole_pool_recommender.py --min-rewards 1000
+```
+
+This filters out pools with total rewards less than the specified minimum (in USD). This helps focus on larger pools where rewards are more likely to remain stable even as more votes come in.
+
+**Example:**
+```bash
+# Only show pools with at least $500 in total rewards
+python3 blackhole_pool_recommender.py --top 10 --min-rewards 500
+
+# Combine with other filters
+python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 1000 --hide-vamm
+```
+
 ### Debug Mode (shows browser)
 ```bash
 python3 blackhole_pool_recommender.py --no-headless
@@ -68,6 +84,13 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --json -o recommendat
 # Or save to an output directory (recommended, gitignored)
 python3 blackhole_pool_recommender.py -o output/pool_recommendations.txt
 ```
+
+### Check Version
+```bash
+python3 blackhole_pool_recommender.py --version
+```
+
+Displays the current version of the script.
 
 ## How It Works
 
@@ -143,6 +166,7 @@ Top 5 Most Profitable Pools:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
+Version: 1.1.0
 Generated: 2025-01-15 14:30:00
 Estimated rewards based on voting power: 15,763 veBLACK
 Note: Estimates assume you vote ALL your voting power in each pool individually
@@ -220,11 +244,26 @@ The script identifies three types of pools based on their naming prefixes:
 
 If you cannot vote for vAMM pools, use the `--hide-vamm` flag to filter them out.
 
+## Command-Line Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--top N` | int | Number of top pools to recommend (default: 5) |
+| `--voting-power N` | float | Your voting power in veBLACK for reward estimation |
+| `--hide-vamm` | flag | Filter out vAMM pools from results |
+| `--min-rewards N` | float | Minimum total rewards in USD to include (filters smaller pools) |
+| `--json` | flag | Output results as JSON instead of formatted text |
+| `-o, --output FILE` | string | Save output to file |
+| `--no-headless` | flag | Show browser window (for debugging) |
+| `--version` | flag | Display script version and exit |
+
 ## Notes
 
+- **Version Tracking**: The script includes version information in both text and JSON outputs. Check version with `--version` flag.
 - **Dilution**: The script accounts for dilution - pools with more votes give less per vote
 - **Rewards per Vote**: This metric shows how diluted rewards are. Higher = less diluted = better per-vote returns
 - **Sorting**: When `--voting-power` is provided, pools are sorted by your estimated reward (most relevant), otherwise by profitability score
+- **Minimum Rewards Filter**: Use `--min-rewards` to focus on larger pools with more stable rewards. This helps avoid smaller pools that may become less attractive as votes increase.
 - **Epoch Timing**: Pool profitability changes up until epoch close as votes shift. Run this script close to epoch close for most accurate recommendations
 - **Diversification**: Consider diversifying votes across multiple pools to reduce risk
 - **Estimates**: Reward estimates assume you vote ALL your voting power in each pool individually. In reality, votes dilute rewards as more people vote

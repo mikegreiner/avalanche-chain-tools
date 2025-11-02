@@ -107,8 +107,17 @@ python3 blackhole_pool_recommender.py --voting-power 15000
 # Hide vAMM pools
 python3 blackhole_pool_recommender.py --voting-power 15000 --hide-vamm
 
+# Filter by minimum total rewards (focus on larger, more stable pools)
+python3 blackhole_pool_recommender.py --min-rewards 1000
+
+# Combine filters
+python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 500 --hide-vamm
+
 # Debug mode (shows browser)
 python3 blackhole_pool_recommender.py --no-headless
+
+# Check version
+python3 blackhole_pool_recommender.py --version
 
 # Save to file
 python3 blackhole_pool_recommender.py --voting-power 15000 -o recommendations.txt
