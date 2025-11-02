@@ -844,8 +844,15 @@ class BlackholePoolRecommender:
         
         Discovered endpoints:
         - https://resources.blackhole.xyz/cl-pools-list/cl-pools.json - CL pool list with fees/TVL
-        Note: This endpoint has pool metadata but not VAPR/votes/rewards (voting-specific data).
-        For voting metrics, we still need Selenium scraping or contract queries.
+        - https://resources.blackhole.xyz/genesis-info/genesis.json - Token launch info (not voting data)
+        - https://resources.blackhole.xyz/token-details.json - Token metadata (not voting data)
+        
+        Note: The pool list endpoint has pool metadata but NOT VAPR/votes/rewards (voting-specific data).
+        Voting metrics appear to come from blockchain RPC calls (dynamic contract queries), not static APIs.
+        This is why Selenium is needed - it executes JavaScript that makes these RPC calls.
+        
+        Future improvement: Query voting contracts directly via web3.py for each pool address
+        (instead of using Selenium), but this requires implementing contract query logic.
         """
         # Discovered API endpoints (tried first as they're more reliable)
         api_endpoints = [
