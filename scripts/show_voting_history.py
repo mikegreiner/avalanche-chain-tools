@@ -18,6 +18,19 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Try to load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Load from project root directory (parent of scripts/)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_path = os.path.join(project_root, '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+except ImportError:
+    pass  # python-dotenv not required, but recommended
+except Exception:
+    pass  # Fail silently if .env doesn't exist or can't be loaded
+
 # Try to import utils for token/pool name lookup
 try:
     from avalanche_utils import get_token_info
@@ -35,7 +48,8 @@ KNOWN_POOLS = {
     "0x40435bdffa4e5b936788b33a2fd767105c67bef7": "Pool (from merge transaction)",
 }
 
-DEFAULT_WALLET = "0x0000000000000000000000000000000000000001"
+# Get default wallet from environment or use placeholder
+DEFAULT_WALLET = os.getenv('BLACKHOLE_WALLET_ADDRESS', "0x0000000000000000000000000000000000000001")
 
 # Cache for pool/token names
 _pool_name_cache = {}
