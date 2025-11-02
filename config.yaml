@@ -59,3 +59,65 @@ pool_recommender:
   selenium:
     headless: true
     implicit_wait: 10
+
+# Blackhole Voter Settings
+blackhole_voter:
+  # RPC endpoint (defaults to public Avalanche RPC)
+  rpc_url: "https://api.avax.network/ext/bc/C/rpc"
+  
+  # Voting contract address
+  # ? IDENTIFIED: Voter contract implementation (use this for voting)
+  # Implementation: 0x6bD81E7eaFA4B21d5AD069B452Ab4b8bb40c4525
+  # Proxy: 0xe30d0c8532721551a51a9fec7fb233759964d9e3
+  # Function: vote(uint256,address[],uint256[]) - selector 0x7ac09bf7 ? VERIFIED
+  # Verified from transaction: 0x4d7488026056bf83b3a0a2cd292b2d009708be76c47681630dfdf88f29cf7ac8
+  # See docs/COMPLETE_VOTING_MECHANISM.md for details
+  voting_contract_address: "0x6bD81E7eaFA4B21d5AD069B452Ab4b8bb40c4525"  # Voter implementation
+  
+  # VotingEscrow address (for token ID queries and merge() if needed)
+  voting_escrow_address: "0xeac562811cc6abdbb2c9ee88719eca4ee79ad763"
+  
+  # Voting contract ABI
+  # ? ABI available - saved to voter_contract_abi.json
+  # Function: vote(uint256 _tokenId, address[] _poolVote, uint256[] _weights)
+  voting_contract_abi: null  # Load from voter_contract_abi.json file
+  
+  # veBLACK contract address (for checking voting power)
+  # ? IDENTIFIED: Same as VotingEscrow (0xeac562811cc6abdbb2c9ee88719eca4ee79ad763)
+  # VotingEscrow IS the veBLACK contract
+  veblack_contract: "0xeac562811cc6abdbb2c9ee88719eca4ee79ad763"
+  
+  # Security settings
+  require_confirmation: true  # Require manual confirmation for each vote
+  max_gas_price_gwei: 50  # Maximum gas price in gwei (safety limit)
+  
+# Blackhole DEX Contract Addresses (for reference)
+blackhole:
+  # ? VotingEscrow contract (veBLACK locks)
+  voting_escrow: "0xeac562811cc6abdbb2c9ee88719eca4ee79ad763"
+  
+  # ? Voter contract (actual voting)
+  voter_proxy: "0xe30d0c8532721551a51a9fec7fb233759964d9e3"
+  voter_implementation: "0x6bD81E7eaFA4B21d5AD069B452Ab4b8bb40c4525"  # Use this for voting
+  
+  # ? veBLACK contract (same as VotingEscrow)
+  veblack_contract: "0xeac562811cc6abdbb2c9ee88719eca4ee79ad763"
+  
+  # ? Rewards claimer contract
+  rewards_claimer: "0x88a49cfcee0ed5b176073dde12186c4c922a9cd0"
+  
+  # ? Rewards distribution proxy
+  rewards_distributor: "0x59aa177312ff6bdf39c8af6f46dae217bf76cbf6"
+  
+  # Pool addresses found from voting transactions:
+  pools:
+    # Example pool addresses (need to map from names)
+    - "0xfd9a46c213532401ef61f8d34e67a3653b70837a"  # From merge() transaction events
+    - "0x40435bdffa4e5b936788b33a2fd767105c67bef7"  # From merge() transaction events
+    - "0x8fef4fe4970a5d6bfa7c65871a2ebfd0f42aa822"  # From vote() transaction (decoded)
+  
+  # Other contracts found during research:
+  # - GCROC (Rewards): 0x02d159a0c393b3a982c4acb3d03816a42d94f1ab
+  # - StakedAvUSDV2: 0x06d47f3fb376649c3a9dafe069b3d6e35572219e
+  # - StakedUSDeOFT: 0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2
+  # See docs/CONTRACT_RESEARCH.md and docs/CONTRACT_ADDRESSES.md for details
