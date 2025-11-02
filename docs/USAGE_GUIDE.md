@@ -34,29 +34,28 @@ This allows scripts to automatically load your `.env` file. If you don't install
 
 ## Usage Patterns
 
-### Pattern 1: Environment Variable (Recommended)
+### Pattern 1: Command-Line Argument (Always Works)
 
-With `python-dotenv` installed, most scripts will automatically read from `.env`:
-
-```bash
-# View voting history (uses BLACKHOLE_WALLET_ADDRESS from .env)
-python3 scripts/show_voting_history.py
-
-# View last 5 epochs
-python3 scripts/show_voting_history.py --friendly --limit 5
-```
-
-### Pattern 2: Command-Line Argument
-
-You can always override the environment variable by passing the wallet address directly:
+Most tools take wallet addresses as command-line arguments:
 
 ```bash
-# Explicit wallet address
-python3 scripts/show_voting_history.py 0xYourWalletAddressHere
+# Transaction narrator
+python3 avalanche_transaction_narrator.py 0xYourWalletAddressHere
 
-# With options
-python3 scripts/show_voting_history.py 0xYourWalletAddressHere --friendly --limit 10
+# Daily swap analyzer
+python3 avalanche_daily_swaps.py 0xYourWalletAddressHere -d "2025-10-22"
 ```
+
+### Pattern 2: Environment Variable (Recommended for Repeated Use)
+
+With `python-dotenv` installed, some scripts can read from `.env` automatically:
+
+```bash
+export BLACKHOLE_WALLET_ADDRESS=0xYourWalletAddressHere
+python3 avalanche_transaction_narrator.py $BLACKHOLE_WALLET_ADDRESS
+```
+
+Or use a `.env` file (see Quick Start above).
 
 ### Pattern 3: Export Environment Variable
 
@@ -64,7 +63,8 @@ If you prefer not to use `.env`, export the variable in your shell:
 
 ```bash
 export BLACKHOLE_WALLET_ADDRESS=0xYourWalletAddressHere
-python3 scripts/show_voting_history.py
+# Then use in commands
+python3 avalanche_transaction_narrator.py $BLACKHOLE_WALLET_ADDRESS
 ```
 
 ## Script-Specific Usage
