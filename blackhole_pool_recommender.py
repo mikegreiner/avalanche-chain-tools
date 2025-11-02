@@ -159,18 +159,29 @@ class BlackholePoolRecommender:
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        # Add timeout settings to prevent hangs
+        options.add_argument('--page-load-strategy=eager')  # Don't wait for all resources
         
         driver = None
         try:
-            driver = webdriver.Chrome(options=options)
+            # Set service with timeout to prevent connection hangs
+            service = Service()
+            driver = webdriver.Chrome(service=service, options=options)
             driver.implicitly_wait(self.implicit_wait)
+            # Set page load timeout to prevent indefinite hangs
+            driver.set_page_load_timeout(60)  # 60 seconds max for page loads
             if not quiet:
                 print(f"Loading {self.url}...")
             driver.get(self.url)
             
             if not quiet:
                 print("Waiting for pool data to load (this may take 15-20 seconds)...")
-            time.sleep(12)  # Give React time to render and fetch data
+            try:
+                time.sleep(12)  # Give React time to render and fetch data
+            except KeyboardInterrupt:
+                if not quiet:
+                    print("\nInterrupted - attempting to extract available data...")
+                # Continue to extraction even if interrupted
             
             # Set pagination to show 100 pools per page
             if not quiet:
@@ -274,6 +285,8 @@ class BlackholePoolRecommender:
             
             # Method 1: Try to extract from DOM elements using Selenium
             try:
+                if not quiet:
+                    print("Extracting pool data from page...")
                 # The actual pool containers are divs with class 'liquidity-pool-cell'
                 pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell') and (contains(@class, 'even') or contains(@class, 'odd'))]")
                 
@@ -330,6 +343,24 @@ class BlackholePoolRecommender:
             
             return pools
             
+        except KeyboardInterrupt:
+            if not quiet:
+                print("\nOperation interrupted by user")
+            # Try to extract any available data before quitting
+            if driver:
+                try:
+                    if not quiet:
+                        print("Attempting to extract available data before exit...")
+                    pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell')]")
+                    if pool_elements:
+                        pools = self._extract_pools_from_elements(pool_elements[:min(50, len(pool_elements))], driver)
+                        if pools:
+                            if not quiet:
+                                print(f"Extracted {len(pools)} pools before exit")
+                            return pools
+                except:
+                    pass
+            raise
         except Exception as e:
             print(f"Error fetching pools with Selenium: {e}")
             import traceback
@@ -337,7 +368,10 @@ class BlackholePoolRecommender:
             raise
         finally:
             if driver:
-                driver.quit()
+                try:
+                    driver.quit()
+                except:
+                    pass  # Ignore errors during cleanup
     
     def _extract_pools_from_elements(self, elements, driver) -> List[Pool]:
         """
@@ -355,8 +389,19 @@ class BlackholePoolRecommender:
         pools = []
         extraction_errors = []
         
-        for element in elements:
+        for idx, element in enumerate(elements):
             try:
+                # Add connection health check every 10 elements
+                if idx > 0 and idx % 10 == 0:
+                    try:
+                        # Quick health check - try to get page title
+                        _ = driver.title
+                    except:
+                        # Connection lost - try to recover or skip remaining elements
+                        if extraction_errors:
+                            logger.warning(f"Connection issues detected after {idx} elements. Extracted {len(pools)} pools so far.")
+                        break
+                
                 text = element.text.strip()
                 
                 # Skip if element doesn't have meaningful content
