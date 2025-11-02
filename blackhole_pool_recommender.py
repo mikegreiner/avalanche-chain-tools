@@ -842,23 +842,19 @@ class BlackholePoolRecommender:
         """
         Try to fetch pools from a direct API endpoint.
         
-        Note: This currently tries generic endpoints. To find the actual API:
-        1. Run scripts/find_api_endpoint.py to discover endpoints via network inspection
-        2. Check browser DevTools Network tab on https://blackhole.xyz/vote
-        3. Look for GraphQL/subgraph endpoints (The Graph is common for DEXes)
-        4. Consider querying pool contracts directly via web3.py
-        
-        TODO: Discover and implement actual Blackhole DEX API endpoint.
+        Discovered endpoints:
+        - https://resources.blackhole.xyz/cl-pools-list/cl-pools.json - CL pool list with fees/TVL
+        Note: This endpoint has pool metadata but not VAPR/votes/rewards (voting-specific data).
+        For voting metrics, we still need Selenium scraping or contract queries.
         """
-        # Common API endpoints to try
+        # Discovered API endpoints (tried first as they're more reliable)
         api_endpoints = [
+            "https://resources.blackhole.xyz/cl-pools-list/cl-pools.json",
+            # Generic endpoints (likely fail, but keeping for backwards compatibility)
             "https://api.blackhole.xyz/vote",
             "https://blackhole.xyz/api/vote",
             "https://api.blackhole.xyz/pools",
             "https://blackhole.xyz/api/pools",
-            # GraphQL endpoints (if discovered via network inspection)
-            # "https://api.thegraph.com/subgraphs/name/blackhole/avalanche",
-            # Add discovered endpoints here
         ]
         
         headers = {
@@ -880,47 +876,120 @@ class BlackholePoolRecommender:
         return []
     
     def _parse_api_response(self, data: dict) -> List[Pool]:
-        """Parse pool data from API response"""
+        """
+        Parse pool data from API response.
+        
+        Supports multiple API formats:
+        1. CL pools format (resources.blackhole.xyz/cl-pools-list/cl-pools.json):
+           - Has: id, token0, token1, feesUSD, totalValueLockedUSD, fee
+           - Missing: VAPR, votes, totalRewards (voting-specific metrics)
+        2. Generic format with voting data:
+           - Has: name, totalRewards, vapr, votes
+        """
         pools = []
         
-        # This depends on the actual API structure
-        # Common patterns:
-        # - data['pools'] or data['data']['pools']
-        # - Each pool has: name, totalRewards, vapr, etc.
-        
+        # Handle CL pools format (discovered endpoint)
         pools_data = data.get('pools', data.get('data', {}).get('pools', []))
+        
+        # If pools_data is still empty, data might be a list
+        if not pools_data and isinstance(data, list):
+            pools_data = data
         
         for pool_data in pools_data:
             try:
-                pool = Pool(
-                    name=pool_data.get('name', pool_data.get('pair', 'Unknown')),
-                    total_rewards=float(pool_data.get('totalRewards', pool_data.get('total_rewards', 0))),
-                    vapr=float(pool_data.get('vapr', pool_data.get('VAPR', 0))),
-                    current_votes=float(pool_data.get('votes', pool_data.get('currentVotes', 0))) if pool_data.get('votes') else None,
-                    pool_id=pool_data.get('id', pool_data.get('poolId'))
-                )
-                pools.append(pool)
+                # Try CL pools format first (resources.blackhole.xyz format)
+                if 'token0' in pool_data and 'token1' in pool_data:
+                    # CL pools format - construct name from tokens
+                    token0_symbol = pool_data['token0'].get('symbol', 'Unknown')
+                    token1_symbol = pool_data['token1'].get('symbol', 'Unknown')
+                    pool_name = f"{token0_symbol}/{token1_symbol}"
+                    
+                    # Determine pool type from fee tier
+                    fee = int(pool_data.get('fee', '0'))
+                    if fee == 100:  # 0.01%
+                        pool_type = 'CL1'
+                        fee_pct = '0.01%'
+                    elif fee == 500:  # 0.05%
+                        pool_type = 'CL200'
+                        fee_pct = '0.05%'
+                    elif fee == 2500:  # 0.25%
+                        pool_type = 'CL200'
+                        fee_pct = '0.25%'
+                    elif fee == 5000:  # 0.5%
+                        pool_type = 'CL200'
+                        fee_pct = '0.5%'
+                    elif fee == 7000:  # 0.7%
+                        pool_type = 'CL200'
+                        fee_pct = '0.7%'
+                    elif fee == 10000:  # 1%
+                        pool_type = 'CL200'
+                        fee_pct = '1%'
+                    else:
+                        pool_type = 'CL200'  # Default
+                        fee_pct = f"{fee/10000}%"
+                    
+                    # Use feesUSD as proxy for total_rewards (not perfect, but available)
+                    # Note: This is trading fees, not voting rewards
+                    total_rewards = float(pool_data.get('feesUSD', pool_data.get('untrackedFeesUSD', 0)))
+                    
+                    pool = Pool(
+                        name=pool_name,
+                        total_rewards=total_rewards,
+                        vapr=0.0,  # Not available in this API format
+                        current_votes=None,  # Not available in this API format
+                        pool_id=pool_data.get('id'),
+                        pool_type=pool_type,
+                        fee_percentage=fee_pct
+                    )
+                    pools.append(pool)
+                else:
+                    # Generic format with voting data (if we find such an endpoint)
+                    pool = Pool(
+                        name=pool_data.get('name', pool_data.get('pair', 'Unknown')),
+                        total_rewards=float(pool_data.get('totalRewards', pool_data.get('total_rewards', 0))),
+                        vapr=float(pool_data.get('vapr', pool_data.get('VAPR', 0))),
+                        current_votes=float(pool_data.get('votes', pool_data.get('currentVotes', 0))) if pool_data.get('votes') or pool_data.get('currentVotes') else None,
+                        pool_id=pool_data.get('id', pool_data.get('poolId')),
+                        pool_type=pool_data.get('poolType'),
+                        fee_percentage=pool_data.get('feePercentage')
+                    )
+                    pools.append(pool)
             except Exception as e:
-                print(f"Error parsing pool: {e}")
+                logger.debug(f"Error parsing pool: {e}")
                 continue
         
         return pools
     
     def fetch_pools(self, quiet: bool = False) -> List[Pool]:
-        """Main method to fetch pools - tries API first, then Selenium"""
-        # Try API first (faster)
+        """
+        Main method to fetch pools - tries API first, then Selenium.
+        
+        Note: The discovered API endpoint (resources.blackhole.xyz/cl-pools-list/cl-pools.json)
+        provides pool metadata but NOT voting metrics (VAPR, votes, rewards).
+        For complete voting recommendations, we need Selenium scraping which has all metrics.
+        """
+        # Try API first (faster, but may lack voting metrics)
         if not quiet:
             print("Attempting to fetch pool data from API...")
         pools = self.fetch_pools_api()
         
-        if pools:
+        # Check if API pools have voting metrics (VAPR or votes)
+        has_voting_data = pools and any(p.vapr > 0 or p.current_votes is not None for p in pools)
+        
+        if pools and has_voting_data:
             if not quiet:
-                print(f"Found {len(pools)} pools via API")
+                print(f"Found {len(pools)} pools via API with voting metrics")
             return pools
         
-        # Fall back to Selenium scraping
-        if SELENIUM_AVAILABLE:
+        # If API returned pools but without voting data, fall back to Selenium
+        if pools and not has_voting_data:
             if not quiet:
+                print(f"API found {len(pools)} pools but missing voting metrics (VAPR/votes)")
+                print("Falling back to Selenium for complete voting data...")
+        
+        # Fall back to Selenium scraping (has all voting metrics)
+        if SELENIUM_AVAILABLE:
+            if not quiet and not pools:
                 print("API not available, using Selenium to scrape page...")
             return self.fetch_pools_selenium(quiet=quiet)
         else:

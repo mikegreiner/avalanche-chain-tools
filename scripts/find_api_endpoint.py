@@ -10,7 +10,6 @@ import sys
 try:
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 except ImportError:
     print("Error: Selenium not installed. Install with: pip install selenium")
     sys.exit(1)
@@ -20,10 +19,6 @@ def intercept_network_requests():
     """Use Chrome DevTools to intercept network requests"""
     print("Setting up Chrome with network logging...")
     
-    # Enable network logging
-    caps = DesiredCapabilities.CHROME
-    caps['goog:loggingPrefs'] = {'performance': 'ALL'}
-    
     options = Options()
     options.add_argument('--window-size=1920,1080')
     options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
@@ -31,7 +26,7 @@ def intercept_network_requests():
     
     driver = None
     try:
-        driver = webdriver.Chrome(options=options, desired_capabilities=caps)
+        driver = webdriver.Chrome(options=options)
         print("Loading https://blackhole.xyz/vote...")
         driver.get("https://blackhole.xyz/vote")
         
@@ -93,7 +88,7 @@ def intercept_network_requests():
         print("="*80)
         
         # Collect unique endpoints
-        all_endpoints = set(api_endpoints + graphql_endpoints)
+        all_endpoints = list(set(api_endpoints + graphql_endpoints))
         
         for url in all_endpoints[:10]:  # Limit to first 10
             try:
