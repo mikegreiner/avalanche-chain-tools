@@ -187,26 +187,34 @@ class BlackholePoolRecommender:
             if not quiet:
                 print("Setting pagination to 100 pools per page...")
             try:
-                # Find the pagination container (custom dropdown)
-                pagination_container = driver.find_element(By.XPATH, "//div[contains(@class, 'size-per-page')]")
-                
-                # Click on the container to open dropdown
-                driver.execute_script("arguments[0].click();", pagination_container)
-                time.sleep(1.5)  # Wait for dropdown to open
-                
-                # Look for option with text "100" - it's in a span with class "size-text"
-                try:
-                    option_100 = driver.find_element(By.XPATH, "//span[contains(@class, 'size-text') and contains(text(), '100')]")
-                    # Click on the parent container (size-container) that contains this span
-                    parent_container = option_100.find_element(By.XPATH, "./ancestor::*[contains(@class, 'size-container')][1]")
-                    driver.execute_script("arguments[0].click();", parent_container)
-                    if not quiet:
-                        print("Set pagination to 100 pools per page")
-                    time.sleep(4)  # Wait for pools to reload
-                except Exception as e:
-                    if not quiet:
-                        print(f"Could not find/click option 100: {e}, will try to load all pools via scrolling")
+                # Find the pagination container (custom dropdown) - use find_elements with WebDriverWait
+                pagination_containers = WebDriverWait(driver, 5).until(
+                    EC.presence_of_all_elements_located((By.XPATH, "//div[contains(@class, 'size-per-page')]"))
+                )
+                if pagination_containers:
+                    pagination_container = pagination_containers[0]
+                    # Click on the container to open dropdown
+                    driver.execute_script("arguments[0].click();", pagination_container)
+                    time.sleep(1.5)  # Wait for dropdown to open
                     
+                    # Look for option with text "100" - it's in a span with class "size-text"
+                    try:
+                        option_100s = WebDriverWait(driver, 3).until(
+                            EC.presence_of_all_elements_located((By.XPATH, "//span[contains(@class, 'size-text') and contains(text(), '100')]"))
+                        )
+                        if option_100s:
+                            option_100 = option_100s[0]
+                            # Click on the parent container (size-container) that contains this span
+                            parent_containers = option_100.find_elements(By.XPATH, "./ancestor::*[contains(@class, 'size-container')][1]")
+                            if parent_containers:
+                                driver.execute_script("arguments[0].click();", parent_containers[0])
+                                if not quiet:
+                                    print("Set pagination to 100 pools per page")
+                                time.sleep(4)  # Wait for pools to reload
+                    except Exception as e:
+                        if not quiet:
+                            print(f"Could not find/click option 100: {e}, will try to load all pools via scrolling")
+                        
             except Exception as e:
                 if not quiet:
                     logger.warning(f"Error setting pagination: {e}, will try scrolling instead")
@@ -215,12 +223,15 @@ class BlackholePoolRecommender:
             if not quiet:
                 print("Sorting by TOTAL REWARDS...")
             try:
-                # Find and click the TOTAL REWARDS column header
-                total_rewards_header = driver.find_element(By.XPATH, "//div[contains(@class, 'total-rewards')] | //div[contains(@class, 'liquidity-pool-column-tab') and contains(text(), 'TOTAL REWARDS')]")
-                driver.execute_script("arguments[0].click();", total_rewards_header)
-                time.sleep(3)  # Wait for sort to complete
-                if not quiet:
-                    print("Sorted by TOTAL REWARDS")
+                # Find and click the TOTAL REWARDS column header - use find_elements with wait
+                total_rewards_headers = WebDriverWait(driver, 5).until(
+                    EC.presence_of_all_elements_located((By.XPATH, "//div[contains(@class, 'total-rewards')] | //div[contains(@class, 'liquidity-pool-column-tab') and contains(text(), 'TOTAL REWARDS')]"))
+                )
+                if total_rewards_headers:
+                    driver.execute_script("arguments[0].click();", total_rewards_headers[0])
+                    time.sleep(3)  # Wait for sort to complete
+                    if not quiet:
+                        print("Sorted by TOTAL REWARDS")
             except Exception as e:
                 if not quiet:
                     print(f"Could not click TOTAL REWARDS header (may already be sorted): {e}")
@@ -315,8 +326,11 @@ class BlackholePoolRecommender:
             if not pools:
                 print("Trying text-based extraction...")
                 try:
-                    page_text = driver.find_element(By.TAG_NAME, "body").text
-                    pools = self._extract_pools_from_text(page_text)
+                    # Use find_elements to avoid hanging
+                    body_elements = driver.find_elements(By.TAG_NAME, "body")
+                    if body_elements:
+                        page_text = body_elements[0].text
+                        pools = self._extract_pools_from_text(page_text)
                 except Exception as e:
                     print(f"Error extracting from text: {e}")
             
@@ -375,13 +389,16 @@ class BlackholePoolRecommender:
     
     def _extract_pools_from_elements(self, elements, driver) -> List[Pool]:
         """
-        Extract pool data from Selenium WebElements
+        Extract pool data from Selenium WebElements.
+        
+        Uses find_elements (not find_element) to avoid hanging on implicit wait.
+        Temporarily reduces implicit wait to 0 during extraction for speed.
         
         NOTE: Votability filtering approach (for future implementation):
         Non-votable pools have a 'data-tooltip-id="no-locks-available"' attribute in the button container.
         To filter them out:
-        1. Find button container: element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-btn')]")
-        2. Check for tooltip: button_container.find_element(By.XPATH, ".//*[@data-tooltip-id='no-locks-available']")
+        1. Find button container: element.find_elements(...)
+        2. Check for tooltip: button_container.find_elements(...)
         3. If tooltip exists, skip the pool (not votable)
         
         This filtering should be done AFTER extraction is complete to avoid breaking the extraction logic.
@@ -389,300 +406,335 @@ class BlackholePoolRecommender:
         pools = []
         extraction_errors = []
         
-        for idx, element in enumerate(elements):
-            try:
-                # Add connection health check every 10 elements
-                if idx > 0 and idx % 10 == 0:
-                    try:
-                        # Quick health check - try to get page title
-                        _ = driver.title
-                    except:
-                        # Connection lost - try to recover or skip remaining elements
-                        if extraction_errors:
-                            logger.warning(f"Connection issues detected after {idx} elements. Extracted {len(pools)} pools so far.")
-                        break
-                
-                text = element.text.strip()
-                
-                # Skip if element doesn't have meaningful content
-                if not text or len(text) < 10:
-                    continue
-                
-                # Extract pool name and metadata from left section
-                name = "Unknown"
-                pool_type = None
-                fee_percentage = None
-                pool_id = None  # Pool contract address or identifier
-                
+        # Temporarily set implicit wait to 0 during extraction to avoid hangs
+        # Save current implicit wait (from driver config) before changing it
+        # Note: implicitly_wait() doesn't return the old value, so we use self.implicit_wait
+        original_implicit_wait = self.implicit_wait
+        driver.implicitly_wait(0)
+        
+        try:
+            for idx, element in enumerate(elements):
                 try:
-                    # Pool name is in a div with class "name" inside the left section
-                    name_element = element.find_element(By.XPATH, ".//div[contains(@class, 'name')]")
-                    name_text = name_element.text.strip()
+                    # Add connection health check every 10 elements
+                    if idx > 0 and idx % 10 == 0:
+                        try:
+                            # Quick health check - try to get page title (with short timeout)
+                            from selenium.common.exceptions import TimeoutException
+                            from selenium.webdriver.support.ui import WebDriverWait
+                            WebDriverWait(driver, 1).until(lambda d: d.title is not None)
+                        except (TimeoutException, Exception):
+                            # Connection lost or timeout - skip remaining elements
+                            logger.warning(f"Connection timeout after {idx} elements. Extracted {len(pools)} pools so far.")
+                            break
                     
-                    # Use the full name text, don't truncate it
-                    if name_text:
-                        name = name_text
-                        # Determine pool type from name
-                        if name.startswith('vAMM'):
-                            pool_type = 'vAMM'
-                        elif name.startswith('CL200'):
-                            pool_type = 'CL200'
-                        elif name.startswith('CL1'):
-                            pool_type = 'CL1'
+                    text = element.text.strip()
                     
-                    # Try to extract pool ID/address from data attributes
-                    try:
-                        # Check for data attributes that might contain pool address
-                        pool_id = (
-                            element.get_attribute('data-pool-id') or
-                            element.get_attribute('data-pool-address') or
-                            element.get_attribute('data-address') or
-                            element.get_attribute('data-id')
-                        )
-                        # Also check child elements
-                        if not pool_id:
-                            try:
-                                id_element = element.find_element(By.XPATH, ".//*[@data-pool-id or @data-pool-address or @data-address]")
-                                pool_id = (
-                                    id_element.get_attribute('data-pool-id') or
-                                    id_element.get_attribute('data-pool-address') or
-                                    id_element.get_attribute('data-address')
-                                )
-                            except:
-                                pass
-                    except:
-                        pass
+                    # Skip if element doesn't have meaningful content
+                    if not text or len(text) < 10:
+                        continue
                     
-                    # Extract fee percentage
+                    # Extract pool name and metadata from left section
+                    name = "Unknown"
+                    pool_type = None
+                    fee_percentage = None
+                    pool_id = None  # Pool contract address or identifier
+                    
                     try:
-                        gas_info = element.find_element(By.XPATH, ".//div[contains(@class, 'gas-info')]//div[contains(@class, 'text')]")
-                        fee_percentage = gas_info.text.strip()
-                    except:
-                        pass
-                except:
-                    # Fallback: try to find name in left section
-                    try:
-                        left_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-left')] | .//div[contains(@class, 'liquidity-pool-cell-description')]")
-                        name_text = left_section.text.strip()
+                        # Pool name is in a div with class "name" inside the left section
+                        # Use explicit wait with short timeout to avoid hanging
+                        # Use find_elements to avoid hanging on implicit wait
+                        name_elements = element.find_elements(By.XPATH, ".//div[contains(@class, 'name')]")
+                        if name_elements:
+                            name_text = name_elements[0].text.strip()
+                        else:
+                            name_text = ""
                         
-                        # Look for the first line which usually contains the pool name
-                        lines = [line.strip() for line in name_text.split('\n') if line.strip()]
-                        if lines:
-                            # First line is usually the pool name
-                            first_line = lines[0]
-                            # Extract name - look for pattern like "CL200-WAVAX/USDC" or "CL200-WETH.e/USDt"
-                            name_patterns = [
-                                r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)',  # CL200-WAVAX/USDC or CL200-WETH.e/USDt
-                                r'([A-Z0-9\.]+/[A-Z0-9\.]+)',  # WAVAX/USDC
-                                r'([A-Z0-9\-]+)',  # CL200
-                            ]
-                            
-                            for pattern in name_patterns:
-                                name_match = re.search(pattern, first_line)
-                                if name_match:
-                                    name = name_match.group(1)
-                                    break
-                            
-                            # If pattern matching didn't work, use the first line as-is (up to reasonable length)
-                            if name == "Unknown" and len(first_line) < 50:
-                                name = first_line
-                    except:
-                        # Final fallback: extract from full text
-                        name_match = re.search(r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)|([A-Z0-9\.]+/[A-Z0-9\.]+)', text)
-                        if name_match:
-                            name = name_match.group(1) or name_match.group(2)
-                
-                # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
-                # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
-                total_rewards = 0.0
-                try:
-                    right_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
-                    slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
-                    
-                    # Look for TOTAL REWARDS - it's in slot 6 or 7, contains "Fees + Incentives"
-                    if len(slots) >= 7:
-                        # Try slot 6 first (most common)
-                        rewards_text = slots[6].text
-                        if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
-                            rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
-                            if rewards_match:
-                                total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                        # Use the full name text, don't truncate it
+                        if name_text:
+                            name = name_text
+                            # Determine pool type from name
+                            if name.startswith('vAMM'):
+                                pool_type = 'vAMM'
+                            elif name.startswith('CL200'):
+                                pool_type = 'CL200'
+                            elif name.startswith('CL1'):
+                                pool_type = 'CL1'
                         
-                        # If not found, try slot 7
-                        if total_rewards == 0.0 and len(slots) >= 8:
-                            rewards_text = slots[7].text
+                        # Try to extract pool ID/address from data attributes
+                        try:
+                            # Check for data attributes that might contain pool address
+                            pool_id = (
+                                element.get_attribute('data-pool-id') or
+                                element.get_attribute('data-pool-address') or
+                                element.get_attribute('data-address') or
+                                element.get_attribute('data-id')
+                            )
+                            # Also check child elements (use find_elements to avoid hanging)
+                            if not pool_id:
+                                try:
+                                    id_elements = element.find_elements(By.XPATH, ".//*[@data-pool-id or @data-pool-address or @data-address]")
+                                    if id_elements:
+                                        id_element = id_elements[0]
+                                        pool_id = (
+                                            id_element.get_attribute('data-pool-id') or
+                                            id_element.get_attribute('data-pool-address') or
+                                            id_element.get_attribute('data-address')
+                                        )
+                                except:
+                                    pass
+                        except:
+                            pass
+                        
+                        # Extract fee percentage (use find_elements to avoid implicit wait)
+                        try:
+                            gas_info_elements = element.find_elements(By.XPATH, ".//div[contains(@class, 'gas-info')]//div[contains(@class, 'text')]")
+                            if gas_info_elements:
+                                fee_percentage = gas_info_elements[0].text.strip()
+                        except:
+                            pass
+                    except:
+                        # Fallback: try to find name in left section (use find_elements to avoid hanging)
+                        try:
+                            left_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-left')] | .//div[contains(@class, 'liquidity-pool-cell-description')]")
+                            if left_sections:
+                                left_section = left_sections[0]
+                                name_text = left_section.text.strip()
+                            else:
+                                name_text = ""
+                            
+                            # Look for the first line which usually contains the pool name
+                            lines = [line.strip() for line in name_text.split('\n') if line.strip()]
+                            if lines:
+                                # First line is usually the pool name
+                                first_line = lines[0]
+                                # Extract name - look for pattern like "CL200-WAVAX/USDC" or "CL200-WETH.e/USDt"
+                                name_patterns = [
+                                    r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)',  # CL200-WAVAX/USDC or CL200-WETH.e/USDt
+                                    r'([A-Z0-9\.]+/[A-Z0-9\.]+)',  # WAVAX/USDC
+                                    r'([A-Z0-9\-]+)',  # CL200
+                                ]
+                                
+                                for pattern in name_patterns:
+                                    name_match = re.search(pattern, first_line)
+                                    if name_match:
+                                        name = name_match.group(1)
+                                        break
+                                
+                                # If pattern matching didn't work, use the first line as-is (up to reasonable length)
+                                if name == "Unknown" and len(first_line) < 50:
+                                    name = first_line
+                        except:
+                            # Final fallback: extract from full text
+                            name_match = re.search(r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)|([A-Z0-9\.]+/[A-Z0-9\.]+)', text)
+                            if name_match:
+                                name = name_match.group(1) or name_match.group(2)
+                    
+                    # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
+                    # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
+                    total_rewards = 0.0
+                    try:
+                        # Use find_elements to avoid hanging on implicit wait
+                        right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
+                        if not right_sections:
+                            raise Exception("Right section not found")
+                        right_section = right_sections[0]
+                        slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # Look for TOTAL REWARDS - it's in slot 6 or 7, contains "Fees + Incentives"
+                        if len(slots) >= 7:
+                            # Try slot 6 first (most common)
+                            rewards_text = slots[6].text
                             if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
                                 rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
                                 if rewards_match:
                                     total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
-                    
-                    # Fallback: search all slots for "Fees + Incentives"
-                    if total_rewards == 0.0:
-                        for slot in slots:
-                            slot_text = slot.text
-                            if 'Fees + Incentives' in slot_text or ('fee' in slot_text.lower() and 'incentive' in slot_text.lower()):
-                                rewards_match = re.search(r'\$[\d,]+\.?\d*', slot_text)
-                                if rewards_match:
-                                    total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
-                                    break
-                except Exception as e:
-                    pass
-                
-                # Fallback: if not found in column, search full text
-                if total_rewards == 0.0:
-                    # Find all $ amounts
-                    rewards_matches = re.findall(r'\$[\d,]+\.?\d*', text)
-                    if rewards_matches:
-                        reward_values = []
-                        for match in rewards_matches:
-                            try:
-                                val = float(match.replace('$', '').replace(',', '').replace('~', ''))
-                                reward_values.append(val)
-                            except:
-                                pass
-                        if reward_values:
-                            # Total rewards is typically the 2nd or 3rd largest (after TVL)
-                            reward_values.sort(reverse=True)
-                            # Skip TVL (usually largest), take next largest
-                            if len(reward_values) > 1:
-                                total_rewards = reward_values[1]  # Second largest
-                            else:
-                                total_rewards = reward_values[0]
-                
-                # Extract VAPR - it's the 5th column (index 4)
-                vapr = 0.0
-                try:
-                    right_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
-                    slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
-                    
-                    # VAPR is usually 5th column (index 4) or look for "vapr" class
-                    if len(slots) >= 5:
-                        vapr_text = slots[4].text
-                        vapr_match = re.search(r'(\d+\.?\d*)\s*%', vapr_text)
-                        if vapr_match:
-                            vapr = float(vapr_match.group(1))
-                except:
-                    pass
-                
-                # Fallback: search text for percentages
-                if vapr == 0.0:
-                    percentages = re.findall(r'(\d+\.?\d*)\s*%', text)
-                    if percentages:
-                        vapr_values = [float(p) for p in percentages]
-                        # VAPR is usually > 50%
-                        large_percentages = [v for v in vapr_values if v > 50]
-                        if large_percentages:
-                            vapr = max(large_percentages)
-                        elif vapr_values:
-                            vapr = max(vapr_values)
-                
-                # Extract votes - it's in the last column (VOTES)
-                # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
-                # Votes can be: "6,967" (no M) or "31.29M" (with M for millions)
-                # Votes are typically in slot 7 or 8, often with VAPR percentage on the same line
-                votes = None
-                try:
-                    right_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
-                    slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
-                    
-                    # Check slots 7 and 8 (last two slots) for votes
-                    # Votes are usually the first number in these slots
-                    for slot_idx in [7, 8]:
-                        if slot_idx < len(slots):
-                            votes_text = slots[slot_idx].text.strip()
                             
-                            # Split by newlines - votes are usually on the first line
-                            lines = votes_text.split('\n')
-                            if lines:
-                                first_line = lines[0].strip()
-                                
-                                # First check for M suffix (millions)
-                                votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
-                                if votes_match:
-                                    votes_str = votes_match.group(1).replace(',', '')
-                                    votes = float(votes_str) * 1_000_000
-                                    break
-                                
-                                # Then check for numbers without M (like "544,767" or "6,967")
-                                # Extract the first number from the line
-                                numbers = re.findall(r'\b([\d,]+)\b', first_line)
-                                if numbers:
-                                    # Take the first number that looks like votes
-                                    for num_str in numbers:
-                                        num_val = float(num_str.replace(',', ''))
-                                        # Votes without M are typically >= 1000
-                                        if num_val >= 1000:
-                                            votes = num_val
-                                            break
-                                    if votes is not None:
-                                        break
-                    
-                    # If still not found, check all slots in reverse
-                    if votes is None:
-                        for slot_idx in range(len(slots) - 1, max(6, len(slots) - 4), -1):
-                            votes_text = slots[slot_idx].text.strip()
-                            lines = votes_text.split('\n')
-                            if lines:
-                                first_line = lines[0].strip()
-                                votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
-                                if votes_match:
-                                    votes_str = votes_match.group(1).replace(',', '')
-                                    votes = float(votes_str) * 1_000_000
-                                    break
-                                numbers = re.findall(r'\b([\d,]+)\b', first_line)
-                                if numbers:
-                                    for num_str in numbers:
-                                        num_val = float(num_str.replace(',', ''))
-                                        if num_val >= 1000:
-                                            votes = num_val
-                                            break
-                                    if votes is not None:
-                                        break
-                
-                except:
-                    pass
-                
-                # Fallback: search full text for votes pattern (only if not found in slots)
-                if votes is None:
-                    # First try pattern with M suffix (millions)
-                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]\b', text)
-                    if votes_match:
-                        votes_str = votes_match.group(1).replace(',', '')
-                        votes = float(votes_str) * 1_000_000
-                    else:
-                        # Look for standalone numbers that could be votes
-                        # Extract numbers and find the largest one that's likely votes
-                        numbers = re.findall(r'\b([\d,]+)\b', text)
-                        vote_candidates = []
-                        for num_str in numbers:
-                            num_val = float(num_str.replace(',', ''))
-                            # Votes are typically between 1,000 and 999,999 (without M)
-                            if 1000 <= num_val < 1000000:
-                                # Check context to avoid percentages and dollar amounts
-                                num_pos = text.find(num_str)
-                                if num_pos >= 0:
-                                    context = text[max(0, num_pos - 10):min(len(text), num_pos + len(num_str) + 10)]
-                                    if '$' not in context and '%' not in context:
-                                        vote_candidates.append(num_val)
+                            # If not found, try slot 7
+                            if total_rewards == 0.0 and len(slots) >= 8:
+                                rewards_text = slots[7].text
+                                if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
+                                    rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
+                                    if rewards_match:
+                                        total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
                         
-                        # If multiple candidates, take the largest (most likely to be votes)
-                        if vote_candidates:
-                            votes = max(vote_candidates)
-                
-                # Only add pool if it has meaningful data
-                if total_rewards > 0 or vapr > 0:
-                    pools.append(Pool(
-                        name=name if name != "Unknown" else f"Pool_{len(pools)+1}",
-                        total_rewards=total_rewards,
-                        vapr=vapr,
-                        current_votes=votes,
-                        pool_id=pool_id,  # May be None if not found
-                        pool_type=pool_type,
-                        fee_percentage=fee_percentage
-                    ))
-            except Exception as e:
-                extraction_errors.append(str(e))
-                continue
+                        # Fallback: search all slots for "Fees + Incentives"
+                        if total_rewards == 0.0:
+                            for slot in slots:
+                                slot_text = slot.text
+                                if 'Fees + Incentives' in slot_text or ('fee' in slot_text.lower() and 'incentive' in slot_text.lower()):
+                                    rewards_match = re.search(r'\$[\d,]+\.?\d*', slot_text)
+                                    if rewards_match:
+                                        total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                                        break
+                    except Exception as e:
+                        pass
+                    
+                    # Fallback: if not found in column, search full text
+                    if total_rewards == 0.0:
+                        # Find all $ amounts
+                        rewards_matches = re.findall(r'\$[\d,]+\.?\d*', text)
+                        if rewards_matches:
+                            reward_values = []
+                            for match in rewards_matches:
+                                try:
+                                    val = float(match.replace('$', '').replace(',', '').replace('~', ''))
+                                    reward_values.append(val)
+                                except:
+                                    pass
+                            if reward_values:
+                                # Total rewards is typically the 2nd or 3rd largest (after TVL)
+                                reward_values.sort(reverse=True)
+                                # Skip TVL (usually largest), take next largest
+                                if len(reward_values) > 1:
+                                    total_rewards = reward_values[1]  # Second largest
+                                else:
+                                    total_rewards = reward_values[0]
+                    
+                    # Extract VAPR - it's the 5th column (index 4)
+                    vapr = 0.0
+                    try:
+                        # Use find_elements to avoid hanging on implicit wait
+                        right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
+                        if not right_sections:
+                            raise Exception("Right section not found")
+                        right_section = right_sections[0]
+                        slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # VAPR is usually 5th column (index 4) or look for "vapr" class
+                        if len(slots) >= 5:
+                            vapr_text = slots[4].text
+                            vapr_match = re.search(r'(\d+\.?\d*)\s*%', vapr_text)
+                            if vapr_match:
+                                vapr = float(vapr_match.group(1))
+                    except:
+                        pass
+                    
+                    # Fallback: search text for percentages
+                    if vapr == 0.0:
+                        percentages = re.findall(r'(\d+\.?\d*)\s*%', text)
+                        if percentages:
+                            vapr_values = [float(p) for p in percentages]
+                            # VAPR is usually > 50%
+                            large_percentages = [v for v in vapr_values if v > 50]
+                            if large_percentages:
+                                vapr = max(large_percentages)
+                            elif vapr_values:
+                                vapr = max(vapr_values)
+                    
+                    # Extract votes - it's in the last column (VOTES)
+                    # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
+                    # Votes can be: "6,967" (no M) or "31.29M" (with M for millions)
+                    # Votes are typically in slot 7 or 8, often with VAPR percentage on the same line
+                    votes = None
+                    try:
+                        # Use find_elements to avoid hanging on implicit wait
+                        right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
+                        if not right_sections:
+                            raise Exception("Right section not found")
+                        right_section = right_sections[0]
+                        slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # Check slots 7 and 8 (last two slots) for votes
+                        # Votes are usually the first number in these slots
+                        for slot_idx in [7, 8]:
+                            if slot_idx < len(slots):
+                                votes_text = slots[slot_idx].text.strip()
+                                
+                                # Split by newlines - votes are usually on the first line
+                                lines = votes_text.split('\n')
+                                if lines:
+                                    first_line = lines[0].strip()
+                                    
+                                    # First check for M suffix (millions)
+                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
+                                    if votes_match:
+                                        votes_str = votes_match.group(1).replace(',', '')
+                                        votes = float(votes_str) * 1_000_000
+                                        break
+                                    
+                                    # Then check for numbers without M (like "544,767" or "6,967")
+                                    # Extract the first number from the line
+                                    numbers = re.findall(r'\b([\d,]+)\b', first_line)
+                                    if numbers:
+                                        # Take the first number that looks like votes
+                                        for num_str in numbers:
+                                            num_val = float(num_str.replace(',', ''))
+                                            # Votes without M are typically >= 1000
+                                            if num_val >= 1000:
+                                                votes = num_val
+                                                break
+                                        if votes is not None:
+                                            break
+                        
+                        # If still not found, check all slots in reverse
+                        if votes is None:
+                            for slot_idx in range(len(slots) - 1, max(6, len(slots) - 4), -1):
+                                votes_text = slots[slot_idx].text.strip()
+                                lines = votes_text.split('\n')
+                                if lines:
+                                    first_line = lines[0].strip()
+                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
+                                    if votes_match:
+                                        votes_str = votes_match.group(1).replace(',', '')
+                                        votes = float(votes_str) * 1_000_000
+                                        break
+                                    numbers = re.findall(r'\b([\d,]+)\b', first_line)
+                                    if numbers:
+                                        for num_str in numbers:
+                                            num_val = float(num_str.replace(',', ''))
+                                            if num_val >= 1000:
+                                                votes = num_val
+                                                break
+                                        if votes is not None:
+                                            break
+                        
+                    except:
+                        pass
+                    
+                    # Fallback: search full text for votes pattern (only if not found in slots)
+                    if votes is None:
+                        # First try pattern with M suffix (millions)
+                        votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]\b', text)
+                        if votes_match:
+                            votes_str = votes_match.group(1).replace(',', '')
+                            votes = float(votes_str) * 1_000_000
+                        else:
+                            # Look for standalone numbers that could be votes
+                            # Extract numbers and find the largest one that's likely votes
+                            numbers = re.findall(r'\b([\d,]+)\b', text)
+                            vote_candidates = []
+                            for num_str in numbers:
+                                num_val = float(num_str.replace(',', ''))
+                                # Votes are typically between 1,000 and 999,999 (without M)
+                                if 1000 <= num_val < 1000000:
+                                    # Check context to avoid percentages and dollar amounts
+                                    num_pos = text.find(num_str)
+                                    if num_pos >= 0:
+                                        context = text[max(0, num_pos - 10):min(len(text), num_pos + len(num_str) + 10)]
+                                        if '$' not in context and '%' not in context:
+                                            vote_candidates.append(num_val)
+                            
+                            # If multiple candidates, take the largest (most likely to be votes)
+                            if vote_candidates:
+                                votes = max(vote_candidates)
+                    
+                    # Only add pool if it has meaningful data
+                    if total_rewards > 0 or vapr > 0:
+                        pools.append(Pool(
+                            name=name if name != "Unknown" else f"Pool_{len(pools)+1}",
+                            total_rewards=total_rewards,
+                            vapr=vapr,
+                            current_votes=votes,
+                            pool_id=pool_id,  # May be None if not found
+                            pool_type=pool_type,
+                            fee_percentage=fee_percentage
+                        ))
+                except Exception as e:
+                    extraction_errors.append(str(e))
+                    continue
+        finally:
+            # Restore original implicit wait
+            driver.implicitly_wait(original_implicit_wait)
         
         # Note: extraction success/failure messages handled by caller (quiet flag)
         
@@ -855,13 +907,11 @@ class BlackholePoolRecommender:
         (instead of using Selenium), but this requires implementing contract query logic.
         """
         # Discovered API endpoints (tried first as they're more reliable)
+        # Note: Only try the known working endpoint to avoid hanging on generic endpoints
         api_endpoints = [
             "https://resources.blackhole.xyz/cl-pools-list/cl-pools.json",
-            # Generic endpoints (likely fail, but keeping for backwards compatibility)
-            "https://api.blackhole.xyz/vote",
-            "https://blackhole.xyz/api/vote",
-            "https://api.blackhole.xyz/pools",
-            "https://blackhole.xyz/api/pools",
+            # Generic endpoints removed - they were causing hangs/timeouts
+            # Keep only the known working endpoint
         ]
         
         headers = {
@@ -871,13 +921,18 @@ class BlackholePoolRecommender:
         
         for endpoint in api_endpoints:
             try:
-                response = requests.get(endpoint, headers=headers, timeout=10)
+                # Use shorter timeout to fail fast if endpoint is slow
+                response = requests.get(endpoint, headers=headers, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
                     pools = self._parse_api_response(data)
                     if pools:
                         return pools
+            except requests.exceptions.Timeout:
+                # Timeout - skip this endpoint quickly
+                continue
             except Exception as e:
+                # Other errors - skip
                 continue
         
         return []
