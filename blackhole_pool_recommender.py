@@ -17,7 +17,7 @@ import logging
 from typing import List, Dict, Optional
 from decimal import Decimal, getcontext
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import argparse
 import sys
 
@@ -145,6 +145,8 @@ class BlackholePoolRecommender:
             self.headless = headless
         self.implicit_wait = _selenium_config.get('implicit_wait', 10)
         self.pools: List[Pool] = []
+        self.epoch_close_utc: Optional[datetime] = None
+        self.epoch_close_local: Optional[datetime] = None
         
     def fetch_pools_selenium(self, quiet: bool = False) -> List[Pool]:
         """Fetch pool data using Selenium (most reliable for React apps)"""
@@ -159,43 +161,62 @@ class BlackholePoolRecommender:
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        # Add timeout settings to prevent hangs
+        options.add_argument('--page-load-strategy=eager')  # Don't wait for all resources
         
         driver = None
         try:
-            driver = webdriver.Chrome(options=options)
+            # Set service with timeout to prevent connection hangs
+            service = Service()
+            driver = webdriver.Chrome(service=service, options=options)
             driver.implicitly_wait(self.implicit_wait)
+            # Set page load timeout to prevent indefinite hangs
+            driver.set_page_load_timeout(60)  # 60 seconds max for page loads
             if not quiet:
                 print(f"Loading {self.url}...")
             driver.get(self.url)
             
             if not quiet:
                 print("Waiting for pool data to load (this may take 15-20 seconds)...")
-            time.sleep(12)  # Give React time to render and fetch data
+            try:
+                time.sleep(12)  # Give React time to render and fetch data
+            except KeyboardInterrupt:
+                if not quiet:
+                    print("\nInterrupted - attempting to extract available data...")
+                # Continue to extraction even if interrupted
             
             # Set pagination to show 100 pools per page
             if not quiet:
                 print("Setting pagination to 100 pools per page...")
             try:
-                # Find the pagination container (custom dropdown)
-                pagination_container = driver.find_element(By.XPATH, "//div[contains(@class, 'size-per-page')]")
-                
-                # Click on the container to open dropdown
-                driver.execute_script("arguments[0].click();", pagination_container)
-                time.sleep(1.5)  # Wait for dropdown to open
-                
-                # Look for option with text "100" - it's in a span with class "size-text"
-                try:
-                    option_100 = driver.find_element(By.XPATH, "//span[contains(@class, 'size-text') and contains(text(), '100')]")
-                    # Click on the parent container (size-container) that contains this span
-                    parent_container = option_100.find_element(By.XPATH, "./ancestor::*[contains(@class, 'size-container')][1]")
-                    driver.execute_script("arguments[0].click();", parent_container)
-                    if not quiet:
-                        print("Set pagination to 100 pools per page")
-                    time.sleep(4)  # Wait for pools to reload
-                except Exception as e:
-                    if not quiet:
-                        print(f"Could not find/click option 100: {e}, will try to load all pools via scrolling")
+                # Find the pagination container (custom dropdown) - use find_elements with WebDriverWait
+                pagination_containers = WebDriverWait(driver, 5).until(
+                    EC.presence_of_all_elements_located((By.XPATH, "//div[contains(@class, 'size-per-page')]"))
+                )
+                if pagination_containers:
+                    pagination_container = pagination_containers[0]
+                    # Click on the container to open dropdown
+                    driver.execute_script("arguments[0].click();", pagination_container)
+                    time.sleep(1.5)  # Wait for dropdown to open
                     
+                    # Look for option with text "100" - it's in a span with class "size-text"
+                    try:
+                        option_100s = WebDriverWait(driver, 3).until(
+                            EC.presence_of_all_elements_located((By.XPATH, "//span[contains(@class, 'size-text') and contains(text(), '100')]"))
+                        )
+                        if option_100s:
+                            option_100 = option_100s[0]
+                            # Click on the parent container (size-container) that contains this span
+                            parent_containers = option_100.find_elements(By.XPATH, "./ancestor::*[contains(@class, 'size-container')][1]")
+                            if parent_containers:
+                                driver.execute_script("arguments[0].click();", parent_containers[0])
+                                if not quiet:
+                                    print("Set pagination to 100 pools per page")
+                                time.sleep(4)  # Wait for pools to reload
+                    except Exception as e:
+                        if not quiet:
+                            print(f"Could not find/click option 100: {e}, will try to load all pools via scrolling")
+                        
             except Exception as e:
                 if not quiet:
                     logger.warning(f"Error setting pagination: {e}, will try scrolling instead")
@@ -204,12 +225,15 @@ class BlackholePoolRecommender:
             if not quiet:
                 print("Sorting by TOTAL REWARDS...")
             try:
-                # Find and click the TOTAL REWARDS column header
-                total_rewards_header = driver.find_element(By.XPATH, "//div[contains(@class, 'total-rewards')] | //div[contains(@class, 'liquidity-pool-column-tab') and contains(text(), 'TOTAL REWARDS')]")
-                driver.execute_script("arguments[0].click();", total_rewards_header)
-                time.sleep(3)  # Wait for sort to complete
-                if not quiet:
-                    print("Sorted by TOTAL REWARDS")
+                # Find and click the TOTAL REWARDS column header - use find_elements with wait
+                total_rewards_headers = WebDriverWait(driver, 5).until(
+                    EC.presence_of_all_elements_located((By.XPATH, "//div[contains(@class, 'total-rewards')] | //div[contains(@class, 'liquidity-pool-column-tab') and contains(text(), 'TOTAL REWARDS')]"))
+                )
+                if total_rewards_headers:
+                    driver.execute_script("arguments[0].click();", total_rewards_headers[0])
+                    time.sleep(3)  # Wait for sort to complete
+                    if not quiet:
+                        print("Sorted by TOTAL REWARDS")
             except Exception as e:
                 if not quiet:
                     print(f"Could not click TOTAL REWARDS header (may already be sorted): {e}")
@@ -270,10 +294,16 @@ class BlackholePoolRecommender:
                 driver.execute_script("window.scrollTo(0, 0);")
             time.sleep(2)
             
+            # Extract epoch information from page (only if we didn't get it from API)
+            if not self.epoch_close_utc:
+                self._extract_epoch_info(driver, quiet=quiet)
+            
             pools = []
             
             # Method 1: Try to extract from DOM elements using Selenium
             try:
+                if not quiet:
+                    print("Extracting pool data from page...")
                 # The actual pool containers are divs with class 'liquidity-pool-cell'
                 pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell') and (contains(@class, 'even') or contains(@class, 'odd'))]")
                 
@@ -302,8 +332,11 @@ class BlackholePoolRecommender:
             if not pools:
                 print("Trying text-based extraction...")
                 try:
-                    page_text = driver.find_element(By.TAG_NAME, "body").text
-                    pools = self._extract_pools_from_text(page_text)
+                    # Use find_elements to avoid hanging
+                    body_elements = driver.find_elements(By.TAG_NAME, "body")
+                    if body_elements:
+                        page_text = body_elements[0].text
+                        pools = self._extract_pools_from_text(page_text)
                 except Exception as e:
                     print(f"Error extracting from text: {e}")
             
@@ -330,6 +363,24 @@ class BlackholePoolRecommender:
             
             return pools
             
+        except KeyboardInterrupt:
+            if not quiet:
+                print("\nOperation interrupted by user")
+            # Try to extract any available data before quitting
+            if driver:
+                try:
+                    if not quiet:
+                        print("Attempting to extract available data before exit...")
+                    pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell')]")
+                    if pool_elements:
+                        pools = self._extract_pools_from_elements(pool_elements[:min(50, len(pool_elements))], driver)
+                        if pools:
+                            if not quiet:
+                                print(f"Extracted {len(pools)} pools before exit")
+                            return pools
+                except:
+                    pass
+            raise
         except Exception as e:
             print(f"Error fetching pools with Selenium: {e}")
             import traceback
@@ -337,17 +388,23 @@ class BlackholePoolRecommender:
             raise
         finally:
             if driver:
-                driver.quit()
+                try:
+                    driver.quit()
+                except:
+                    pass  # Ignore errors during cleanup
     
     def _extract_pools_from_elements(self, elements, driver) -> List[Pool]:
         """
-        Extract pool data from Selenium WebElements
+        Extract pool data from Selenium WebElements.
+        
+        Uses find_elements (not find_element) to avoid hanging on implicit wait.
+        Temporarily reduces implicit wait to 0 during extraction for speed.
         
         NOTE: Votability filtering approach (for future implementation):
         Non-votable pools have a 'data-tooltip-id="no-locks-available"' attribute in the button container.
         To filter them out:
-        1. Find button container: element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-btn')]")
-        2. Check for tooltip: button_container.find_element(By.XPATH, ".//*[@data-tooltip-id='no-locks-available']")
+        1. Find button container: element.find_elements(...)
+        2. Check for tooltip: button_container.find_elements(...)
         3. If tooltip exists, skip the pool (not votable)
         
         This filtering should be done AFTER extraction is complete to avoid breaking the extraction logic.
@@ -355,293 +412,651 @@ class BlackholePoolRecommender:
         pools = []
         extraction_errors = []
         
-        for element in elements:
-            try:
-                text = element.text.strip()
-                
-                # Skip if element doesn't have meaningful content
-                if not text or len(text) < 10:
-                    continue
-                
-                # Extract pool name and metadata from left section
-                name = "Unknown"
-                pool_type = None
-                fee_percentage = None
-                pool_id = None  # Pool contract address or identifier
-                
+        # Temporarily set implicit wait to 0 during extraction to avoid hangs
+        # Save current implicit wait (from driver config) before changing it
+        # Note: implicitly_wait() doesn't return the old value, so we use self.implicit_wait
+        original_implicit_wait = self.implicit_wait
+        driver.implicitly_wait(0)
+        
+        try:
+            for idx, element in enumerate(elements):
                 try:
-                    # Pool name is in a div with class "name" inside the left section
-                    name_element = element.find_element(By.XPATH, ".//div[contains(@class, 'name')]")
-                    name_text = name_element.text.strip()
+                    # Add connection health check every 10 elements
+                    if idx > 0 and idx % 10 == 0:
+                        try:
+                            # Quick health check - try to get page title (with short timeout)
+                            from selenium.common.exceptions import TimeoutException
+                            from selenium.webdriver.support.ui import WebDriverWait
+                            WebDriverWait(driver, 1).until(lambda d: d.title is not None)
+                        except (TimeoutException, Exception):
+                            # Connection lost or timeout - skip remaining elements
+                            logger.warning(f"Connection timeout after {idx} elements. Extracted {len(pools)} pools so far.")
+                            break
                     
-                    # Use the full name text, don't truncate it
-                    if name_text:
-                        name = name_text
-                        # Determine pool type from name
-                        if name.startswith('vAMM'):
-                            pool_type = 'vAMM'
-                        elif name.startswith('CL200'):
-                            pool_type = 'CL200'
-                        elif name.startswith('CL1'):
-                            pool_type = 'CL1'
+                    text = element.text.strip()
                     
-                    # Try to extract pool ID/address from data attributes
-                    try:
-                        # Check for data attributes that might contain pool address
-                        pool_id = (
-                            element.get_attribute('data-pool-id') or
-                            element.get_attribute('data-pool-address') or
-                            element.get_attribute('data-address') or
-                            element.get_attribute('data-id')
-                        )
-                        # Also check child elements
-                        if not pool_id:
-                            try:
-                                id_element = element.find_element(By.XPATH, ".//*[@data-pool-id or @data-pool-address or @data-address]")
-                                pool_id = (
-                                    id_element.get_attribute('data-pool-id') or
-                                    id_element.get_attribute('data-pool-address') or
-                                    id_element.get_attribute('data-address')
-                                )
-                            except:
-                                pass
-                    except:
-                        pass
+                    # Skip if element doesn't have meaningful content
+                    if not text or len(text) < 10:
+                        continue
                     
-                    # Extract fee percentage
+                    # Extract pool name and metadata from left section
+                    name = "Unknown"
+                    pool_type = None
+                    fee_percentage = None
+                    pool_id = None  # Pool contract address or identifier
+                    
                     try:
-                        gas_info = element.find_element(By.XPATH, ".//div[contains(@class, 'gas-info')]//div[contains(@class, 'text')]")
-                        fee_percentage = gas_info.text.strip()
-                    except:
-                        pass
-                except:
-                    # Fallback: try to find name in left section
-                    try:
-                        left_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-left')] | .//div[contains(@class, 'liquidity-pool-cell-description')]")
-                        name_text = left_section.text.strip()
+                        # Pool name is in a div with class "name" inside the left section
+                        # Use explicit wait with short timeout to avoid hanging
+                        # Use find_elements to avoid hanging on implicit wait
+                        name_elements = element.find_elements(By.XPATH, ".//div[contains(@class, 'name')]")
+                        if name_elements:
+                            name_text = name_elements[0].text.strip()
+                        else:
+                            name_text = ""
                         
-                        # Look for the first line which usually contains the pool name
-                        lines = [line.strip() for line in name_text.split('\n') if line.strip()]
-                        if lines:
-                            # First line is usually the pool name
-                            first_line = lines[0]
-                            # Extract name - look for pattern like "CL200-WAVAX/USDC" or "CL200-WETH.e/USDt"
-                            name_patterns = [
-                                r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)',  # CL200-WAVAX/USDC or CL200-WETH.e/USDt
-                                r'([A-Z0-9\.]+/[A-Z0-9\.]+)',  # WAVAX/USDC
-                                r'([A-Z0-9\-]+)',  # CL200
-                            ]
-                            
-                            for pattern in name_patterns:
-                                name_match = re.search(pattern, first_line)
-                                if name_match:
-                                    name = name_match.group(1)
-                                    break
-                            
-                            # If pattern matching didn't work, use the first line as-is (up to reasonable length)
-                            if name == "Unknown" and len(first_line) < 50:
-                                name = first_line
-                    except:
-                        # Final fallback: extract from full text
-                        name_match = re.search(r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)|([A-Z0-9\.]+/[A-Z0-9\.]+)', text)
-                        if name_match:
-                            name = name_match.group(1) or name_match.group(2)
-                
-                # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
-                # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
-                total_rewards = 0.0
-                try:
-                    right_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
-                    slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
-                    
-                    # Look for TOTAL REWARDS - it's in slot 6 or 7, contains "Fees + Incentives"
-                    if len(slots) >= 7:
-                        # Try slot 6 first (most common)
-                        rewards_text = slots[6].text
-                        if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
-                            rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
-                            if rewards_match:
-                                total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                        # Use the full name text, don't truncate it
+                        if name_text:
+                            name = name_text
+                            # Determine pool type from name
+                            if name.startswith('vAMM'):
+                                pool_type = 'vAMM'
+                            elif name.startswith('CL200'):
+                                pool_type = 'CL200'
+                            elif name.startswith('CL1'):
+                                pool_type = 'CL1'
                         
-                        # If not found, try slot 7
-                        if total_rewards == 0.0 and len(slots) >= 8:
-                            rewards_text = slots[7].text
+                        # Try to extract pool ID/address from data attributes
+                        try:
+                            # Check for data attributes that might contain pool address
+                            pool_id = (
+                                element.get_attribute('data-pool-id') or
+                                element.get_attribute('data-pool-address') or
+                                element.get_attribute('data-address') or
+                                element.get_attribute('data-id')
+                            )
+                            # Also check child elements (use find_elements to avoid hanging)
+                            if not pool_id:
+                                try:
+                                    id_elements = element.find_elements(By.XPATH, ".//*[@data-pool-id or @data-pool-address or @data-address]")
+                                    if id_elements:
+                                        id_element = id_elements[0]
+                                        pool_id = (
+                                            id_element.get_attribute('data-pool-id') or
+                                            id_element.get_attribute('data-pool-address') or
+                                            id_element.get_attribute('data-address')
+                                        )
+                                except:
+                                    pass
+                        except:
+                            pass
+                        
+                        # Extract fee percentage (use find_elements to avoid implicit wait)
+                        try:
+                            gas_info_elements = element.find_elements(By.XPATH, ".//div[contains(@class, 'gas-info')]//div[contains(@class, 'text')]")
+                            if gas_info_elements:
+                                fee_percentage = gas_info_elements[0].text.strip()
+                        except:
+                            pass
+                    except:
+                        # Fallback: try to find name in left section (use find_elements to avoid hanging)
+                        try:
+                            left_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-left')] | .//div[contains(@class, 'liquidity-pool-cell-description')]")
+                            if left_sections:
+                                left_section = left_sections[0]
+                                name_text = left_section.text.strip()
+                            else:
+                                name_text = ""
+                            
+                            # Look for the first line which usually contains the pool name
+                            lines = [line.strip() for line in name_text.split('\n') if line.strip()]
+                            if lines:
+                                # First line is usually the pool name
+                                first_line = lines[0]
+                                # Extract name - look for pattern like "CL200-WAVAX/USDC" or "CL200-WETH.e/USDt"
+                                name_patterns = [
+                                    r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)',  # CL200-WAVAX/USDC or CL200-WETH.e/USDt
+                                    r'([A-Z0-9\.]+/[A-Z0-9\.]+)',  # WAVAX/USDC
+                                    r'([A-Z0-9\-]+)',  # CL200
+                                ]
+                                
+                                for pattern in name_patterns:
+                                    name_match = re.search(pattern, first_line)
+                                    if name_match:
+                                        name = name_match.group(1)
+                                        break
+                                
+                                # If pattern matching didn't work, use the first line as-is (up to reasonable length)
+                                if name == "Unknown" and len(first_line) < 50:
+                                    name = first_line
+                        except:
+                            # Final fallback: extract from full text
+                            name_match = re.search(r'([A-Z0-9\-]+-[A-Z0-9\.]+/[A-Z0-9\.]+)|([A-Z0-9\.]+/[A-Z0-9\.]+)', text)
+                            if name_match:
+                                name = name_match.group(1) or name_match.group(2)
+                    
+                    # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
+                    # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
+                    total_rewards = 0.0
+                    try:
+                        # Use find_elements to avoid hanging on implicit wait
+                        right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
+                        if not right_sections:
+                            raise Exception("Right section not found")
+                        right_section = right_sections[0]
+                        slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # Look for TOTAL REWARDS - it's in slot 6 or 7, contains "Fees + Incentives"
+                        if len(slots) >= 7:
+                            # Try slot 6 first (most common)
+                            rewards_text = slots[6].text
                             if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
                                 rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
                                 if rewards_match:
                                     total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
-                    
-                    # Fallback: search all slots for "Fees + Incentives"
-                    if total_rewards == 0.0:
-                        for slot in slots:
-                            slot_text = slot.text
-                            if 'Fees + Incentives' in slot_text or ('fee' in slot_text.lower() and 'incentive' in slot_text.lower()):
-                                rewards_match = re.search(r'\$[\d,]+\.?\d*', slot_text)
-                                if rewards_match:
-                                    total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
-                                    break
-                except Exception as e:
-                    pass
-                
-                # Fallback: if not found in column, search full text
-                if total_rewards == 0.0:
-                    # Find all $ amounts
-                    rewards_matches = re.findall(r'\$[\d,]+\.?\d*', text)
-                    if rewards_matches:
-                        reward_values = []
-                        for match in rewards_matches:
-                            try:
-                                val = float(match.replace('$', '').replace(',', '').replace('~', ''))
-                                reward_values.append(val)
-                            except:
-                                pass
-                        if reward_values:
-                            # Total rewards is typically the 2nd or 3rd largest (after TVL)
-                            reward_values.sort(reverse=True)
-                            # Skip TVL (usually largest), take next largest
-                            if len(reward_values) > 1:
-                                total_rewards = reward_values[1]  # Second largest
-                            else:
-                                total_rewards = reward_values[0]
-                
-                # Extract VAPR - it's the 5th column (index 4)
-                vapr = 0.0
-                try:
-                    right_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
-                    slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
-                    
-                    # VAPR is usually 5th column (index 4) or look for "vapr" class
-                    if len(slots) >= 5:
-                        vapr_text = slots[4].text
-                        vapr_match = re.search(r'(\d+\.?\d*)\s*%', vapr_text)
-                        if vapr_match:
-                            vapr = float(vapr_match.group(1))
-                except:
-                    pass
-                
-                # Fallback: search text for percentages
-                if vapr == 0.0:
-                    percentages = re.findall(r'(\d+\.?\d*)\s*%', text)
-                    if percentages:
-                        vapr_values = [float(p) for p in percentages]
-                        # VAPR is usually > 50%
-                        large_percentages = [v for v in vapr_values if v > 50]
-                        if large_percentages:
-                            vapr = max(large_percentages)
-                        elif vapr_values:
-                            vapr = max(vapr_values)
-                
-                # Extract votes - it's in the last column (VOTES)
-                # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
-                # Votes can be: "6,967" (no M) or "31.29M" (with M for millions)
-                # Votes are typically in slot 7 or 8, often with VAPR percentage on the same line
-                votes = None
-                try:
-                    right_section = element.find_element(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
-                    slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
-                    
-                    # Check slots 7 and 8 (last two slots) for votes
-                    # Votes are usually the first number in these slots
-                    for slot_idx in [7, 8]:
-                        if slot_idx < len(slots):
-                            votes_text = slots[slot_idx].text.strip()
                             
-                            # Split by newlines - votes are usually on the first line
-                            lines = votes_text.split('\n')
-                            if lines:
-                                first_line = lines[0].strip()
-                                
-                                # First check for M suffix (millions)
-                                votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
-                                if votes_match:
-                                    votes_str = votes_match.group(1).replace(',', '')
-                                    votes = float(votes_str) * 1_000_000
-                                    break
-                                
-                                # Then check for numbers without M (like "544,767" or "6,967")
-                                # Extract the first number from the line
-                                numbers = re.findall(r'\b([\d,]+)\b', first_line)
-                                if numbers:
-                                    # Take the first number that looks like votes
-                                    for num_str in numbers:
-                                        num_val = float(num_str.replace(',', ''))
-                                        # Votes without M are typically >= 1000
-                                        if num_val >= 1000:
-                                            votes = num_val
-                                            break
-                                    if votes is not None:
-                                        break
-                    
-                    # If still not found, check all slots in reverse
-                    if votes is None:
-                        for slot_idx in range(len(slots) - 1, max(6, len(slots) - 4), -1):
-                            votes_text = slots[slot_idx].text.strip()
-                            lines = votes_text.split('\n')
-                            if lines:
-                                first_line = lines[0].strip()
-                                votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
-                                if votes_match:
-                                    votes_str = votes_match.group(1).replace(',', '')
-                                    votes = float(votes_str) * 1_000_000
-                                    break
-                                numbers = re.findall(r'\b([\d,]+)\b', first_line)
-                                if numbers:
-                                    for num_str in numbers:
-                                        num_val = float(num_str.replace(',', ''))
-                                        if num_val >= 1000:
-                                            votes = num_val
-                                            break
-                                    if votes is not None:
-                                        break
-                
-                except:
-                    pass
-                
-                # Fallback: search full text for votes pattern (only if not found in slots)
-                if votes is None:
-                    # First try pattern with M suffix (millions)
-                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]\b', text)
-                    if votes_match:
-                        votes_str = votes_match.group(1).replace(',', '')
-                        votes = float(votes_str) * 1_000_000
-                    else:
-                        # Look for standalone numbers that could be votes
-                        # Extract numbers and find the largest one that's likely votes
-                        numbers = re.findall(r'\b([\d,]+)\b', text)
-                        vote_candidates = []
-                        for num_str in numbers:
-                            num_val = float(num_str.replace(',', ''))
-                            # Votes are typically between 1,000 and 999,999 (without M)
-                            if 1000 <= num_val < 1000000:
-                                # Check context to avoid percentages and dollar amounts
-                                num_pos = text.find(num_str)
-                                if num_pos >= 0:
-                                    context = text[max(0, num_pos - 10):min(len(text), num_pos + len(num_str) + 10)]
-                                    if '$' not in context and '%' not in context:
-                                        vote_candidates.append(num_val)
+                            # If not found, try slot 7
+                            if total_rewards == 0.0 and len(slots) >= 8:
+                                rewards_text = slots[7].text
+                                if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
+                                    rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
+                                    if rewards_match:
+                                        total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
                         
-                        # If multiple candidates, take the largest (most likely to be votes)
-                        if vote_candidates:
-                            votes = max(vote_candidates)
-                
-                # Only add pool if it has meaningful data
-                if total_rewards > 0 or vapr > 0:
-                    pools.append(Pool(
-                        name=name if name != "Unknown" else f"Pool_{len(pools)+1}",
-                        total_rewards=total_rewards,
-                        vapr=vapr,
-                        current_votes=votes,
-                        pool_id=pool_id,  # May be None if not found
-                        pool_type=pool_type,
-                        fee_percentage=fee_percentage
-                    ))
-            except Exception as e:
-                extraction_errors.append(str(e))
-                continue
+                        # Fallback: search all slots for "Fees + Incentives"
+                        if total_rewards == 0.0:
+                            for slot in slots:
+                                slot_text = slot.text
+                                if 'Fees + Incentives' in slot_text or ('fee' in slot_text.lower() and 'incentive' in slot_text.lower()):
+                                    rewards_match = re.search(r'\$[\d,]+\.?\d*', slot_text)
+                                    if rewards_match:
+                                        total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                                        break
+                    except Exception as e:
+                        pass
+                    
+                    # Fallback: if not found in column, search full text
+                    if total_rewards == 0.0:
+                        # Find all $ amounts
+                        rewards_matches = re.findall(r'\$[\d,]+\.?\d*', text)
+                        if rewards_matches:
+                            reward_values = []
+                            for match in rewards_matches:
+                                try:
+                                    val = float(match.replace('$', '').replace(',', '').replace('~', ''))
+                                    reward_values.append(val)
+                                except:
+                                    pass
+                            if reward_values:
+                                # Total rewards is typically the 2nd or 3rd largest (after TVL)
+                                reward_values.sort(reverse=True)
+                                # Skip TVL (usually largest), take next largest
+                                if len(reward_values) > 1:
+                                    total_rewards = reward_values[1]  # Second largest
+                                else:
+                                    total_rewards = reward_values[0]
+                    
+                    # Extract VAPR - it's the 5th column (index 4)
+                    vapr = 0.0
+                    try:
+                        # Use find_elements to avoid hanging on implicit wait
+                        right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
+                        if not right_sections:
+                            raise Exception("Right section not found")
+                        right_section = right_sections[0]
+                        slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # VAPR is usually 5th column (index 4) or look for "vapr" class
+                        if len(slots) >= 5:
+                            vapr_text = slots[4].text
+                            vapr_match = re.search(r'(\d+\.?\d*)\s*%', vapr_text)
+                            if vapr_match:
+                                vapr = float(vapr_match.group(1))
+                    except:
+                        pass
+                    
+                    # Fallback: search text for percentages
+                    if vapr == 0.0:
+                        percentages = re.findall(r'(\d+\.?\d*)\s*%', text)
+                        if percentages:
+                            vapr_values = [float(p) for p in percentages]
+                            # VAPR is usually > 50%
+                            large_percentages = [v for v in vapr_values if v > 50]
+                            if large_percentages:
+                                vapr = max(large_percentages)
+                            elif vapr_values:
+                                vapr = max(vapr_values)
+                    
+                    # Extract votes - it's in the last column (VOTES)
+                    # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
+                    # Votes can be: "6,967" (no M) or "31.29M" (with M for millions)
+                    # Votes are typically in slot 7 or 8, often with VAPR percentage on the same line
+                    votes = None
+                    try:
+                        # Use find_elements to avoid hanging on implicit wait
+                        right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
+                        if not right_sections:
+                            raise Exception("Right section not found")
+                        right_section = right_sections[0]
+                        slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # Check slots 7 and 8 (last two slots) for votes
+                        # Votes are usually the first number in these slots
+                        for slot_idx in [7, 8]:
+                            if slot_idx < len(slots):
+                                votes_text = slots[slot_idx].text.strip()
+                                
+                                # Split by newlines - votes are usually on the first line
+                                lines = votes_text.split('\n')
+                                if lines:
+                                    first_line = lines[0].strip()
+                                    
+                                    # First check for M suffix (millions)
+                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
+                                    if votes_match:
+                                        votes_str = votes_match.group(1).replace(',', '')
+                                        votes = float(votes_str) * 1_000_000
+                                        break
+                                    
+                                    # Then check for numbers without M (like "544,767" or "6,967")
+                                    # Extract the first number from the line
+                                    numbers = re.findall(r'\b([\d,]+)\b', first_line)
+                                    if numbers:
+                                        # Take the first number that looks like votes
+                                        for num_str in numbers:
+                                            num_val = float(num_str.replace(',', ''))
+                                            # Votes without M are typically >= 1000
+                                            if num_val >= 1000:
+                                                votes = num_val
+                                                break
+                                        if votes is not None:
+                                            break
+                        
+                        # If still not found, check all slots in reverse
+                        if votes is None:
+                            for slot_idx in range(len(slots) - 1, max(6, len(slots) - 4), -1):
+                                votes_text = slots[slot_idx].text.strip()
+                                lines = votes_text.split('\n')
+                                if lines:
+                                    first_line = lines[0].strip()
+                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
+                                    if votes_match:
+                                        votes_str = votes_match.group(1).replace(',', '')
+                                        votes = float(votes_str) * 1_000_000
+                                        break
+                                    numbers = re.findall(r'\b([\d,]+)\b', first_line)
+                                    if numbers:
+                                        for num_str in numbers:
+                                            num_val = float(num_str.replace(',', ''))
+                                            if num_val >= 1000:
+                                                votes = num_val
+                                                break
+                                        if votes is not None:
+                                            break
+                        
+                    except:
+                        pass
+                    
+                    # Fallback: search full text for votes pattern (only if not found in slots)
+                    if votes is None:
+                        # First try pattern with M suffix (millions)
+                        votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]\b', text)
+                        if votes_match:
+                            votes_str = votes_match.group(1).replace(',', '')
+                            votes = float(votes_str) * 1_000_000
+                        else:
+                            # Look for standalone numbers that could be votes
+                            # Extract numbers and find the largest one that's likely votes
+                            numbers = re.findall(r'\b([\d,]+)\b', text)
+                            vote_candidates = []
+                            for num_str in numbers:
+                                num_val = float(num_str.replace(',', ''))
+                                # Votes are typically between 1,000 and 999,999 (without M)
+                                if 1000 <= num_val < 1000000:
+                                    # Check context to avoid percentages and dollar amounts
+                                    num_pos = text.find(num_str)
+                                    if num_pos >= 0:
+                                        context = text[max(0, num_pos - 10):min(len(text), num_pos + len(num_str) + 10)]
+                                        if '$' not in context and '%' not in context:
+                                            vote_candidates.append(num_val)
+                            
+                            # If multiple candidates, take the largest (most likely to be votes)
+                            if vote_candidates:
+                                votes = max(vote_candidates)
+                    
+                    # Only add pool if it has meaningful data
+                    if total_rewards > 0 or vapr > 0:
+                        pools.append(Pool(
+                            name=name if name != "Unknown" else f"Pool_{len(pools)+1}",
+                            total_rewards=total_rewards,
+                            vapr=vapr,
+                            current_votes=votes,
+                            pool_id=pool_id,  # May be None if not found
+                            pool_type=pool_type,
+                            fee_percentage=fee_percentage
+                        ))
+                except Exception as e:
+                    extraction_errors.append(str(e))
+                    continue
+        finally:
+            # Restore original implicit wait
+            driver.implicitly_wait(original_implicit_wait)
         
         # Note: extraction success/failure messages handled by caller (quiet flag)
         
         return pools
+    
+    def _extract_epoch_info(self, driver, quiet: bool = False):
+        """
+        Extract epoch close date/time from the page.
+        
+        Looks for the specific pattern: "Voting deadline for epoch #<epochNumber>" 
+        followed by time remaining (days/hours until epoch close).
+        """
+        try:
+            from datetime import timedelta
+            
+            # Get page text to search for the voting deadline pattern
+            # Try multiple sources: body text, page source, and specific elements
+            page_text = ""
+            try:
+                body_elements = driver.find_elements(By.TAG_NAME, "body")
+                if body_elements:
+                    page_text = body_elements[0].text
+                
+                # Also get page source for more complete text (some React apps don't expose all text in .text)
+                if not page_text or 'Voting deadline' not in page_text and 'deadline' not in page_text.lower():
+                    page_source = driver.page_source
+                    # Extract text from HTML
+                    if BS4_AVAILABLE:
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(page_source, 'html.parser')
+                        page_text = soup.get_text(separator='\n')
+                    else:
+                        # Basic extraction without BeautifulSoup
+                        import re as re_module
+                        # Remove script and style tags
+                        page_source = re_module.sub(r'<script[^>]*>.*?</script>', '', page_source, flags=re_module.DOTALL | re_module.IGNORECASE)
+                        page_source = re_module.sub(r'<style[^>]*>.*?</style>', '', page_source, flags=re_module.DOTALL | re_module.IGNORECASE)
+                        # Extract text between tags (simple version)
+                        page_text = re_module.sub(r'<[^>]+>', '\n', page_source)
+            except Exception as e:
+                logger.debug(f"Error getting page text: {e}")
+                pass
+            
+            # Strategy 0: Look for specific elements with class="pending-time clickable" and data-tooltip-id="voting-epoch-tooltip"
+            try:
+                pending_time_elements = driver.find_elements(By.XPATH, 
+                    "//*[@class='pending-time clickable' and @data-tooltip-id='voting-epoch-tooltip'] | "
+                    "//*[contains(@class, 'pending-time') and contains(@class, 'clickable') and @data-tooltip-id='voting-epoch-tooltip']")
+                
+                for elem in pending_time_elements:
+                    # Get the text content which should have the countdown
+                    time_text = elem.text.strip()
+                    if time_text:
+                        # Also try to get tooltip content which might have more info
+                        try:
+                            tooltip_text = elem.get_attribute('data-tooltip-content') or elem.get_attribute('title') or ""
+                        except:
+                            tooltip_text = ""
+                        
+                        # Search in both the element text and tooltip
+                        search_text = f"{time_text} {tooltip_text}"
+                        
+                        # Extract countdown from the text
+                        now_utc = datetime.now(timezone.utc)
+                        delta = timedelta(0)
+                        
+                        # Try format like "02d:08h:38m:35s" first (Xd:Xh:Xm:Xs)
+                        compact_format = re.search(r'(\d+)d\s*:\s*(\d+)h\s*:\s*(\d+)m\s*:\s*(\d+)s', search_text, re.IGNORECASE)
+                        if compact_format:
+                            days = int(compact_format.group(1))
+                            hours = int(compact_format.group(2))
+                            minutes = int(compact_format.group(3))
+                            seconds = int(compact_format.group(4))
+                            delta = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+                        else:
+                            # Try HH:MM:SS format
+                            time_match = re.search(r'(\d{1,2}):(\d{2}):(\d{2})', search_text)
+                            if time_match:
+                                # HH:MM:SS format
+                                hours = int(time_match.group(1))
+                                minutes = int(time_match.group(2))
+                                seconds = int(time_match.group(3))
+                                delta = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+                            else:
+                                # Try to extract days, hours, minutes, seconds separately
+                                days_match = re.search(r'(\d+)\s*d(?:ays?)?\b', search_text, re.IGNORECASE)
+                                hours_match = re.search(r'(\d+)\s*h(?:ours?)?\b', search_text, re.IGNORECASE)
+                                minutes_match = re.search(r'(\d+)\s*m(?:inutes?)?\b', search_text, re.IGNORECASE)
+                                seconds_match = re.search(r'(\d+)\s*s(?:econds?)?\b', search_text, re.IGNORECASE)
+                                
+                                # Days/hours/minutes format
+                                if days_match:
+                                    delta += timedelta(days=int(days_match.group(1)))
+                                if hours_match:
+                                    delta += timedelta(hours=int(hours_match.group(1)))
+                                if minutes_match:
+                                    delta += timedelta(minutes=int(minutes_match.group(1)))
+                                if seconds_match:
+                                    delta += timedelta(seconds=int(seconds_match.group(1)))
+                        
+                        if delta.total_seconds() > 0:
+                            self.epoch_close_utc = now_utc + delta
+                            self.epoch_close_local = self.epoch_close_utc.astimezone()
+                            return
+            except Exception as e:
+                logger.debug(f"Error finding pending-time element: {e}")
+            
+            # Strategy 1: Look for the specific pattern "Voting deadline for epoch #<number>"
+            # This is typically followed by time remaining like "X days Y hours"
+            # Try multiple patterns to catch variations in formatting
+            deadline_patterns = [
+                r'Voting\s+deadline\s+for\s+epoch\s*#\s*(\d+)[\s\n:]*([^\n]{0,200})',  # Flexible spacing and colon
+                r'Voting\s+deadline\s+for\s+epoch\s*#\s*(\d+)[\s\n]*([^\n]{0,200})',  # Without colon
+                r'Voting\s+deadline.*?epoch\s*#\s*(\d+)[\s\n:]*([^\n]{0,200})',  # More flexible
+                r'deadline.*?epoch\s*#\s*(\d+)[\s\n:]*([^\n]{0,200})',  # Without "Voting"
+            ]
+            
+            deadline_match = None
+            remaining_text = ""
+            
+            for pattern in deadline_patterns:
+                deadline_match = re.search(pattern, page_text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+                if deadline_match:
+                    # Extract the text after the deadline announcement (up to 200 chars)
+                    remaining_text = deadline_match.group(2).strip() if len(deadline_match.groups()) > 1 else ""
+                    if remaining_text:
+                        break
+            
+            # If we found the deadline text but no remaining_text, look in nearby lines and elements
+            if deadline_match and not remaining_text:
+                # Try to get text from nearby lines in page_text
+                deadline_line_idx = None
+                for i, line in enumerate(page_text.split('\n')):
+                    if deadline_match.group(0).lower() in line.lower():
+                        deadline_line_idx = i
+                        break
+                
+                if deadline_line_idx is not None:
+                    lines = page_text.split('\n')
+                    # Check next few lines for countdown
+                    for i in range(deadline_line_idx + 1, min(deadline_line_idx + 5, len(lines))):
+                        if re.search(r'\d+\s*(day|hour)', lines[i], re.IGNORECASE):
+                            remaining_text = lines[i]
+                            break
+                    # Also check previous line (sometimes it's before)
+                    if not remaining_text and deadline_line_idx > 0:
+                        if re.search(r'\d+\s*(day|hour)', lines[deadline_line_idx - 1], re.IGNORECASE):
+                            remaining_text = lines[deadline_line_idx - 1]
+                
+                # Also try to get text from the element itself or nearby DOM elements
+                if not remaining_text:
+                    try:
+                        deadline_elements = driver.find_elements(By.XPATH, "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'voting deadline') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'deadline for epoch')]")
+                        for elem in deadline_elements:
+                            # Get parent element text which might contain the countdown
+                            try:
+                                parent = elem.find_element(By.XPATH, "./..")
+                                parent_text = parent.text
+                                if 'day' in parent_text.lower() or 'hour' in parent_text.lower():
+                                    remaining_text = parent_text
+                                    break
+                            except:
+                                try:
+                                    # Try getting next sibling
+                                    next_elem = driver.execute_script("return arguments[0].nextElementSibling;", elem)
+                                    if next_elem:
+                                        remaining_text = next_elem.text
+                                        if remaining_text:
+                                            break
+                                except:
+                                    pass
+                    except:
+                        pass
+            
+            if deadline_match and remaining_text:
+                
+                # Look for time patterns in the remaining text
+                # Common formats: "X days Y hours", "X days", "X hours Y minutes", "HH:MM:SS"
+                now_utc = datetime.now(timezone.utc)
+                delta = timedelta(0)
+                
+                # Try to extract days, hours, minutes, seconds
+                days_match = re.search(r'(\d+)\s*days?', remaining_text, re.IGNORECASE)
+                hours_match = re.search(r'(\d+)\s*hours?', remaining_text, re.IGNORECASE)
+                minutes_match = re.search(r'(\d+)\s*minutes?', remaining_text, re.IGNORECASE)
+                seconds_match = re.search(r'(\d+)\s*seconds?', remaining_text, re.IGNORECASE)
+                
+                # Also try HH:MM:SS format
+                time_match = re.search(r'(\d{1,2}):(\d{2}):(\d{2})', remaining_text)
+                
+                if time_match:
+                    # HH:MM:SS format
+                    hours = int(time_match.group(1))
+                    minutes = int(time_match.group(2))
+                    seconds = int(time_match.group(3))
+                    delta = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+                else:
+                    # Days/hours/minutes format
+                    if days_match:
+                        delta += timedelta(days=int(days_match.group(1)))
+                    if hours_match:
+                        delta += timedelta(hours=int(hours_match.group(1)))
+                    if minutes_match:
+                        delta += timedelta(minutes=int(minutes_match.group(1)))
+                    if seconds_match:
+                        delta += timedelta(seconds=int(seconds_match.group(1)))
+                
+                if delta.total_seconds() > 0:
+                    self.epoch_close_utc = now_utc + delta
+                    self.epoch_close_local = self.epoch_close_utc.astimezone()
+                    if not quiet:
+                        print(f"Found epoch close time: {self.epoch_close_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    return
+            
+            # Strategy 2: Fallback - look for date/time strings in UTC format
+            # The page lists epoch close in UTC, so look for UTC timestamps
+            date_patterns = [
+                r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+UTC',  # ISO format with UTC
+                r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+UTC',  # ISO format with UTC (no seconds)
+            ]
+            
+            for pattern in date_patterns:
+                matches = re.findall(pattern, page_text)
+                if matches:
+                    # Try to parse the matches
+                    for match in reversed(matches[-5:]):  # Check last 5 matches
+                        try:
+                            parsed_date = None
+                            if match.count(':') == 2:
+                                parsed_date = datetime.strptime(match, '%Y-%m-%d %H:%M:%S')
+                            else:
+                                parsed_date = datetime.strptime(match, '%Y-%m-%d %H:%M')
+                            
+                            if parsed_date:
+                                # Set as UTC
+                                parsed_date = parsed_date.replace(tzinfo=timezone.utc)
+                                # Only accept future dates (reasonable epoch close times)
+                                now_utc = datetime.now(timezone.utc)
+                                if parsed_date > now_utc:
+                                    self.epoch_close_utc = parsed_date
+                                    self.epoch_close_local = parsed_date.astimezone()
+                                    if not quiet:
+                                        print(f"Found epoch close time (UTC): {self.epoch_close_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                                    return
+                        except ValueError:
+                            continue
+            
+            # Strategy 3: Look for general countdown text if pattern not found
+            # Look for elements containing "left", "ends", "remaining" near epoch info
+            try:
+                # Search for any element with countdown-like text
+                countdown_xpath = (
+                    "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'day') and "
+                    "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'hour')] | "
+                    "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'left')] | "
+                    "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'remaining')] | "
+                    "//*[regexp:test(text(), '\\d+:\\d{2}:\\d{2}')]"
+                )
+                
+                # Try simpler XPath without regex
+                countdown_elements = driver.find_elements(By.XPATH, 
+                    "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'day') or "
+                    "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'hour') or "
+                    "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'left')]")
+                
+                # Also search in page_text for countdown patterns
+                if page_text:
+                    # Look for patterns like "X days, Y hours" or "Xd Yh" in the full text
+                    countdown_in_text = re.search(r'(\d+)\s*d(?:ays?|\.)?[\s,]*(\d+)\s*h(?:ours?|\.)?', page_text, re.IGNORECASE)
+                    if countdown_in_text:
+                        days = int(countdown_in_text.group(1))
+                        hours = int(countdown_in_text.group(2))
+                        now_utc = datetime.now(timezone.utc)
+                        delta = timedelta(days=days, hours=hours)
+                        if delta.total_seconds() > 0:
+                            self.epoch_close_utc = now_utc + delta
+                            self.epoch_close_local = self.epoch_close_utc.astimezone()
+                            return
+                
+                for elem in countdown_elements:
+                    text = elem.text.strip()
+                    # Look for time patterns like "HH:MM:SS" or "X days Y hours"
+                    if re.search(r'\d+:\d{2}:\d{2}', text) or re.search(r'\d+\s*(day|hour|minute)', text, re.IGNORECASE):
+                        now_utc = datetime.now(timezone.utc)
+                        
+                        days_match = re.search(r'(\d+)\s*days?', text, re.IGNORECASE)
+                        hours_match = re.search(r'(\d+)\s*hours?', text, re.IGNORECASE)
+                        minutes_match = re.search(r'(\d+)\s*minutes?', text, re.IGNORECASE)
+                        
+                        time_match = re.search(r'(\d{1,2}):(\d{2}):(\d{2})', text)
+                        
+                        delta = timedelta(0)
+                        if time_match:
+                            hours = int(time_match.group(1))
+                            minutes = int(time_match.group(2))
+                            seconds = int(time_match.group(3))
+                            delta = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+                        else:
+                            if days_match:
+                                delta += timedelta(days=int(days_match.group(1)))
+                            if hours_match:
+                                delta += timedelta(hours=int(hours_match.group(1)))
+                            if minutes_match:
+                                delta += timedelta(minutes=int(minutes_match.group(1)))
+                        
+                        if delta.total_seconds() > 0:
+                            self.epoch_close_utc = now_utc + delta
+                            self.epoch_close_local = self.epoch_close_utc.astimezone()
+                            return
+            except Exception as e:
+                logger.debug(f"Could not parse countdown: {e}")
+                
+        except Exception as e:
+            logger.debug(f"Could not extract epoch close time: {e}")
+            self.epoch_close_utc = None
+            self.epoch_close_local = None
     
     def _extract_from_network_logs(self, driver) -> List[Pool]:
         """Try to extract pool data from network request logs"""
@@ -794,13 +1209,27 @@ class BlackholePoolRecommender:
         return pools
     
     def fetch_pools_api(self) -> List[Pool]:
-        """Try to fetch pools from a direct API endpoint"""
-        # Common API endpoints to try
+        """
+        Try to fetch pools from a direct API endpoint.
+        
+        Discovered endpoints:
+        - https://resources.blackhole.xyz/cl-pools-list/cl-pools.json - CL pool list with fees/TVL
+        - https://resources.blackhole.xyz/genesis-info/genesis.json - Token launch info (not voting data)
+        - https://resources.blackhole.xyz/token-details.json - Token metadata (not voting data)
+        
+        Note: The pool list endpoint has pool metadata but NOT VAPR/votes/rewards (voting-specific data).
+        Voting metrics appear to come from blockchain RPC calls (dynamic contract queries), not static APIs.
+        This is why Selenium is needed - it executes JavaScript that makes these RPC calls.
+        
+        Future improvement: Query voting contracts directly via web3.py for each pool address
+        (instead of using Selenium), but this requires implementing contract query logic.
+        """
+        # Discovered API endpoints (tried first as they're more reliable)
+        # Note: Only try the known working endpoint to avoid hanging on generic endpoints
         api_endpoints = [
-            "https://api.blackhole.xyz/vote",
-            "https://blackhole.xyz/api/vote",
-            "https://api.blackhole.xyz/pools",
-            "https://blackhole.xyz/api/pools",
+            "https://resources.blackhole.xyz/cl-pools-list/cl-pools.json",
+            # Generic endpoints removed - they were causing hangs/timeouts
+            # Keep only the known working endpoint
         ]
         
         headers = {
@@ -810,57 +1239,137 @@ class BlackholePoolRecommender:
         
         for endpoint in api_endpoints:
             try:
-                response = requests.get(endpoint, headers=headers, timeout=10)
+                # Use shorter timeout to fail fast if endpoint is slow
+                response = requests.get(endpoint, headers=headers, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
-                    return self._parse_api_response(data)
+                    pools = self._parse_api_response(data)
+                    if pools:
+                        return pools
+            except requests.exceptions.Timeout:
+                # Timeout - skip this endpoint quickly
+                continue
             except Exception as e:
+                # Other errors - skip
                 continue
         
         return []
     
     def _parse_api_response(self, data: dict) -> List[Pool]:
-        """Parse pool data from API response"""
+        """
+        Parse pool data from API response.
+        
+        Supports multiple API formats:
+        1. CL pools format (resources.blackhole.xyz/cl-pools-list/cl-pools.json):
+           - Has: id, token0, token1, feesUSD, totalValueLockedUSD, fee
+           - Missing: VAPR, votes, totalRewards (voting-specific metrics)
+        2. Generic format with voting data:
+           - Has: name, totalRewards, vapr, votes
+        """
         pools = []
         
-        # This depends on the actual API structure
-        # Common patterns:
-        # - data['pools'] or data['data']['pools']
-        # - Each pool has: name, totalRewards, vapr, etc.
-        
+        # Handle CL pools format (discovered endpoint)
         pools_data = data.get('pools', data.get('data', {}).get('pools', []))
+        
+        # If pools_data is still empty, data might be a list
+        if not pools_data and isinstance(data, list):
+            pools_data = data
         
         for pool_data in pools_data:
             try:
-                pool = Pool(
-                    name=pool_data.get('name', pool_data.get('pair', 'Unknown')),
-                    total_rewards=float(pool_data.get('totalRewards', pool_data.get('total_rewards', 0))),
-                    vapr=float(pool_data.get('vapr', pool_data.get('VAPR', 0))),
-                    current_votes=float(pool_data.get('votes', pool_data.get('currentVotes', 0))) if pool_data.get('votes') else None,
-                    pool_id=pool_data.get('id', pool_data.get('poolId'))
-                )
-                pools.append(pool)
+                # Try CL pools format first (resources.blackhole.xyz format)
+                if 'token0' in pool_data and 'token1' in pool_data:
+                    # CL pools format - construct name from tokens
+                    token0_symbol = pool_data['token0'].get('symbol', 'Unknown')
+                    token1_symbol = pool_data['token1'].get('symbol', 'Unknown')
+                    pool_name = f"{token0_symbol}/{token1_symbol}"
+                    
+                    # Determine pool type from fee tier
+                    fee = int(pool_data.get('fee', '0'))
+                    if fee == 100:  # 0.01%
+                        pool_type = 'CL1'
+                        fee_pct = '0.01%'
+                    elif fee == 500:  # 0.05%
+                        pool_type = 'CL200'
+                        fee_pct = '0.05%'
+                    elif fee == 2500:  # 0.25%
+                        pool_type = 'CL200'
+                        fee_pct = '0.25%'
+                    elif fee == 5000:  # 0.5%
+                        pool_type = 'CL200'
+                        fee_pct = '0.5%'
+                    elif fee == 7000:  # 0.7%
+                        pool_type = 'CL200'
+                        fee_pct = '0.7%'
+                    elif fee == 10000:  # 1%
+                        pool_type = 'CL200'
+                        fee_pct = '1%'
+                    else:
+                        pool_type = 'CL200'  # Default
+                        fee_pct = f"{fee/10000}%"
+                    
+                    # Use feesUSD as proxy for total_rewards (not perfect, but available)
+                    # Note: This is trading fees, not voting rewards
+                    total_rewards = float(pool_data.get('feesUSD', pool_data.get('untrackedFeesUSD', 0)))
+                    
+                    pool = Pool(
+                        name=pool_name,
+                        total_rewards=total_rewards,
+                        vapr=0.0,  # Not available in this API format
+                        current_votes=None,  # Not available in this API format
+                        pool_id=pool_data.get('id'),
+                        pool_type=pool_type,
+                        fee_percentage=fee_pct
+                    )
+                    pools.append(pool)
+                else:
+                    # Generic format with voting data (if we find such an endpoint)
+                    pool = Pool(
+                        name=pool_data.get('name', pool_data.get('pair', 'Unknown')),
+                        total_rewards=float(pool_data.get('totalRewards', pool_data.get('total_rewards', 0))),
+                        vapr=float(pool_data.get('vapr', pool_data.get('VAPR', 0))),
+                        current_votes=float(pool_data.get('votes', pool_data.get('currentVotes', 0))) if pool_data.get('votes') or pool_data.get('currentVotes') else None,
+                        pool_id=pool_data.get('id', pool_data.get('poolId')),
+                        pool_type=pool_data.get('poolType'),
+                        fee_percentage=pool_data.get('feePercentage')
+                    )
+                    pools.append(pool)
             except Exception as e:
-                print(f"Error parsing pool: {e}")
+                logger.debug(f"Error parsing pool: {e}")
                 continue
         
         return pools
     
     def fetch_pools(self, quiet: bool = False) -> List[Pool]:
-        """Main method to fetch pools - tries API first, then Selenium"""
-        # Try API first (faster)
+        """
+        Main method to fetch pools - tries API first, then Selenium.
+        
+        Note: The discovered API endpoint (resources.blackhole.xyz/cl-pools-list/cl-pools.json)
+        provides pool metadata but NOT voting metrics (VAPR, votes, rewards).
+        For complete voting recommendations, we need Selenium scraping which has all metrics.
+        """
+        # Try API first (faster, but may lack voting metrics)
         if not quiet:
             print("Attempting to fetch pool data from API...")
         pools = self.fetch_pools_api()
         
-        if pools:
+        # Check if API pools have voting metrics (VAPR or votes)
+        has_voting_data = pools and any(p.vapr > 0 or p.current_votes is not None for p in pools)
+        
+        if pools and has_voting_data:
             if not quiet:
-                print(f"Found {len(pools)} pools via API")
+                print(f"Found {len(pools)} pools via API with voting metrics")
             return pools
         
-        # Fall back to Selenium scraping
-        if SELENIUM_AVAILABLE:
+        # If API returned pools but without voting data, fall back to Selenium
+        if pools and not has_voting_data:
             if not quiet:
+                print(f"API found {len(pools)} pools but missing voting metrics (VAPR/votes)")
+                print("Falling back to Selenium for complete voting data...")
+        
+        # Fall back to Selenium scraping (has all voting metrics)
+        if SELENIUM_AVAILABLE:
+            if not quiet and not pools:
                 print("API not available, using Selenium to scrape page...")
             return self.fetch_pools_selenium(quiet=quiet)
         else:
@@ -949,6 +1458,15 @@ class BlackholePoolRecommender:
         output_lines.append("="*80)
         output_lines.append(f"Version: {__version__}")
         output_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Add epoch close time information
+        if self.epoch_close_utc:
+            if self.epoch_close_local:
+                output_lines.append(f"Epoch Close (UTC): {self.epoch_close_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                output_lines.append(f"Epoch Close (Local): {self.epoch_close_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            else:
+                output_lines.append(f"Epoch Close (UTC): {self.epoch_close_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        
         if user_voting_power:
             output_lines.append(f"Estimated rewards based on voting power: {user_voting_power:,.0f} veBLACK")
             output_lines.append("Note: Estimates assume you vote ALL your voting power in each pool individually")
@@ -1007,8 +1525,18 @@ class BlackholePoolRecommender:
                 "hide_vamm": hide_vamm,
                 "min_rewards": min_rewards
             },
-            "pools": []
+            "epoch_close": {}
         }
+        
+        # Add epoch close time information
+        if self.epoch_close_utc:
+            output["epoch_close"]["utc"] = self.epoch_close_utc.strftime('%Y-%m-%d %H:%M:%S UTC')
+            output["epoch_close"]["utc_iso"] = self.epoch_close_utc.isoformat()
+        if self.epoch_close_local:
+            output["epoch_close"]["local"] = self.epoch_close_local.strftime('%Y-%m-%d %H:%M:%S %Z')
+            output["epoch_close"]["local_iso"] = self.epoch_close_local.isoformat()
+        
+        output["pools"] = []
         
         for pool in pools:
             pool_data = {
