@@ -23,7 +23,12 @@ All notable changes to the published tools will be documented in this file.
 - **Error Handling**: Improved robustness for parsing hex data and empty transaction fields
 
 ### Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
-- **Version**: 1.1.1 ? 1.1.2
+- **Version**: 1.1.2
+- **Epoch Close Time Display**: Added epoch close date/time display in both UTC and local timezone
+  - Extracts epoch close time from the voting page during pool scraping
+  - Displays in output headers: "Epoch Close (UTC)" and "Epoch Close (Local)"
+  - Also included in JSON output format
+  - Helps users know when to submit votes before the deadline
 - **Pool ID Extraction**: Attempts to extract pool contract addresses from HTML data attributes
 - Improved pool identification for better tracking
 
