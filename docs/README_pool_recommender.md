@@ -68,6 +68,24 @@ python3 blackhole_pool_recommender.py --top 10 --min-rewards 500
 python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 1000 --hide-vamm
 ```
 
+### Filter by Maximum Pool Percentage
+```bash
+python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage 0.5
+```
+
+This filters out pools where adding your full voting power would give you more than the specified percentage of the total pool's voting power. This helps avoid pools where you'd have too large a share, which may indicate smaller or less established pools.
+
+**Note:** This filter requires `--voting-power` to be specified, as it needs to calculate your percentage share.
+
+**Example:**
+```bash
+# Hide pools where you'd have more than 0.5% of the voting power
+python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage 0.5
+
+# Combine with other filters
+python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage 0.5 --min-rewards 1000 --hide-vamm
+```
+
 ### Debug Mode (shows browser)
 ```bash
 python3 blackhole_pool_recommender.py --no-headless
@@ -206,7 +224,8 @@ Top 5 Pools (sorted by estimated reward):
   "user_voting_power": 15000,
   "filters": {
     "hide_vamm": true,
-    "min_rewards": 1000.0
+    "min_rewards": 1000.0,
+    "max_pool_percentage": 0.5
   },
   "pools": [
     {
@@ -233,6 +252,7 @@ Top 5 Pools (sorted by estimated reward):
 - **filters**: Object showing which filters were applied:
   - **hide_vamm**: Boolean indicating if vAMM pools were filtered out
   - **min_rewards**: Minimum total rewards threshold (null if not used)
+  - **max_pool_percentage**: Maximum pool voting power percentage threshold (null if not used)
 - **pools**: Array of recommended pools, each containing:
   - Pool identification (name, pool_type, fee_percentage)
   - Metrics (total_rewards, vapr, current_votes, rewards_per_vote, profitability_score)
