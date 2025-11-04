@@ -194,3 +194,52 @@ class TestPoolRecommender:
             # Should only have CL200 pool
             assert len(recommendations) == 1
             assert recommendations[0].pool_type != 'vAMM'
+    
+    def test_recommend_pools_max_pool_percentage(self):
+        """Test filtering by maximum pool percentage"""
+        recommender = BlackholePoolRecommender()
+        
+        # Pool 1: User would have 0.4% (15000 / (3500000 + 15000) * 100 = 0.43%)
+        # Pool 2: User would have 0.6% (15000 / (2485000 + 15000) * 100 = 0.60%)
+        # Pool 3: User would have 0.3% (15000 / (4985000 + 15000) * 100 = 0.30%)
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('Pool A', 1000.0, 50.0, 3500000.0),  # ~0.43% - should be included
+                Pool('Pool B', 2000.0, 75.0, 2485000.0),  # ~0.60% - should be filtered
+                Pool('Pool C', 3000.0, 80.0, 4985000.0)  # ~0.30% - should be included
+            ]
+            
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                user_voting_power=15000.0,
+                max_pool_percentage=0.5,  # Filter out pools where user would have > 0.5%
+                quiet=True
+            )
+            
+            # Should only have pools A and C (both <= 0.5%)
+            assert len(recommendations) == 2
+            assert 'Pool A' in [p.name for p in recommendations]
+            assert 'Pool C' in [p.name for p in recommendations]
+            assert 'Pool B' not in [p.name for p in recommendations]
+    
+    def test_recommend_pools_max_pool_percentage_no_votes(self):
+        """Test max pool percentage filter with pools that have no votes"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('Pool No Votes', 1000.0, 50.0, None),  # No votes - would be 100%
+                Pool('Pool Zero Votes', 2000.0, 75.0, 0.0),  # Zero votes - would be 100%
+                Pool('Pool With Votes', 3000.0, 80.0, 1000000.0)  # Has votes - ~1.48%
+            ]
+            
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                user_voting_power=15000.0,
+                max_pool_percentage=0.5,  # Filter out pools where user would have > 0.5%
+                quiet=True
+            )
+            
+            # Pools with no votes would give user 100%, so they should be filtered out
+            # Pool with votes gives ~1.48%, so also filtered
+            assert len(recommendations) == 0

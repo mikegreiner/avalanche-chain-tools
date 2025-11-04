@@ -1375,7 +1375,7 @@ class BlackholePoolRecommender:
         else:
             raise InvalidInputError("Selenium not available and API endpoint not found. Please install selenium: pip install selenium")
     
-    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, quiet: bool = False) -> List[Pool]:
+    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, quiet: bool = False) -> List[Pool]:
         """
         Fetch pools and recommend top N most profitable.
         
@@ -1387,6 +1387,7 @@ class BlackholePoolRecommender:
             user_voting_power: User's voting power in veBLACK for reward estimation
             hide_vamm: If True, filter out vAMM pools
             min_rewards: Minimum total rewards in USD to include (filters out smaller pools)
+            max_pool_percentage: Maximum percentage of pool voting power (e.g., 0.5 for 0.5%). Filters out pools where adding your full voting power would exceed this threshold.
             quiet: If True, suppress progress messages (useful for JSON output)
         """
         if not quiet:
@@ -1417,6 +1418,33 @@ class BlackholePoolRecommender:
             if filtered_count > 0 and not quiet:
                 print(f"Filtered out {filtered_count} pool(s) with total rewards < ${min_rewards:,.2f}")
         
+        # Filter out pools where user would exceed max pool percentage threshold
+        if max_pool_percentage is not None and user_voting_power is not None:
+            original_count = len(pools)
+            filtered_pools = []
+            for pool in pools:
+                # Skip pools without vote data (can't calculate percentage)
+                if pool.current_votes is None or pool.current_votes == 0:
+                    # If pool has no votes, user would have 100% - include only if threshold allows
+                    if max_pool_percentage >= 100.0:
+                        filtered_pools.append(pool)
+                    # Otherwise filter it out
+                    continue
+                
+                # Calculate new total votes after user votes
+                new_total_votes = pool.current_votes + user_voting_power
+                # Calculate user's percentage of the pool
+                user_percentage = (user_voting_power / new_total_votes) * 100
+                
+                # Include pool only if user percentage is <= threshold
+                if user_percentage <= max_pool_percentage:
+                    filtered_pools.append(pool)
+            
+            pools = filtered_pools
+            filtered_count = original_count - len(pools)
+            if filtered_count > 0 and not quiet:
+                print(f"Filtered out {filtered_count} pool(s) where your voting power would exceed {max_pool_percentage}% of total pool votes")
+        
         # Calculate profitability scores (for display purposes)
         for pool in pools:
             pool_score = pool.profitability_score()
@@ -1437,7 +1465,7 @@ class BlackholePoolRecommender:
         
         return sorted_pools[:top_n]
     
-    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, output_json: bool = False, return_output: bool = False):
+    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, output_json: bool = False, return_output: bool = False):
         """Print formatted recommendations"""
         if not pools:
             if return_output:
@@ -1446,7 +1474,7 @@ class BlackholePoolRecommender:
             return None
         
         if output_json:
-            output = self._get_json_output(pools, user_voting_power, hide_vamm, min_rewards)
+            output = self._get_json_output(pools, user_voting_power, hide_vamm, min_rewards, max_pool_percentage)
             if return_output:
                 return output
             print(output)
@@ -1614,6 +1642,12 @@ def main():
         help='Minimum total rewards in USD to include (e.g., 1000). Filters out smaller pools to focus on more stable rewards.'
     )
     parser.add_argument(
+        '--max-pool-percentage',
+        type=float,
+        default=None,
+        help='Maximum percentage of pool voting power (e.g., 0.5 for 0.5%%). Filters out pools where adding your full voting power would exceed this threshold.'
+    )
+    parser.add_argument(
         '--json',
         action='store_true',
         help='Output results as JSON (useful for post-processing)'
@@ -1630,7 +1664,7 @@ def main():
         # If --no-headless is set, force headless=False; otherwise use config default
         headless_param = False if args.no_headless else None
         recommender = BlackholePoolRecommender(headless=headless_param)
-        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, quiet=args.json or args.output)
+        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, max_pool_percentage=args.max_pool_percentage, quiet=args.json or args.output)
         
         if not recommendations:
             print("\nNo recommendations generated. This may be because:")
@@ -1646,6 +1680,7 @@ def main():
             user_voting_power=args.voting_power,
             hide_vamm=args.hide_vamm,
             min_rewards=args.min_rewards,
+            max_pool_percentage=args.max_pool_percentage,
             output_json=args.json,
             return_output=bool(args.output)
         )
