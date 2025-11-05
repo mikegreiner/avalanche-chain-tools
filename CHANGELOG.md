@@ -4,6 +4,16 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced - Pool Tracking (`track_pool_changes.py`)
+- **Profitability Score Tracking**: Added profitability score display to history output
+  - Shows profitability score changes over time in both "OVERALL PERFORMANCE" and "VOTES ADDED" sections
+  - Displays absolute change and percentage change (when available)
+  - Includes direction indicators (?, ?, ?) for quick visual assessment
+- **Improved Sorting**: "TOP POOLS BY OVERALL PERFORMANCE" section now sorts by:
+  - Primary: Profitability score (highest first)
+  - Secondary: Rewards per vote (least dilution as tiebreaker)
+  - This provides a more intuitive ranking that prioritizes the recommender's profitability score
+
 ### Improved - Transaction Narrator (`avalanche_transaction_narrator.py`)
 - **Version**: 1.1.0 (new)
 - **Version tracking**: Added `--version` flag support
