@@ -145,6 +145,42 @@ python3 blackhole_pool_recommender.py --version
 
 ---
 
+### 5. Pool Tracking Tool
+**Script:** `track_pool_changes.py`  
+**Version:** 1.0.0
+
+Tracks changes in recommended pools over time, helping you identify which pools receive the most late-breaking votes and which pools' rewards hold up best (least dilution) until the voting window closes.
+
+**Features:**
+- Monitors recommended pools over time
+- Tracks profitability score changes
+- Identifies pools receiving late-breaking votes
+- Shows which pools' rewards hold up best (least dilution)
+- Displays trends with visual indicators (↑, ↓, →)
+- Supports automated periodic snapshots (cron jobs)
+
+**Usage:**
+```bash
+# Initialize tracking with current recommendations
+python3 track_pool_changes.py --init --top 10 --voting-power 15000
+
+# Save a snapshot (for periodic tracking)
+python3 track_pool_changes.py --snapshot --top 10 --voting-power 15000
+
+# View history and trends
+python3 track_pool_changes.py --history
+
+# Use custom output file
+python3 track_pool_changes.py --init --top 30 --voting-power 18169.28 --min-rewards 5000 --max-pool-percentage 0.5 -o output/pool_tracking_2025-11-05
+
+# Check version
+python3 track_pool_changes.py --version
+```
+
+**Documentation:** See [docs/README_pool_tracker.md](docs/README_pool_tracker.md)
+
+---
+
 ## Installation
 
 ### Requirements
@@ -156,7 +192,7 @@ pip install -r requirements.txt
 
 ### Additional Setup
 
-For **Blackhole Pool Recommender**, you'll also need ChromeDriver:
+For **Blackhole Pool Recommender** and **Pool Tracking Tool**, you'll also need ChromeDriver:
 - **Linux:** `sudo apt-get install chromium-chromedriver`
 - **macOS:** `brew install chromedriver`
 - **Windows:** Download from https://chromedriver.chromium.org/
@@ -193,6 +229,7 @@ The config file is optional - all tools will work with sensible defaults if `con
 ├── avalanche_transaction_narrator.py   # Transaction narrator tool
 ├── avalanche_daily_swaps.py           # Daily swap analyzer
 ├── blackhole_pool_recommender.py      # Pool recommender
+├── track_pool_changes.py              # Pool tracking tool
 │
 ├── scripts/                            # Helper scripts
 │   ├── inspect_blackhole_page.py      # Page inspection helper
@@ -202,6 +239,7 @@ The config file is optional - all tools will work with sensible defaults if `con
 │   ├── README_avalanche_reader.md
 │   ├── README_daily_swaps.md
 │   ├── README_pool_recommender.md
+│   ├── README_pool_tracker.md
 │   ├── CONFIGURATION.md                # Configuration guide
 │   ├── IMPLEMENTATION_NOTES.md
 │   └── TEST_RESULTS.md
