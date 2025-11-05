@@ -55,7 +55,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -285,7 +285,7 @@ class BlackholePoolRecommender:
                 scroll_attempts += 1
             
             if not quiet:
-                print(f"Total pools loaded: {max_pools}")
+                print(f"Total pools loaded on current page: {max_pools}")
             
             # Scroll back to top
             if pool_container:
@@ -300,36 +300,206 @@ class BlackholePoolRecommender:
             
             pools = []
             
-            # Method 1: Try to extract from DOM elements using Selenium
-            try:
-                if not quiet:
-                    print("Extracting pool data from page...")
-                # The actual pool containers are divs with class 'liquidity-pool-cell'
-                pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell') and (contains(@class, 'even') or contains(@class, 'odd'))]")
-                
-                if pool_elements:
-                    if not quiet:
-                        print(f"Found {len(pool_elements)} pool elements")
-                    pools = self._extract_pools_from_elements(pool_elements, driver)
-                else:
-                    # Fallback: try without even/odd filter
-                    pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell')]")
-                    # Filter to main containers (not nested cells)
-                    main_pools = []
-                    for elem in pool_elements:
-                        classes = elem.get_attribute('class') or ''
-                        if 'even' in classes or 'odd' in classes:
-                            main_pools.append(elem)
-                    if main_pools:
-                        if not quiet:
-                            print(f"Found {len(main_pools)} pool elements")
-                        pools = self._extract_pools_from_elements(main_pools, driver)
-                
-            except Exception as e:
-                logger.error(f"Error extracting from DOM elements: {e}")
+            # Navigate through all pages to collect pools
+            page_num = 1
+            all_pools = []
             
-            # Method 2: Try to extract from page text using regex patterns
+            while True:
+                if not quiet:
+                    print(f"Extracting pools from page {page_num}...")
+                
+                # Extract pools from current page
+                # Method 1: Try to extract from DOM elements using Selenium
+                page_pools = []
+                try:
+                    # The actual pool containers are divs with class 'liquidity-pool-cell'
+                    pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell') and (contains(@class, 'even') or contains(@class, 'odd'))]")
+                
+                    if pool_elements:
+                        if not quiet:
+                            print(f"Found {len(pool_elements)} pool elements on page {page_num}")
+                        page_pools = self._extract_pools_from_elements(pool_elements, driver)
+                    else:
+                        # Fallback: try without even/odd filter
+                        pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell')]")
+                        # Filter to main containers (not nested cells)
+                        main_pools = []
+                        for elem in pool_elements:
+                            classes = elem.get_attribute('class') or ''
+                            if 'even' in classes or 'odd' in classes:
+                                main_pools.append(elem)
+                        if main_pools:
+                            if not quiet:
+                                print(f"Found {len(main_pools)} pool elements on page {page_num}")
+                            page_pools = self._extract_pools_from_elements(main_pools, driver)
+                
+                except Exception as e:
+                    logger.error(f"Error extracting from DOM elements on page {page_num}: {e}")
+                
+                # Add pools from this page to the collection
+                if page_pools:
+                    all_pools.extend(page_pools)
+                    if not quiet:
+                        print(f"Extracted {len(page_pools)} pools from page {page_num} (total so far: {len(all_pools)})")
+                
+                # Check if there's a next page button
+                next_page_button = None
+                try:
+                    # Look for pagination controls - try multiple selectors
+                    # Common patterns: button with "Next", arrow button, page number buttons
+                    next_buttons = driver.find_elements(By.XPATH, 
+                        "//button[contains(text(), 'Next') or contains(@aria-label, 'next') or contains(@aria-label, 'Next')] | "
+                        "//button[contains(@class, 'next')] | "
+                        "//*[contains(@class, 'pagination')]//button[contains(@class, 'next')] | "
+                        "//*[contains(@class, 'pagination')]//button[contains(text(), '?') or contains(text(), '>') or normalize-space(text())='>' or normalize-space(text())='?'] | "
+                        "//*[contains(@class, 'pagination')]//button[normalize-space()='>'] | "
+                        "//*[contains(@class, 'pagination')]//button[normalize-space()='?'] | "
+                        "//button[contains(@class, 'arrow')] | "
+                        "//*[@role='button' and (contains(@class, 'next') or contains(@aria-label, 'next'))]")
+                    
+                    # Also check for disabled state - if next button is disabled, we're on last page
+                    for btn in next_buttons:
+                        try:
+                            classes = btn.get_attribute('class') or ''
+                            disabled = btn.get_attribute('disabled') or btn.get_attribute('aria-disabled') == 'true'
+                            is_displayed = btn.is_displayed()
+                            btn_text = btn.text or ''
+                            
+                            if not disabled and 'disabled' not in classes.lower() and is_displayed:
+                                # Check if it's actually a next button (not previous)
+                                # Exclude buttons with < or ? (previous page arrows)
+                                btn_text_clean = btn_text.strip()
+                                if ('prev' not in classes.lower() and 'previous' not in classes.lower() and 
+                                    'prev' not in btn_text.lower() and
+                                    btn_text_clean not in ['<', '?', '?'] and
+                                    '<' not in btn_text_clean and '?' not in btn_text_clean):
+                                    # Prefer buttons with > or ? (next page arrows)
+                                    if btn_text_clean in ['>', '?', '?'] or '>' in btn_text_clean or '?' in btn_text_clean:
+                                        next_page_button = btn
+                                        break
+                                    # Also accept if it's clearly a next button by class/aria-label
+                                    elif 'next' in classes.lower() or 'next' in (btn.get_attribute('aria-label') or '').lower():
+                                        next_page_button = btn
+                                        break
+                        except Exception as e:
+                            # Silently continue if button check fails
+                            continue
+                            
+                    # If no button found, try looking for page number buttons
+                    if not next_page_button:
+                        try:
+                            # Look for page number buttons - pages are typically numbered
+                            next_page_num = page_num + 1
+                            # Build XPath queries with the page number
+                            page_buttons = driver.find_elements(By.XPATH,
+                                f"//button[text()='{next_page_num}'] | "
+                                f"//*[contains(@class, 'pagination')]//button[text()='{next_page_num}'] | "
+                                f"//*[contains(@class, 'page')]//button[text()='{next_page_num}'] | "
+                                f"//*[@role='button' and text()='{next_page_num}']")
+                            
+                            if page_buttons:
+                                for btn in page_buttons:
+                                    try:
+                                        classes = btn.get_attribute('class') or ''
+                                        disabled = btn.get_attribute('disabled') or btn.get_attribute('aria-disabled') == 'true'
+                                        is_displayed = btn.is_displayed()
+                                        
+                                        if not disabled and 'disabled' not in classes.lower() and is_displayed:
+                                            next_page_button = btn
+                                            break
+                                    except:
+                                        continue
+                            
+                            # If still no button, try to find all clickable page number elements (divs, buttons, etc.)
+                            if not next_page_button:
+                                # Look for clickable elements that might be page numbers
+                                # They could be buttons, divs, or other clickable elements
+                                all_page_elements = driver.find_elements(By.XPATH,
+                                    "//*[contains(@class, 'pagination')]//* | "
+                                    "//*[contains(@class, 'page-result-section')]//* | "
+                                    "//*[contains(@class, 'footer')]//*")
+                                
+                                for elem in all_page_elements:
+                                    try:
+                                        elem_text = elem.text.strip()
+                                        # Check if it's a number matching the next page
+                                        if elem_text.isdigit():
+                                            elem_num = int(elem_text)
+                                            if elem_num == next_page_num:
+                                                # Check if element is clickable (has onclick, is button, or has cursor pointer)
+                                                classes = elem.get_attribute('class') or ''
+                                                tag_name = elem.tag_name.lower()
+                                                onclick = elem.get_attribute('onclick')
+                                                style = elem.get_attribute('style') or ''
+                                                disabled = elem.get_attribute('disabled') or elem.get_attribute('aria-disabled') == 'true'
+                                                is_displayed = elem.is_displayed()
+                                                
+                                                # Check if it looks clickable
+                                                # Since we're in pagination area, elements with numbers are likely clickable
+                                                is_clickable = (
+                                                    tag_name == 'button' or
+                                                    'clickable' in classes.lower() or
+                                                    'cursor:pointer' in style.lower() or
+                                                    onclick is not None or
+                                                    'page' in classes.lower() or
+                                                    tag_name == 'div'  # Divs in pagination are likely clickable
+                                                )
+                                                
+                                                # If it's in pagination area and has the right number, assume it's clickable
+                                                if (not disabled and 'disabled' not in classes.lower() and 
+                                                    is_displayed and (is_clickable or 'pagination' in str(elem.get_attribute('class') or '').lower())):
+                                                    next_page_button = elem
+                                                    break
+                                    except:
+                                        continue
+                        except Exception as e:
+                            # Silently continue if page number search fails
+                            pass
+                                
+                except Exception as e:
+                    # Silently continue if pagination search fails
+                    pass
+                
+                # If no next button found or we got no pools, break
+                if not next_page_button:
+                    # Silently stop pagination - no need to print failure message
+                    break
+                    
+                if not page_pools:
+                    # Silently stop pagination if no pools found
+                    break
+                
+                # Click next page button/element
+                try:
+                    # Try multiple click methods to ensure it works
+                    try:
+                        next_page_button.click()
+                    except:
+                        # Fallback to JavaScript click
+                        driver.execute_script("arguments[0].click();", next_page_button)
+                    time.sleep(3)  # Wait for page to load
+                    
+                    # Scroll to load pools on new page
+                    if pool_container:
+                        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", pool_container)
+                    else:
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(2)
+                    
+                    page_num += 1
+                except Exception as e:
+                    if not quiet:
+                        logger.warning(f"Error navigating to next page: {e}")
+                    break
+            
+            # Use all collected pools
+            pools = all_pools
+            if not quiet:
+                print(f"\nTotal pools extracted from all pages: {len(pools)}")
+            
+            # Fallback methods if no pools found from pagination
             if not pools:
+                # Method 2: Try to extract from page text using regex patterns
                 print("Trying text-based extraction...")
                 try:
                     # Use find_elements to avoid hanging
@@ -339,27 +509,27 @@ class BlackholePoolRecommender:
                         pools = self._extract_pools_from_text(page_text)
                 except Exception as e:
                     print(f"Error extracting from text: {e}")
-            
-            # Method 3: Try to extract from page source HTML
-            if not pools:
-                print("Trying HTML parsing...")
-                try:
-                    page_source = driver.page_source
-                    if BS4_AVAILABLE:
-                        soup = BeautifulSoup(page_source, 'html.parser')
-                        pools = self._parse_pools_from_html(soup)
-                    else:
-                        pools = self._extract_pools_from_text(page_source)
-                except Exception as e:
-                    print(f"Error parsing HTML: {e}")
-            
-            # Method 4: Try to intercept network requests for API data
-            if not pools:
-                print("Attempting to extract from network responses...")
-                try:
-                    pools = self._extract_from_network_logs(driver)
-                except Exception as e:
-                    logger.error(f"Error extracting from network: {e}")
+                
+                # Method 3: Try to extract from page source HTML
+                if not pools:
+                    print("Trying HTML parsing...")
+                    try:
+                        page_source = driver.page_source
+                        if BS4_AVAILABLE:
+                            soup = BeautifulSoup(page_source, 'html.parser')
+                            pools = self._parse_pools_from_html(soup)
+                        else:
+                            pools = self._extract_pools_from_text(page_source)
+                    except Exception as e:
+                        print(f"Error parsing HTML: {e}")
+                
+                # Method 4: Try to intercept network requests for API data
+                if not pools:
+                    print("Attempting to extract from network responses...")
+                    try:
+                        pools = self._extract_from_network_logs(driver)
+                    except Exception as e:
+                        logger.error(f"Error extracting from network: {e}")
             
             return pools
             
@@ -466,7 +636,7 @@ class BlackholePoolRecommender:
                             elif name.startswith('CL1'):
                                 pool_type = 'CL1'
                         
-                        # Try to extract pool ID/address from data attributes
+                        # Try to extract pool ID/address from data attributes and HTML content
                         try:
                             # Check for data attributes that might contain pool address
                             pool_id = (
@@ -486,6 +656,37 @@ class BlackholePoolRecommender:
                                             id_element.get_attribute('data-pool-address') or
                                             id_element.get_attribute('data-address')
                                         )
+                                except:
+                                    pass
+                            
+                            # Fallback: Extract Ethereum address from HTML content (pool contract address)
+                            if not pool_id:
+                                try:
+                                    inner_html = element.get_attribute('innerHTML')
+                                    if inner_html:
+                                        # Look for Ethereum addresses (0x followed by 40 hex characters)
+                                        import re
+                                        eth_addresses = re.findall(r'0x[a-fA-F0-9]{40}', inner_html)
+                                        if eth_addresses:
+                                            # Use the first unique address found
+                                            # Filter out common contract addresses that might appear on every pool
+                                            unique_addresses = list(set(eth_addresses))
+                                            # Take the first one (most likely the pool address)
+                                            pool_id = unique_addresses[0]
+                                except:
+                                    pass
+                            
+                            # Also check tooltip IDs which sometimes contain addresses
+                            if not pool_id:
+                                try:
+                                    tooltip_elements = element.find_elements(By.XPATH, ".//*[contains(@data-tooltip-id, 'pool-address') or contains(@data-tooltip-id, 'address')]")
+                                    if tooltip_elements:
+                                        tooltip_id = tooltip_elements[0].get_attribute('data-tooltip-id')
+                                        # Extract address from tooltip ID like "pool-address-tooltip-0x..."
+                                        if tooltip_id:
+                                            match = re.search(r'0x[a-fA-F0-9]{40}', tooltip_id)
+                                            if match:
+                                                pool_id = match.group(0)
                                 except:
                                     pass
                         except:
@@ -1465,6 +1666,590 @@ class BlackholePoolRecommender:
         
         return sorted_pools[:top_n]
     
+    def generate_voting_script(self, pools: List[Pool], quiet: bool = False) -> Optional[str]:
+        """
+        Generate a JavaScript console script to programmatically select pools on the voting page.
+        
+        Since pool selection is handled client-side (no API calls), this generates a script
+        that can be run in the browser console to automatically select pools by their addresses.
+        
+        Args:
+            pools: List of Pool objects to select
+            quiet: If True, suppress progress messages
+            
+        Returns:
+            JavaScript code as a string, or None if no pool IDs available
+        """
+        if not pools:
+            return None
+        
+        # Extract pool IDs (contract addresses) and names
+        pool_ids = []
+        pool_info = []  # Store (id, name) tuples
+        
+        for pool in pools:
+            if pool.pool_id:
+                pool_ids.append(pool.pool_id)
+                pool_info.append((pool.pool_id, pool.name))
+            else:
+                pool_info.append((None, pool.name))
+        
+        if not pool_ids:
+            if not quiet:
+                print("\nWarning: Pool IDs (addresses) not available. Cannot generate selection script.")
+                print("Pool names found:")
+                for name in [p.name for p in pools]:
+                    print(f"  - {name}")
+                print("\nThe script needs pool contract addresses to find and select pools.")
+            return None
+        
+        # Generate JavaScript code
+        # Use format() instead of f-string to avoid template literal conflicts
+        pool_ids_json = json.dumps(pool_ids)
+        pool_info_dict = {pid: name for pid, name in pool_info if pid}
+        pool_info_json = json.dumps(pool_info_dict)
+        
+        js_code = """// Auto-select pools on Blackhole voting page
+// Generated for {pool_count} pool(s)
+// Run this script in the browser console (F12) while on https://blackhole.xyz/vote
+
+(function() {{
+    const poolAddresses = {pool_ids_json};
+    const poolInfo = {pool_info_json};
+    
+    console.log('Looking for pools to select...');
+    let selectedCount = 0;
+    let notFoundCount = 0;
+    
+    // Find all pool cells
+    const poolCells = document.querySelectorAll('div.liquidity-pool-cell');
+    console.log('Found ' + poolCells.length + ' pool cells on the page');
+    
+    poolAddresses.forEach((address, index) => {{
+        let found = false;
+        
+        // Try multiple strategies to find the pool by address
+        // Strategy 1: Look for the address in the cell's innerHTML
+        for (let cell of poolCells) {{
+            const innerHTML = cell.innerHTML || '';
+            const innerText = cell.innerText || '';
+            
+            // Check if this cell contains the pool address
+            if (innerHTML.includes(address) || innerText.includes(address)) {{
+                // Find the SELECT button - it's a button with classes "btn yellow-btn clickable"
+                const selectButton = cell.querySelector('button.btn.yellow-btn.clickable') ||
+                                    cell.querySelector('.liquidity-pool-cell-btn button') ||
+                                    cell.querySelector('.liquidity-pool-cell-right button') ||
+                                    cell.querySelector('button[class*="yellow-btn"]');
+                
+                if (selectButton) {{
+                    try {{
+                        selectButton.click();
+                        const poolName = poolInfo[address] || 'Unknown';
+                        console.log('? Clicked SELECT button for: ' + poolName + ' (' + address + ')');
+                        selectedCount++;
+                        found = true;
+                        setTimeout(function() {{}}, 100);
+                        break;
+                    }} catch (e) {{
+                        console.warn('Error clicking SELECT button:', e);
+                    }}
+                }} else {{
+                    console.warn('SELECT button not found for pool ' + address);
+                }}
+            }}
+        }}
+        
+        // Strategy 2: Look for elements with data attributes containing the address
+        if (!found) {{
+            const elementsWithAddress = Array.from(document.querySelectorAll('*')).filter(el => {{
+                const attrs = Array.from(el.attributes || []);
+                return attrs.some(attr => attr.value && attr.value.includes(address));
+            }});
+            
+            for (let elem of elementsWithAddress) {{
+                // Find the parent pool cell
+                let parent = elem;
+                while (parent && !parent.classList.contains('liquidity-pool-cell')) {{
+                    parent = parent.parentElement;
+                }}
+                
+                if (parent) {{
+                    // Find SELECT button in parent cell
+                    const selectButton = parent.querySelector('button.btn.yellow-btn.clickable') ||
+                                        parent.querySelector('.liquidity-pool-cell-btn button') ||
+                                        parent.querySelector('.liquidity-pool-cell-right button') ||
+                                        parent.querySelector('button[class*="yellow-btn"]');
+                    
+                    if (selectButton) {{
+                        try {{
+                            selectButton.click();
+                            const poolName = poolInfo[address] || 'Unknown';
+                            console.log('? Clicked SELECT button for: ' + poolName + ' (' + address + ')');
+                            selectedCount++;
+                            found = true;
+                            setTimeout(function() {{}}, 100);
+                            break;
+                        }} catch (e) {{
+                            console.warn('Error clicking SELECT button:', e);
+                        }}
+                    }} // else: button not found, will try next strategy
+                }}
+            }}
+        }}
+        
+        // Strategy 3: Try to find by pool name if address matching fails
+        if (!found) {{
+            const poolName = poolInfo[address];
+            if (poolName) {{
+                // Extract a recognizable part of the pool name (e.g., "USDC/ARTERY" from "vAMM-USDC/ARTERY")
+                const nameParts = poolName.split('/');
+                const searchText = nameParts.length > 1 ? nameParts.join('/') : poolName;
+                
+                for (let cell of poolCells) {{
+                    const cellText = cell.innerText || '';
+                    if (cellText.includes(searchText)) {{
+                        try {{
+                            cell.click();
+                            console.log(`? Selected by name: ${{poolName}} (${{address}})`);
+                            selectedCount++;
+                            found = true;
+                            setTimeout(() => {{}}, 100);
+                            break;
+                        }} catch (e) {{
+                            console.warn(`Error clicking pool ${{poolName}}:`, e);
+                        }}
+                    }}
+                }}
+            }}
+        }}
+        
+        if (!found) {{
+            const poolName = poolInfo[address] || address;
+            console.warn('? Could not find pool: ' + poolName + ' (' + address + ')');
+            notFoundCount++;
+        }}
+    }});
+    
+    console.log('\\nSelection complete: ' + selectedCount + ' selected, ' + notFoundCount + ' not found');
+    console.log('You can now allocate your votes to the selected pools.');
+}})();
+""".format(
+            pool_count=len(pool_ids),
+            pool_ids_json=pool_ids_json,
+            pool_info_json=pool_info_json
+        )
+        
+        # Script is saved to file and copied to clipboard - don't print to stdout
+        # to keep output focused on pool recommendations
+        return js_code
+    
+    def generate_bookmarklet(self, js_code: str, data_file: str = None) -> str:
+        """
+        Generate a dynamic bookmarklet that loads pool data from a file.
+        This way, you only need to create the bookmark once, and update the data file
+        when pools change.
+        
+        Args:
+            js_code: JavaScript code string
+            data_file: Path to the data file (relative or absolute)
+            
+        Returns:
+            Bookmarklet instructions with URL
+        """
+        from urllib.parse import quote
+        import os
+        
+        # Extract pool data from the JS code
+        import re
+        pool_ids_match = re.search(r'const poolAddresses = (\[.*?\]);', js_code, re.DOTALL)
+        pool_info_match = re.search(r'const poolInfo = (\{.*?\});', js_code, re.DOTALL)
+        
+        if pool_ids_match and pool_info_match:
+            # Create a loader bookmarklet that reads from the data file
+            pool_ids_json = pool_ids_match.group(1)
+            pool_info_json = pool_info_match.group(1)
+            
+            # Determine data file path (relative to script location)
+            if not data_file:
+                data_file = 'blackhole_pools_data.js'
+            
+            # Create the data file with pool information
+            from datetime import datetime
+            data_file_content = f"""// Blackhole Pool Selection Data
+// This file is automatically updated when you run the recommender
+// Last updated: {datetime.now().isoformat()}
+
+window.BLACKHOLE_POOL_DATA = {{
+    poolAddresses: {pool_ids_json},
+    poolInfo: {pool_info_json}
+}};
+"""
+            
+            # Generate the loader bookmarklet (stays the same, reads from data file)
+            loader_code = f"""
+(function() {{
+    // Try to load data from file
+    const script = document.createElement('script');
+    script.src = '{data_file}';
+    script.onload = function() {{
+        if (!window.BLACKHOLE_POOL_DATA) {{
+            alert('Pool data not found. Make sure {data_file} is accessible.');
+            return;
+        }}
+        const poolAddresses = window.BLACKHOLE_POOL_DATA.poolAddresses;
+        const poolInfo = window.BLACKHOLE_POOL_DATA.poolInfo;
+        
+        console.log('Looking for pools to select...');
+        let selectedCount = 0;
+        let notFoundCount = 0;
+        
+        const poolCells = document.querySelectorAll('div.liquidity-pool-cell');
+        console.log('Found ' + poolCells.length + ' pool cells on the page');
+        
+        poolAddresses.forEach((address, index) => {{
+            let found = false;
+            
+            for (let cell of poolCells) {{
+                const innerHTML = cell.innerHTML || '';
+                const innerText = cell.innerText || '';
+                
+                if (innerHTML.includes(address) || innerText.includes(address)) {{
+                    const selectButton = cell.querySelector('button.btn.yellow-btn.clickable') ||
+                                        cell.querySelector('.liquidity-pool-cell-btn button') ||
+                                        cell.querySelector('.liquidity-pool-cell-right button') ||
+                                        cell.querySelector('button[class*="yellow-btn"]');
+                    
+                    if (selectButton) {{
+                        try {{
+                            selectButton.click();
+                            const poolName = poolInfo[address] || 'Unknown';
+                            console.log('? Clicked SELECT button for: ' + poolName + ' (' + address + ')');
+                            selectedCount++;
+                            found = true;
+                            setTimeout(function() {{}}, 100);
+                            break;
+                        }} catch (e) {{
+                            console.warn('Error clicking SELECT button:', e);
+                        }}
+                    }}
+                }}
+            }}
+            
+            if (!found) {{
+                const poolName = poolInfo[address];
+                if (poolName) {{
+                    const nameParts = poolName.split('/');
+                    const searchText = nameParts.length > 1 ? nameParts.join('/') : poolName;
+                    
+                    for (let cell of poolCells) {{
+                        const cellText = cell.innerText || '';
+                        if (cellText.includes(searchText)) {{
+                            const selectButton = cell.querySelector('button.btn.yellow-btn.clickable') ||
+                                                cell.querySelector('.liquidity-pool-cell-btn button') ||
+                                                cell.querySelector('.liquidity-pool-cell-right button') ||
+                                                cell.querySelector('button[class*="yellow-btn"]');
+                            
+                            if (selectButton) {{
+                                try {{
+                                    selectButton.click();
+                                    console.log('? Clicked SELECT button by name: ' + poolName + ' (' + address + ')');
+                                    selectedCount++;
+                                    found = true;
+                                    setTimeout(function() {{}}, 100);
+                                    break;
+                                }} catch (e) {{
+                                    console.warn('Error clicking SELECT button:', e);
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+            
+            if (!found) {{
+                const poolName = poolInfo[address] || address;
+                console.warn('? Could not find pool: ' + poolName + ' (' + address + ')');
+                notFoundCount++;
+            }}
+        }});
+        
+        console.log('\\nSelection complete: ' + selectedCount + ' selected, ' + notFoundCount + ' not found');
+        console.log('You can now allocate your votes to the selected pools.');
+    }};
+    script.onerror = function() {{
+        alert('Could not load {data_file}. Make sure the file is in the same directory and accessible.');
+    }};
+    document.head.appendChild(script);
+}})();
+"""
+            
+            # Clean and encode the loader
+            loader_code = re.sub(r'\s+', ' ', loader_code.strip())
+            encoded_loader = quote(loader_code, safe='')
+            bookmarklet_url = f"javascript:{encoded_loader}"
+            
+            return data_file_content, bookmarklet_url, f"""// Blackhole Pool Selection Bookmarklet (Dynamic Version)
+// This bookmarklet loads pool data from: {data_file}
+// 
+// SETUP (only needed once):
+// 1. Copy the bookmarklet URL below
+// 2. Create a bookmark in your browser
+// 3. Paste the URL as the bookmark location
+// 4. Name it "Select Recommended Pools"
+//
+// USAGE:
+// - After running the recommender, the {data_file} file is automatically updated
+// - Just click the bookmark on https://blackhole.xyz/vote - no need to update the bookmark!
+//
+// BOOKMARKLET URL:
+{bookmarklet_url}
+"""
+        else:
+            # Fallback to static bookmarklet if we can't extract data
+            import re
+            lines = js_code.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('//') and not stripped.startswith('// '):
+                    continue
+                if '//' in line:
+                    code_part = line.split('//')[0].rstrip()
+                    if code_part:
+                        cleaned_lines.append(code_part)
+                else:
+                    cleaned_lines.append(line)
+            
+            js_code = '\n'.join(cleaned_lines)
+            js_code = re.sub(r'/\*.*?\*/', '', js_code, flags=re.DOTALL)
+            js_code = re.sub(r'\s+', ' ', js_code)
+            js_code = js_code.strip()
+            
+            encoded_js = quote(js_code, safe='')
+            bookmarklet_url = f"javascript:{encoded_js}"
+            
+            return None, bookmarklet_url, f"""// Blackhole Pool Selection Bookmarklet (Static Version)
+// NOTE: You'll need to update this bookmarklet when pools change
+//
+// Copy the URL below and create a bookmark with it
+{bookmarklet_url}
+"""
+    
+    def select_pools_on_page(self, pools: List[Pool], quiet: bool = False):
+        """
+        Open the voting page in a browser and pre-select the recommended pools.
+        
+        This opens a browser window (non-headless) and attempts to select the pools
+        on the page so the user can easily vote for them.
+        
+        Args:
+            pools: List of Pool objects to select on the page
+            quiet: If True, suppress progress messages
+        """
+        if not SELENIUM_AVAILABLE:
+            raise ImportError("Selenium is required. Install with: pip install selenium")
+        
+        if not pools:
+            if not quiet:
+                print("No pools to select.")
+            return
+        
+        if not quiet:
+            print(f"\nOpening browser to select {len(pools)} recommended pool(s)...")
+            print("Pool names to select:")
+            for i, pool in enumerate(pools, 1):
+                print(f"  {i}. {pool.name}")
+        
+        options = Options()
+        # Always show browser window for this feature
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        options.add_argument('--page-load-strategy=eager')
+        
+        driver = None
+        try:
+            driver = webdriver.Chrome(options=options)
+            driver.implicitly_wait(10)
+            driver.set_page_load_timeout(60)
+            
+            if not quiet:
+                print(f"\nLoading {self.url}...")
+            driver.get(self.url)
+            
+            if not quiet:
+                print("Waiting for pool data to load (this may take 15-20 seconds)...")
+            time.sleep(12)  # Give React time to render
+            
+            # Set pagination to show 100 pools per page (to make finding pools easier)
+            try:
+                pagination_containers = WebDriverWait(driver, 5).until(
+                    EC.presence_of_all_elements_located((By.XPATH, "//div[contains(@class, 'size-per-page')]"))
+                )
+                if pagination_containers:
+                    pagination_container = pagination_containers[0]
+                    driver.execute_script("arguments[0].click();", pagination_container)
+                    time.sleep(1.5)
+                    
+                    option_100s = WebDriverWait(driver, 3).until(
+                        EC.presence_of_all_elements_located((By.XPATH, "//span[contains(@class, 'size-text') and contains(text(), '100')]"))
+                    )
+                    if option_100s:
+                        option_100 = option_100s[0]
+                        parent_containers = option_100.find_elements(By.XPATH, "./ancestor::*[contains(@class, 'size-container')][1]")
+                        if parent_containers:
+                            driver.execute_script("arguments[0].click();", parent_containers[0])
+                            time.sleep(4)
+            except Exception as e:
+                if not quiet:
+                    logger.debug(f"Could not set pagination: {e}")
+            
+            # Scroll to load all pools
+            pool_container = None
+            try:
+                pool_container = driver.find_element(By.XPATH, "//div[contains(@class, 'pools-container')] | //div[contains(@class, 'pool-section')]")
+            except:
+                pass
+            
+            # Scroll multiple times to load all pools
+            for _ in range(5):
+                if pool_container:
+                    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", pool_container)
+                else:
+                    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+            
+            # Scroll back to top
+            if pool_container:
+                driver.execute_script("arguments[0].scrollTop = 0", pool_container)
+            else:
+                driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(2)
+            
+            # Find and select each recommended pool
+            selected_count = 0
+            pool_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'liquidity-pool-cell') and (contains(@class, 'even') or contains(@class, 'odd'))]")
+            
+            if not quiet:
+                print(f"\nFound {len(pool_elements)} pools on page. Selecting recommended pools...")
+            
+            for pool in pools:
+                pool_found = False
+                
+                # Try to find pool by name
+                for element in pool_elements:
+                    try:
+                        # Get the pool name from the element
+                        name_elements = element.find_elements(By.XPATH, ".//div[contains(@class, 'name')]")
+                        if name_elements:
+                            element_name = name_elements[0].text.strip()
+                            
+                            # Match pool name (exact or contains)
+                            if element_name == pool.name or pool.name in element_name or element_name in pool.name:
+                                pool_found = True
+                                
+                                # Look for checkbox or selection button
+                                # Try multiple strategies to find the select/checkbox element
+                                
+                                # Strategy 1: Look for checkbox input
+                                checkboxes = element.find_elements(By.XPATH, ".//input[@type='checkbox']")
+                                if checkboxes:
+                                    checkbox = checkboxes[0]
+                                    if not checkbox.is_selected():
+                                        driver.execute_script("arguments[0].click();", checkbox)
+                                        selected_count += 1
+                                        if not quiet:
+                                            print(f"  [OK] Selected: {pool.name}")
+                                    else:
+                                        if not quiet:
+                                            print(f"  [OK] Already selected: {pool.name}")
+                                    break
+                                
+                                # Strategy 2: Look for clickable div/button with select-related classes
+                                select_buttons = element.find_elements(By.XPATH, 
+                                    ".//div[contains(@class, 'checkbox')] | "
+                                    ".//div[contains(@class, 'select')] | "
+                                    ".//button[contains(@class, 'select')] | "
+                                    ".//div[@role='checkbox']"
+                                )
+                                if select_buttons:
+                                    select_button = select_buttons[0]
+                                    driver.execute_script("arguments[0].click();", select_button)
+                                    selected_count += 1
+                                    if not quiet:
+                                        print(f"  [OK] Selected: {pool.name}")
+                                    break
+                                
+                                # Strategy 3: Look for the left section and click it (often contains checkbox)
+                                left_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-left')]")
+                                if left_sections:
+                                    left_section = left_sections[0]
+                                    # Try clicking on the left section (may contain checkbox)
+                                    driver.execute_script("arguments[0].click();", left_section)
+                                    time.sleep(0.5)  # Wait for selection to register
+                                    selected_count += 1
+                                    if not quiet:
+                                        print(f"  [OK] Selected: {pool.name}")
+                                    break
+                                
+                                # Strategy 4: Click anywhere on the pool row (if it's clickable)
+                                try:
+                                    driver.execute_script("arguments[0].click();", element)
+                                    time.sleep(0.5)
+                                    selected_count += 1
+                                    if not quiet:
+                                        print(f"  [OK] Selected: {pool.name}")
+                                    break
+                                except:
+                                    pass
+                                
+                                break
+                    except Exception as e:
+                        if not quiet:
+                            logger.debug(f"Error selecting pool {pool.name}: {e}")
+                        continue
+                
+                if not pool_found and not quiet:
+                    print(f"  [X] Could not find pool on page: {pool.name}")
+            
+            if not quiet:
+                print(f"\n[OK] Successfully selected {selected_count} out of {len(pools)} recommended pool(s)")
+                print("\nBrowser window is open. You can now:")
+                print("  1. Review the selected pools")
+                print("  2. Adjust your vote allocations")
+                print("  3. Click the vote button when ready")
+                print("\nPress Enter here when finished voting (browser will close automatically)...")
+            
+            # Keep browser open until user presses Enter
+            # Store driver reference to prevent garbage collection
+            self._selection_driver = driver
+            try:
+                input()  # Wait for user to press Enter
+            except (KeyboardInterrupt, EOFError):
+                if not quiet:
+                    print("\nClosing browser...")
+            finally:
+                if driver:
+                    driver.quit()
+                self._selection_driver = None
+            
+        except KeyboardInterrupt:
+            if not quiet:
+                print("\nInterrupted by user")
+            if driver:
+                driver.quit()
+            raise
+        except Exception as e:
+            if not quiet:
+                print(f"\nError opening voting page: {e}")
+                import traceback
+                traceback.print_exc()
+            if driver:
+                driver.quit()
+            raise
+    
     def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, output_json: bool = False, return_output: bool = False):
         """Print formatted recommendations"""
         if not pools:
@@ -1541,7 +2326,7 @@ class BlackholePoolRecommender:
             print(output_text)
             return None
     
-    def _get_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None) -> str:
+    def _get_json_output(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None) -> str:
         """Get recommendations as JSON string"""
         from datetime import datetime
         
@@ -1551,7 +2336,8 @@ class BlackholePoolRecommender:
             "user_voting_power": user_voting_power,
             "filters": {
                 "hide_vamm": hide_vamm,
-                "min_rewards": min_rewards
+                "min_rewards": min_rewards,
+                "max_pool_percentage": max_pool_percentage
             },
             "epoch_close": {}
         }
@@ -1608,38 +2394,22 @@ def main():
     parser = argparse.ArgumentParser(
         description='Recommend most profitable Blackhole DEX liquidity pools'
     )
+    # Version first (standard practice)
     parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {__version__}'
     )
-    parser.add_argument(
-        '--top',
-        type=int,
-        default=5,
-        help='Number of top pools to recommend (default: 5)'
-    )
-    parser.add_argument(
-        '--no-headless',
-        action='store_true',
-        help='Show browser window (for debugging)'
-    )
-    parser.add_argument(
-        '--voting-power',
-        type=float,
-        default=None,
-        help='Your voting power in veBLACK (e.g., 15000) - will estimate USD rewards'
-    )
+    # Then alphabetical order
     parser.add_argument(
         '--hide-vamm',
         action='store_true',
         help='Hide vAMM pools from results (if you cannot vote for them)'
     )
     parser.add_argument(
-        '--min-rewards',
-        type=float,
-        default=None,
-        help='Minimum total rewards in USD to include (e.g., 1000). Filters out smaller pools to focus on more stable rewards.'
+        '--json',
+        action='store_true',
+        help='Output results as JSON (useful for post-processing)'
     )
     parser.add_argument(
         '--max-pool-percentage',
@@ -1648,13 +2418,36 @@ def main():
         help='Maximum percentage of pool voting power (e.g., 0.5 for 0.5%%). Filters out pools where adding your full voting power would exceed this threshold.'
     )
     parser.add_argument(
-        '--json',
+        '--min-rewards',
+        type=float,
+        default=None,
+        help='Minimum total rewards in USD to include (e.g., 1000). Filters out smaller pools to focus on more stable rewards.'
+    )
+    parser.add_argument(
+        '--no-headless',
         action='store_true',
-        help='Output results as JSON (useful for post-processing)'
+        help='Show browser window (for debugging)'
     )
     parser.add_argument(
         '-o', '--output',
         help='Output file (optional)'
+    )
+    parser.add_argument(
+        '--select-pools',
+        action='store_true',
+        help='Generate a JavaScript console script to automatically select recommended pools. Copy and paste the script into your browser console while on the voting page.'
+    )
+    parser.add_argument(
+        '--top',
+        type=int,
+        default=5,
+        help='Number of top pools to recommend (default: 5)'
+    )
+    parser.add_argument(
+        '--voting-power',
+        type=float,
+        default=None,
+        help='Your voting power in veBLACK (e.g., 15000) - will estimate USD rewards'
     )
     
     args = parser.parse_args()
@@ -1690,6 +2483,50 @@ def main():
             with open(args.output, 'w') as f:
                 f.write(output)
             print(f"Results written to {args.output}")
+        
+        # Generate JavaScript script for pool selection if requested
+        if args.select_pools:
+            try:
+                script = recommender.generate_voting_script(recommendations, quiet=args.json or args.output)
+                if script:
+                    # Always save script to a file
+                    import os
+                    script_file = 'blackhole_select_pools.js'
+                    if args.output:
+                        # Use output filename as base
+                        script_file = args.output.replace('.txt', '.js').replace('.json', '.js')
+                        if not script_file.endswith('.js'):
+                            script_file += '.js'
+                    
+                    try:
+                        with open(script_file, 'w') as f:
+                            f.write(script)
+                        print(f"\n[OK] Pool selection script saved to: {script_file}")
+                        
+                        # Copy script to clipboard (primary method)
+                        clipboard_success = False
+                        try:
+                            import pyperclip
+                            pyperclip.copy(script)
+                            print(f"\n[OK] Pool selection script copied to clipboard!")
+                            print(f"   Just paste (Ctrl+V or Cmd+V) into your browser console on https://blackhole.xyz/vote")
+                            clipboard_success = True
+                        except ImportError:
+                            print(f"\n[INFO] Install 'pyperclip' to auto-copy script to clipboard:")
+                            print(f"   pip install pyperclip")
+                            print(f"\n   Or manually copy from: {script_file}")
+                        except Exception as e:
+                            # Clipboard failed (e.g., no display on headless system)
+                            if not quiet:
+                                logger.debug(f"Clipboard copy failed: {e}")
+                            print(f"\n[WARN] Could not copy pool selection script to clipboard. Script saved to: {script_file}")
+                            print(f"   Copy the script from the file above or from: {script_file}")
+                            
+                    except Exception as e:
+                        logger.warning(f"Could not save script to file: {e}")
+            except Exception as e:
+                logger.error(f"Error generating voting script: {e}")
+                # Don't exit - user may still want to see the recommendations
         
     except Exception as e:
         logger.error(f"Error: {e}")

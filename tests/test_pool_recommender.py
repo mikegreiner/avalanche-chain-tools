@@ -243,3 +243,81 @@ class TestPoolRecommender:
             # Pools with no votes would give user 100%, so they should be filtered out
             # Pool with votes gives ~1.48%, so also filtered
             assert len(recommendations) == 0
+    
+    def test_recommend_pools_min_rewards(self):
+        """Test filtering by minimum rewards"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('Pool A', 500.0, 50.0, 10000.0),   # Below threshold
+                Pool('Pool B', 1500.0, 75.0, 5000.0),   # Above threshold
+                Pool('Pool C', 2000.0, 80.0, 8000.0)   # Above threshold
+            ]
+            
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                min_rewards=1000.0,  # Filter out pools with < $1000 rewards
+                quiet=True
+            )
+            
+            # Should only have pools B and C (both >= $1000)
+            assert len(recommendations) == 2
+            assert 'Pool B' in [p.name for p in recommendations]
+            assert 'Pool C' in [p.name for p in recommendations]
+            assert 'Pool A' not in [p.name for p in recommendations]
+    
+    def test_generate_voting_script_with_pools(self):
+        """Test generating voting script with pools that have pool_id"""
+        recommender = BlackholePoolRecommender()
+        
+        pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0, pool_id='0x1234567890123456789012345678901234567890'),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0, pool_id='0xabcdefabcdefabcdefabcdefabcdefabcdefabcd')
+        ]
+        
+        script = recommender.generate_voting_script(pools, quiet=True)
+        
+        assert script is not None
+        assert isinstance(script, str)
+        assert '0x1234567890123456789012345678901234567890' in script
+        assert '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' in script
+        assert 'Test Pool 1' in script or 'Test Pool 2' in script
+    
+    def test_generate_voting_script_without_pool_ids(self):
+        """Test generating voting script with pools that don't have pool_id"""
+        recommender = BlackholePoolRecommender()
+        
+        pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0, pool_id=None),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0, pool_id=None)
+        ]
+        
+        script = recommender.generate_voting_script(pools, quiet=True)
+        
+        # Should return None if no pool_ids available
+        assert script is None
+    
+    def test_generate_voting_script_empty_list(self):
+        """Test generating voting script with empty pool list"""
+        recommender = BlackholePoolRecommender()
+        
+        script = recommender.generate_voting_script([], quiet=True)
+        
+        assert script is None
+    
+    def test_generate_voting_script_mixed_pool_ids(self):
+        """Test generating voting script with some pools having pool_id and some not"""
+        recommender = BlackholePoolRecommender()
+        
+        pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0, pool_id='0x1234567890123456789012345678901234567890'),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0, pool_id=None)  # No pool_id
+        ]
+        
+        script = recommender.generate_voting_script(pools, quiet=True)
+        
+        # Should still generate script if at least one pool has pool_id
+        assert script is not None
+        assert isinstance(script, str)
+        assert '0x1234567890123456789012345678901234567890' in script

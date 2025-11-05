@@ -103,6 +103,31 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --json -o recommendat
 python3 blackhole_pool_recommender.py -o output/pool_recommendations.txt
 ```
 
+### Automatically Select Recommended Pools
+```bash
+python3 blackhole_pool_recommender.py --top 10 --voting-power 15000 --select-pools
+```
+
+This generates a JavaScript console script that automatically selects the recommended pools on the voting page. The script is:
+- Saved to `blackhole_select_pools.js` (or based on `--output` filename if provided)
+- Automatically copied to your clipboard (if `pyperclip` is installed)
+- Ready to paste into your browser console on https://blackhole.xyz/vote
+
+**Usage:**
+1. Run the recommender with `--select-pools`
+2. Open https://blackhole.xyz/vote in your browser
+3. Open the browser console (F12 or right-click → Inspect → Console)
+4. Paste the script (Ctrl+V or Cmd+V) and press Enter
+5. The recommended pools will be automatically selected
+6. Allocate your votes manually using the voting interface
+
+**Note:** Install `pyperclip` for automatic clipboard copying:
+```bash
+pip install pyperclip
+```
+
+If `pyperclip` is not installed, the script will still be saved to a file and you can manually copy it.
+
 ### Check Version
 ```bash
 python3 blackhole_pool_recommender.py --version
@@ -313,14 +338,16 @@ If you cannot vote for vAMM pools, use the `--hide-vamm` flag to filter them out
 
 | Option | Type | Description |
 |--------|------|-------------|
+| `--version` | flag | Display script version and exit |
+| `--hide-vamm` | flag | Filter out vAMM pools from results |
+| `--json` | flag | Output results as JSON instead of formatted text |
+| `--max-pool-percentage N` | float | Maximum percentage of pool voting power (e.g., 0.5 for 0.5%). Filters out pools where adding your full voting power would exceed this threshold. Requires `--voting-power`. |
+| `--min-rewards N` | float | Minimum total rewards in USD to include (filters smaller pools) |
+| `--no-headless` | flag | Show browser window (for debugging) |
+| `-o, --output FILE` | string | Save output to file |
+| `--select-pools` | flag | Generate a JavaScript console script to automatically select recommended pools. Saves script to file and copies to clipboard (if pyperclip installed). |
 | `--top N` | int | Number of top pools to recommend (default: 5) |
 | `--voting-power N` | float | Your voting power in veBLACK for reward estimation |
-| `--hide-vamm` | flag | Filter out vAMM pools from results |
-| `--min-rewards N` | float | Minimum total rewards in USD to include (filters smaller pools) |
-| `--json` | flag | Output results as JSON instead of formatted text |
-| `-o, --output FILE` | string | Save output to file |
-| `--no-headless` | flag | Show browser window (for debugging) |
-| `--version` | flag | Display script version and exit |
 
 ## Notes
 
