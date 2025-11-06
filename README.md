@@ -6,7 +6,7 @@ A collection of Python tools for analyzing Avalanche C-Chain transactions, swaps
 
 ### 1. Avalanche Transaction Reader
 **Script:** `avalanche_transaction_reader.py`  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 Reads Avalanche C-Chain transactions from Snowtrace.io and extracts token transfer information with USD value calculations.
 
@@ -14,7 +14,8 @@ Reads Avalanche C-Chain transactions from Snowtrace.io and extracts token transf
 - Fetches transaction data from Snowtrace.io API
 - Parses ERC-20 token transfer events
 - Calculates total tokens received by the transaction sender
-- Fetches token metadata and USD prices (Snowtrace + CoinGecko)
+- Fetches token metadata and USD prices from multiple sources (Snowtrace, DefiLlama, CoinGecko, DexScreener)
+- Configurable markdown header sizes (useful for embedding in larger documents)
 - Outputs formatted markdown with clickable links
 
 **Usage:**
@@ -24,6 +25,9 @@ python3 avalanche_transaction_reader.py "0xabcdef1234567890abcdef1234567890abcde
 
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_transaction_reader.py "0x..." -o analysis.md
+
+# Customize header size (start with ## instead of #)
+python3 avalanche_transaction_reader.py "0x..." --header-size 2
 
 # Check version
 python3 avalanche_transaction_reader.py --version
@@ -69,15 +73,18 @@ python3 avalanche_transaction_narrator.py --version
 
 ### 3. Avalanche Daily Swap Analyzer
 **Script:** `avalanche_daily_swaps.py`  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 Analyzes daily swap transactions for a given Avalanche C-Chain address, focusing on swaps to BTC.b.
 
 **Features:**
 - Analyzes all transactions for an address on a specific date
 - Filters for swap transactions to BTC.b (Bitcoin on Avalanche)
+- Automatically skips ERC-721 NFT transfers (only processes ERC-20 token transfers)
 - Shows detailed breakdown of each swap with token amounts and USD values
 - Calculates totals for BTC.b received and USD value swapped
+- Fetches token prices from multiple sources (Snowtrace, DefiLlama, CoinGecko, DexScreener)
+- Configurable markdown header sizes (useful for embedding in larger documents)
 
 **Usage:**
 ```bash
@@ -89,6 +96,9 @@ python3 avalanche_daily_swaps.py "0x1234567890123456789012345678901234567890" -d
 
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_daily_swaps.py "0x..." -o swaps_analysis.md
+
+# Customize header size (start with ## instead of #)
+python3 avalanche_daily_swaps.py "0x..." --header-size 2
 
 # Check version
 python3 avalanche_daily_swaps.py --version
@@ -281,12 +291,17 @@ cp .env.example .env
 ## Notes
 
 - All scripts use the Snowtrace.io API for transaction data
-- USD prices are fetched from multiple sources (Snowtrace + CoinGecko)
+- USD prices are fetched from multiple sources:
+  - **Snowtrace API** (for AVAX/WAVAX)
+  - **DefiLlama API** (free, no rate limits, good coverage)
+  - **CoinGecko API** (with retry logic for rate limits)
+  - **DexScreener API** (free alternative)
 - The Blackhole Pool Recommender uses Selenium for web scraping (with API fallback)
 - All addresses, transactions, and contracts in outputs are clickable links to Snowtrace.io
 - Timestamps are shown in both local timezone and UTC
 - **Output files**: You can save generated files to an `output/` directory (gitignored) or any location you prefer
 - **Logging**: All tools use Python's logging module - adjust levels via `config.yaml` or environment
+- **Header sizes**: Transaction Reader and Daily Swap Analyzer support `--header-size` option to customize markdown header levels (useful for embedding in larger documents)
 
 ## License
 

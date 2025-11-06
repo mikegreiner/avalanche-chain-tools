@@ -130,6 +130,7 @@ COINGECKO_TOKEN_MAPPING = _config.get('coingecko', {
     '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e': 'usd-coin',     # USDC
     '0xcd94a87696fac69edae3a70fe5725307ae1c43f6': 'blackhole',    # BLACK
     '0x152b9d0fdc40c096757f570a51e494bd4b943e50': 'bitcoin',      # BTC.b
+    '0x09fa58228bb791ea355c90da1e4783452b9bd8c3': 'superfarm',    # SUPER (SuperVerse)
 })
 
 # Known token metadata (for narrator's special handling, with config override support)
@@ -218,18 +219,23 @@ def get_token_info(token_address: str, headers: Optional[Dict] = None,
         return {'name': default_name, 'symbol': 'UNKNOWN', 'decimals': 18}
 
 
-def get_token_price(token_address: str, headers: Optional[Dict] = None) -> float:
+def get_token_price(token_address: str, headers: Optional[Dict] = None, 
+                     token_symbol: Optional[str] = None) -> float:
     """
     Get current token price in USD from multiple sources.
     
     Tries:
     1. Snowtrace API (for AVAX/WAVAX)
-    2. CoinGecko contract address search
-    3. CoinGecko simple price API
+    2. DefiLlama API (free, no rate limits)
+    3. CoinGecko contract address search
+    4. CoinGecko simple price API (if mapped)
+    5. CoinGecko symbol search (if token_symbol provided)
+    6. DexScreener API (free alternative)
     
     Args:
         token_address: Token contract address
         headers: Optional custom headers (defaults to DEFAULT_HEADERS)
+        token_symbol: Optional token symbol for symbol-based search fallback
         
     Returns:
         Token price in USD, or 0.0 if not found
@@ -251,15 +257,63 @@ def get_token_price(token_address: str, headers: Optional[Dict] = None) -> float
         except Exception:
             pass
     
-    # Try CoinGecko contract address search first (more reliable for Avalanche tokens)
+    # Try DefiLlama API (free, no rate limits, good coverage)
+    try:
+        defillama_url = f"https://coins.llama.fi/prices/current/avax:{token_address_lower}"
+        response = requests.get(defillama_url, timeout=API_TIMEOUT_DEFAULT)
+        if response.status_code == 200:
+            data = response.json()
+            coin_key = f"avax:{token_address_lower}"
+            if coin_key in data.get('coins', {}):
+                coin_data = data['coins'][coin_key]
+                price = coin_data.get('price', 0.0)
+                if price and price > 0:
+                    logger.debug(f"Found price for {token_address} via DefiLlama: ${price}")
+                    return float(price)
+    except Exception as e:
+        logger.debug(f"DefiLlama API failed for {token_address}: {e}")
+    
+    # Try CoinGecko contract address search (more reliable for Avalanche tokens)
     try:
         search_url = f"https://api.coingecko.com/api/v3/coins/avalanche/contract/{token_address_lower}"
         response = requests.get(search_url, timeout=API_TIMEOUT_DEFAULT)
         if response.status_code == 200:
             data = response.json()
-            price = data.get('market_data', {}).get('current_price', {}).get('usd', 0.0)
-            if price > 0:
-                return price
+            # Check for rate limiting
+            if 'error' in data:
+                error_msg = data.get('error', 'Unknown error')
+                if 'rate limit' in error_msg.lower():
+                    logger.warning(f"CoinGecko rate limit for {token_address}")
+                    # Wait and retry once
+                    time.sleep(2)
+                    response = requests.get(search_url, timeout=API_TIMEOUT_DEFAULT)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if 'error' not in data:
+                            price = data.get('market_data', {}).get('current_price', {}).get('usd', 0.0)
+                            if price and price > 0:
+                                return float(price)
+                else:
+                    logger.debug(f"CoinGecko error for {token_address}: {error_msg}")
+            else:
+                price = data.get('market_data', {}).get('current_price', {}).get('usd', 0.0)
+                if price and price > 0:
+                    return float(price)
+        elif response.status_code == 429:
+            logger.warning(f"CoinGecko rate limit (429) for {token_address}, waiting and retrying...")
+            # Wait and retry once
+            time.sleep(2)
+            response = requests.get(search_url, timeout=API_TIMEOUT_DEFAULT)
+            if response.status_code == 200:
+                data = response.json()
+                if 'error' not in data:
+                    price = data.get('market_data', {}).get('current_price', {}).get('usd', 0.0)
+                    if price and price > 0:
+                        return float(price)
+        else:
+            logger.debug(f"CoinGecko contract search returned status {response.status_code} for {token_address}")
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Contract search network error for {token_address}: {e}")
     except Exception as e:
         logger.warning(f"Contract search failed for {token_address}: {e}")
     
@@ -274,11 +328,108 @@ def get_token_price(token_address: str, headers: Optional[Dict] = None) -> float
             if response.status_code == 200:
                 data = response.json()
                 if 'status' not in data:  # No error status
-                    return data.get(coingecko_id, {}).get('usd', 0.0)
+                    price = data.get(coingecko_id, {}).get('usd', 0.0)
+                    if price and price > 0:
+                        return float(price)
                 else:
                     logger.warning(f"CoinGecko rate limit hit for {coingecko_id}")
+            elif response.status_code == 429:
+                logger.warning(f"CoinGecko rate limit (429) for simple price API, waiting...")
+                time.sleep(2)
+                response = requests.get(price_url, timeout=API_TIMEOUT_DEFAULT)
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'status' not in data:
+                        price = data.get(coingecko_id, {}).get('usd', 0.0)
+                        if price and price > 0:
+                            return float(price)
     except Exception as e:
         logger.warning(f"Simple price API failed for {token_address}: {e}")
+    
+    # Try CoinGecko symbol search as fallback (if token_symbol provided)
+    # This is especially useful when contract search hits rate limits
+    if token_symbol:
+        try:
+            # Add a delay to avoid rate limiting
+            time.sleep(0.5)
+            search_url = f"https://api.coingecko.com/api/v3/search?query={token_symbol.lower()}"
+            response = requests.get(search_url, timeout=API_TIMEOUT_DEFAULT)
+            if response.status_code == 200:
+                data = response.json()
+                coins = data.get('coins', [])
+                if coins:
+                    # Take the first result (usually the most relevant)
+                    coin_id = coins[0].get('id')
+                    if coin_id:
+                        # Get price using the found coin ID
+                        time.sleep(0.5)  # Additional delay
+                        price_url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+                        price_response = requests.get(price_url, timeout=API_TIMEOUT_DEFAULT)
+                        if price_response.status_code == 200:
+                            price_data = price_response.json()
+                            if 'status' not in price_data:
+                                price = price_data.get(coin_id, {}).get('usd', 0.0)
+                                if price and price > 0:
+                                    logger.debug(f"Found price for {token_symbol} via symbol search: ${price}")
+                                    return float(price)
+                        elif price_response.status_code == 429:
+                            logger.warning(f"CoinGecko rate limit (429) for symbol search price, waiting...")
+                            time.sleep(2)
+                            price_response = requests.get(price_url, timeout=API_TIMEOUT_DEFAULT)
+                            if price_response.status_code == 200:
+                                price_data = price_response.json()
+                                if 'status' not in price_data:
+                                    price = price_data.get(coin_id, {}).get('usd', 0.0)
+                                    if price and price > 0:
+                                        logger.debug(f"Found price for {token_symbol} via symbol search (retry): ${price}")
+                                        return float(price)
+            elif response.status_code == 429:
+                logger.warning(f"CoinGecko rate limit (429) for symbol search, waiting and retrying...")
+                time.sleep(2)
+                response = requests.get(search_url, timeout=API_TIMEOUT_DEFAULT)
+                if response.status_code == 200:
+                    data = response.json()
+                    coins = data.get('coins', [])
+                    if coins:
+                        coin_id = coins[0].get('id')
+                        if coin_id:
+                            time.sleep(0.5)
+                            price_url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+                            price_response = requests.get(price_url, timeout=API_TIMEOUT_DEFAULT)
+                            if price_response.status_code == 200:
+                                price_data = price_response.json()
+                                if 'status' not in price_data:
+                                    price = price_data.get(coin_id, {}).get('usd', 0.0)
+                                    if price and price > 0:
+                                        logger.debug(f"Found price for {token_symbol} via symbol search (retry): ${price}")
+                                        return float(price)
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"Symbol search network error for {token_symbol}: {e}")
+        except Exception as e:
+            logger.debug(f"Symbol search failed for {token_symbol}: {e}")
+    
+    # Try DexScreener API as last resort (free, no rate limits)
+    try:
+        dexscreener_url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address_lower}"
+        response = requests.get(dexscreener_url, timeout=API_TIMEOUT_DEFAULT)
+        if response.status_code == 200:
+            data = response.json()
+            pairs = data.get('pairs', [])
+            if pairs:
+                # Find pair with highest liquidity/volume, or just use the first one
+                # Look for pairs with USD price
+                for pair in pairs:
+                    price_usd = pair.get('priceUsd')
+                    if price_usd:
+                        try:
+                            price = float(price_usd)
+                            if price > 0:
+                                logger.debug(f"Found price for {token_address} via DexScreener: ${price}")
+                                return price
+                        except (ValueError, TypeError):
+                            continue
+    except Exception as e:
+        logger.debug(f"DexScreener API failed for {token_address}: {e}")
     
     return 0.0
 

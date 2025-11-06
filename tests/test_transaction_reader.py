@@ -171,3 +171,21 @@ class TestTransactionReader:
                         
                         assert 'Tokens Received' in result
                         assert 'BTC.b' in result
+    
+    def test_header_helper(self):
+        """Test header helper method with different starting sizes"""
+        reader = AvalancheTransactionReader()
+        
+        # Default (starting size 1)
+        header1 = reader._header(1, 1, "Test")
+        assert header1 == "# Test\n\n"
+        
+        header2 = reader._header(2, 1, "Test")
+        assert header2 == "## Test\n\n"
+        
+        # Starting size 2
+        header1_size2 = reader._header(1, 2, "Test")
+        assert header1_size2 == "## Test\n\n"
+        
+        header2_size2 = reader._header(2, 2, "Test")
+        assert header2_size2 == "### Test\n\n"

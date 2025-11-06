@@ -178,6 +178,98 @@ class TestGetTokenPrice:
         price = get_token_price('0x0000000000000000000000000000000000000000')
         
         assert price == 0.0
+    
+    @patch('avalanche_utils.requests.get')
+    def test_get_token_price_defillama(self, mock_get):
+        """Test price retrieval from DefiLlama API"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'coins': {
+                'avax:0x152b9d0fdc40c096757f570a51e494bd4b943e50': {
+                    'price': 45000.0,
+                    'symbol': 'BTC.b',
+                    'decimals': 8,
+                    'timestamp': 1762391347,
+                    'confidence': 0.99
+                }
+            }
+        }
+        mock_get.return_value = mock_response
+        
+        price = get_token_price('0x152b9d0fdc40c096757f570a51e494bd4b943e50')
+        
+        assert price == 45000.0
+    
+    @patch('avalanche_utils.requests.get')
+    def test_get_token_price_dexscreener(self, mock_get):
+        """Test price retrieval from DexScreener API (fallback)"""
+        # DefiLlama fails, CoinGecko fails, DexScreener succeeds
+        def mock_get_side_effect(*args, **kwargs):
+            mock_resp = Mock()
+            if 'llama.fi' in args[0]:
+                mock_resp.status_code = 404
+                return mock_resp
+            elif 'coingecko' in args[0]:
+                mock_resp.status_code = 429  # Rate limit
+                return mock_resp
+            elif 'dexscreener' in args[0]:
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = {
+                    'pairs': [
+                        {
+                            'priceUsd': '45000.50',
+                            'chainId': 'avalanche'
+                        }
+                    ]
+                }
+                return mock_resp
+            else:
+                mock_resp.status_code = 404
+                return mock_resp
+        
+        mock_get.side_effect = mock_get_side_effect
+        
+        price = get_token_price('0x152b9d0fdc40c096757f570a51e494bd4b943e50')
+        
+        assert price == 45000.50
+    
+    @patch('avalanche_utils.requests.get')
+    @patch('avalanche_utils.time.sleep')
+    def test_get_token_price_symbol_search(self, mock_sleep, mock_get):
+        """Test price retrieval using symbol-based search fallback"""
+        # All contract-based searches fail, symbol search succeeds
+        def mock_get_side_effect(*args, **kwargs):
+            mock_resp = Mock()
+            if 'llama.fi' in args[0]:
+                mock_resp.status_code = 404
+                return mock_resp
+            elif 'coingecko.com/api/v3/coins/avalanche/contract' in args[0]:
+                mock_resp.status_code = 429  # Rate limit
+                return mock_resp
+            elif 'coingecko.com/api/v3/search' in args[0]:
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = {
+                    'coins': [
+                        {'id': 'bitcoin', 'symbol': 'BTC', 'name': 'Bitcoin'}
+                    ]
+                }
+                return mock_resp
+            elif 'coingecko.com/api/v3/simple/price' in args[0]:
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = {
+                    'bitcoin': {'usd': 45000.0}
+                }
+                return mock_resp
+            else:
+                mock_resp.status_code = 404
+                return mock_resp
+        
+        mock_get.side_effect = mock_get_side_effect
+        
+        price = get_token_price('0x152b9d0fdc40c096757f570a51e494bd4b943e50', token_symbol='BTC.b')
+        
+        assert price == 45000.0
 
 
 class TestFormatAmount:

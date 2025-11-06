@@ -25,6 +25,7 @@ coingecko:
   "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": "usd-coin"     # USDC
   "0xcd94a87696fac69edae3a70fe5725307ae1c43f6": "blackhole"    # BLACK
   "0x152b9d0fdc40c096757f570a51e494bd4b943e50": "bitcoin"      # BTC.b
+  "0x09fa58228bb791ea355c90da1e4783452b9bd8c3": "superfarm"    # SUPER (SuperVerse)
 
 # Known Token Metadata
 known_tokens:

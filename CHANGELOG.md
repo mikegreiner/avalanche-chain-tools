@@ -4,6 +4,38 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced - Token Price Lookup (`avalanche_utils.py`)
+- **Multiple Price Sources**: Added DefiLlama and DexScreener APIs as alternatives to CoinGecko
+  - DefiLlama API (free, no rate limits) - primary fallback
+  - DexScreener API (free alternative) - last resort fallback
+  - Improved price lookup success rate, especially for lesser-known tokens
+- **Improved Rate Limit Handling**: 
+  - Automatic retry with backoff for CoinGecko rate limits (429 errors)
+  - Better error logging and debugging
+  - Delays between token lookups to avoid hitting limits
+- **Symbol-Based Search Fallback**: 
+  - When contract lookup fails, uses token symbol to search CoinGecko
+  - Helps find prices for tokens that might not be indexed by contract address
+  - Automatically passed from scripts that already have token info
+
+### Enhanced - Transaction Reader (`avalanche_transaction_reader.py`)
+- **Configurable Header Sizes**: Added `--header-size` option (default: 1, range: 1-5)
+  - Useful for embedding output in larger markdown documents
+  - Example: `--header-size 2` starts with `##` instead of `#`
+- **Better Price Lookup**: Now benefits from improved multi-source price lookup
+
+### Enhanced - Daily Swap Analyzer (`avalanche_daily_swaps.py`)
+- **ERC-721 NFT Transfer Handling**: Automatically skips NFT transfers (only processes ERC-20 token transfers)
+  - Fixes parsing errors when transactions contain NFT transfers
+  - Distinguishes between ERC-20 (3 topics + data) and ERC-721 (4+ topics, empty data)
+- **Configurable Header Sizes**: Added `--header-size` option (default: 1, range: 1-5)
+  - Useful for embedding output in larger markdown documents
+  - Example: `--header-size 2` starts with `##` instead of `#`
+- **Fixed Date Range Logic**: Search end date now capped to current time to prevent API errors
+  - Prevents "NOTOK" errors when analyzing today's transactions
+  - Falls back to estimation if API fails
+- **Better Price Lookup**: Now benefits from improved multi-source price lookup
+
 ### Enhanced - Pool Tracking (`track_pool_changes.py`)
 - **Profitability Score Tracking**: Added profitability score display to history output
   - Shows profitability score changes over time in both "OVERALL PERFORMANCE" and "VOTES ADDED" sections
