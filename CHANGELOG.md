@@ -9,7 +9,7 @@ All notable changes to the published tools will be documented in this file.
 - **Caching System**: Added automatic caching of pool data to speed up subsequent runs
   - Caches all pools (not filtered) so different filter combinations work with cached data
   - Shared cache across all tools (pool recommender, pool tracker, etc.)
-  - Configurable cache expiry (default: 7 minutes)
+  - Configurable cache expiry (default: 60 minutes / 1 hour)
   - Cache status shown on each run with local and UTC times
   - `--no-cache` option to skip cache and fetch fresh data (still refreshes cache)
   - `--cache-info` option to show detailed cache information

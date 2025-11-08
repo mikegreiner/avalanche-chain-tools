@@ -88,7 +88,7 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage
 
 ### Caching
 
-The pool recommender automatically caches pool data to speed up subsequent runs. By default, cached data is used for 7 minutes (configurable in `config.yaml`).
+The pool recommender automatically caches pool data to speed up subsequent runs. By default, cached data is used for 1 hour (60 minutes, configurable in `config.yaml`).
 
 **Benefits:**
 - Faster subsequent runs within the cache window
@@ -116,11 +116,22 @@ python3 blackhole_pool_recommender.py --cache-info
 
 This shows detailed cache information including:
 - Cache file locations
-- Status (Valid/Expired)
+- Status (Valid/Expired/Invalid with reason)
 - Number of pools cached
-- Last refresh time and age
+- Validation issues (if any)
+- Last refresh time and age (in mins:seconds format)
 - Expiry time and time until expiry
 - Cache expiry window
+
+The cache status is determined by both:
+1. **Timestamp validation**: Checks if the cache hasn't expired based on the configured expiry window
+2. **Content validation**: Validates cache completeness by checking:
+   - Pool count (expects 50+ pools minimum)
+   - Cache file size (expects ~100 bytes per pool minimum)
+   - Data quality (checks for missing essential fields)
+   - Data distribution (should have pools with high rewards)
+
+The cache is only considered valid if both timestamp and content validation pass. If content validation fails, the cache will be refreshed on the next run even if the timestamp is still valid.
 
 **Configuration:**
 Cache settings can be configured in `config.yaml`:
@@ -281,7 +292,7 @@ Top 5 Pools (sorted by estimated reward):
    VAPR: 104.10%
    Current Votes: 67,371
    Rewards per Vote: $0.3265
-   Your Estimated Reward: $4,170.52 (18.96% share)
+   >>> Your Estimated Reward: $4,170.52 (18.96% share)
    Profitability Score: 75.04
 
 2. CL200-XAUt0/USDt
@@ -290,7 +301,7 @@ Top 5 Pools (sorted by estimated reward):
    VAPR: 820.80%
    Current Votes: 289,896
    Rewards per Vote: $0.0189
-   Your Estimated Reward: $282.77 (5.16% share)
+   >>> Your Estimated Reward: $282.77 (5.16% share)
    Profitability Score: 37.69
 ```
 
@@ -401,6 +412,7 @@ If you cannot vote for vAMM pools, use the `--hide-vamm` flag to filter them out
 | `--clear-cache` | flag | Clear/delete cache files and exit |
 | `--no-headless` | flag | Show browser window (for debugging) |
 | `-o, --output FILE` | string | Save output to file |
+| `--pool-name PATTERN` | string | Filter pools by name using shell-style wildcards (case-insensitive). If no wildcards are provided, automatically wraps pattern with `*` (e.g., `"btc.b"` becomes `"*btc.b*"`). Examples: `"WAVAX/*"`, `"*BLACK*"`, `"CL200-*"`, `"btc.b"`. Uses `*` for any characters and `?` for a single character. |
 | `--select-pools` | flag | Generate a JavaScript console script to automatically select recommended pools. Saves script to file and copies to clipboard (if pyperclip installed). |
 | `--top N` | int | Number of top pools to recommend (default: 5) |
 | `--voting-power N` | float | Your voting power in veBLACK for reward estimation |

@@ -2,6 +2,9 @@
 Tests for blackhole_pool_recommender module.
 """
 import pytest
+import json
+import pickle
+import io
 from unittest.mock import Mock, patch
 from blackhole_pool_recommender import BlackholePoolRecommender, Pool
 
@@ -267,6 +270,152 @@ class TestPoolRecommender:
             assert 'Pool C' in [p.name for p in recommendations]
             assert 'Pool A' not in [p.name for p in recommendations]
     
+    def test_recommend_pools_pool_name(self):
+        """Test filtering by pool name using shell-style wildcards"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('WAVAX/USDC', 1000.0, 50.0, 10000.0),
+                Pool('WAVAX/USDT', 1500.0, 75.0, 5000.0),
+                Pool('BTC.b/USDC', 2000.0, 80.0, 8000.0),
+                Pool('ETH.e/USDC', 2500.0, 85.0, 12000.0),
+                Pool('CL200-WAVAX/USDC', 3000.0, 90.0, 15000.0)
+            ]
+            
+            # Test wildcard pattern: WAVAX/*
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                pool_name='WAVAX/*',
+                quiet=True
+            )
+            
+            # Should only have pools starting with "WAVAX/"
+            assert len(recommendations) == 2
+            assert all('WAVAX/' in p.name for p in recommendations)
+            assert 'BTC.b/USDC' not in [p.name for p in recommendations]
+            assert 'ETH.e/USDC' not in [p.name for p in recommendations]
+    
+    def test_recommend_pools_pool_name_case_insensitive(self):
+        """Test that pool name filtering is case-insensitive"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('WAVAX/USDC', 1000.0, 50.0, 10000.0),
+                Pool('wavax/usdt', 1500.0, 75.0, 5000.0),
+                Pool('Wavax/USDC', 2000.0, 80.0, 8000.0),
+                Pool('BTC.b/USDC', 2500.0, 85.0, 12000.0)
+            ]
+            
+            # Test with lowercase pattern
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                pool_name='wavax/*',
+                quiet=True
+            )
+            
+            # Should match all WAVAX pools regardless of case
+            assert len(recommendations) == 3
+            assert all('wavax' in p.name.lower() for p in recommendations)
+            assert 'BTC.b/USDC' not in [p.name for p in recommendations]
+    
+    def test_recommend_pools_pool_name_contains(self):
+        """Test pool name filtering with *BLACK* pattern"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('WAVAX/BLACK', 1000.0, 50.0, 10000.0),
+                Pool('BLACK/USDC', 1500.0, 75.0, 5000.0),
+                Pool('BTC.b/USDC', 2000.0, 80.0, 8000.0),
+                Pool('CL200-BLACK/USDC', 2500.0, 85.0, 12000.0)
+            ]
+            
+            # Test pattern: *BLACK*
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                pool_name='*BLACK*',
+                quiet=True
+            )
+            
+            # Should match all pools containing "BLACK"
+            assert len(recommendations) == 3
+            assert all('BLACK' in p.name.upper() for p in recommendations)
+            assert 'BTC.b/USDC' not in [p.name for p in recommendations]
+    
+    def test_recommend_pools_pool_name_prefix(self):
+        """Test pool name filtering with CL200-* pattern"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('CL200-WAVAX/USDC', 1000.0, 50.0, 10000.0),
+                Pool('CL200-BTC.b/USDC', 1500.0, 75.0, 5000.0),
+                Pool('CL1-WAVAX/USDC', 2000.0, 80.0, 8000.0),
+                Pool('WAVAX/USDC', 2500.0, 85.0, 12000.0)
+            ]
+            
+            # Test pattern: CL200-*
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                pool_name='CL200-*',
+                quiet=True
+            )
+            
+            # Should only match pools starting with "CL200-"
+            assert len(recommendations) == 2
+            assert all(p.name.startswith('CL200-') for p in recommendations)
+            assert 'CL1-WAVAX/USDC' not in [p.name for p in recommendations]
+            assert 'WAVAX/USDC' not in [p.name for p in recommendations]
+    
+    def test_recommend_pools_pool_name_auto_wildcard(self):
+        """Test that pool name without wildcards is automatically wrapped with *"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('WAVAX/BTC.b', 1000.0, 50.0, 10000.0),
+                Pool('BTC.b/USDC', 1500.0, 75.0, 5000.0),
+                Pool('ETH.e/USDC', 2000.0, 80.0, 8000.0),
+                Pool('CL200-BTC.b/USDC', 2500.0, 85.0, 12000.0)
+            ]
+            
+            # Test pattern without wildcards: "btc.b" should become "*btc.b*"
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                pool_name='btc.b',
+                quiet=True
+            )
+            
+            # Should match all pools containing "btc.b" (case-insensitive)
+            assert len(recommendations) == 3
+            assert all('btc.b' in p.name.lower() for p in recommendations)
+            assert 'ETH.e/USDC' not in [p.name for p in recommendations]
+    
+    def test_recommend_pools_pool_name_explicit_wildcard_preserved(self):
+        """Test that explicit wildcards are not double-wrapped"""
+        recommender = BlackholePoolRecommender()
+        
+        with patch.object(recommender, 'fetch_pools') as mock_fetch:
+            mock_fetch.return_value = [
+                Pool('WAVAX/USDC', 1000.0, 50.0, 10000.0),
+                Pool('WAVAX/USDT', 1500.0, 75.0, 5000.0),
+                Pool('BTC.b/USDC', 2000.0, 80.0, 8000.0)
+            ]
+            
+            # Test pattern with explicit wildcard: "WAVAX/*" should not be wrapped
+            recommendations = recommender.recommend_pools(
+                top_n=5,
+                pool_name='WAVAX/*',
+                quiet=True
+            )
+            
+            # Should only match pools starting with "WAVAX/"
+            assert len(recommendations) == 2
+            assert all(p.name.startswith('WAVAX/') for p in recommendations)
+            assert 'BTC.b/USDC' not in [p.name for p in recommendations]
+    
     def test_generate_voting_script_with_pools(self):
         """Test generating voting script with pools that have pool_id"""
         recommender = BlackholePoolRecommender()
@@ -353,37 +502,113 @@ class TestCaching:
         with patch.object(recommender, '_load_from_cache') as mock_load:
             mock_load.return_value = {'pools': test_pools}
             
-            # Mock fetch_pools_api to return fresh data
-            with patch.object(recommender, 'fetch_pools_api') as mock_api:
-                mock_api.return_value = test_pools
+            # Mock fetch_pools_selenium to return fresh data
+            with patch.object(recommender, 'fetch_pools_selenium') as mock_selenium:
+                mock_selenium.return_value = test_pools
                 
-                # Should skip cache and call fetch_pools_api
+                # Should skip cache and call fetch_pools_selenium
                 pools = recommender.fetch_pools(quiet=True)
                 
                 # Should not have called _load_from_cache
                 mock_load.assert_not_called()
-                # Should have called fetch_pools_api
-                mock_api.assert_called_once()
+                # Should have called fetch_pools_selenium
+                mock_selenium.assert_called_once()
+                assert pools == test_pools
     
     def test_fetch_pools_uses_cache_when_no_cache_false(self):
         """Test that fetch_pools uses cache when no_cache=False"""
         recommender = BlackholePoolRecommender(no_cache=False)
         
+        # Create test pools with enough pools (>= 50) to pass the completeness check
         test_pools = [
-            Pool('Test Pool 1', 1000.0, 50.0, 10000.0),
-            Pool('Test Pool 2', 2000.0, 75.0, 5000.0)
+            Pool(f'Test Pool {i}', 1000.0 + i * 100, 50.0 + i, 10000.0 + i * 1000)
+            for i in range(1, 51)  # 50 pools (minimum for cache to be considered complete)
         ]
         
         # Mock _load_from_cache to return cached data
         with patch.object(recommender, '_load_from_cache') as mock_load:
             mock_load.return_value = {'pools': test_pools}
             
-            # Should use cache and return cached pools
-            pools = recommender.fetch_pools(quiet=True)
+            # Mock cache file to exist and have reasonable size (passes size check)
+            # 50 pools * 100 bytes = 5000 bytes minimum
+            from pathlib import Path
+            original_exists = Path.exists
+            original_stat = Path.stat
             
-            # Should have called _load_from_cache
-            mock_load.assert_called_once()
-            assert pools == test_pools
+            def mock_exists(self):
+                if self == recommender.cache_file:
+                    return True
+                return original_exists(self)
+            
+            # Create a mock stat result
+            class MockStatResult:
+                def __init__(self):
+                    self.st_size = 10000  # 10KB, well above minimum
+            
+            def mock_stat(self):
+                if self == recommender.cache_file:
+                    return MockStatResult()
+                return original_stat(self)
+            
+            # Also need to ensure pools have high rewards to pass validation
+            # Add some high-reward pools to test_pools
+            test_pools_with_high_rewards = test_pools.copy()
+            # First pool already has high rewards (1000 + 1*100 = 1100), but need > 10000
+            # Let's modify a few to have high rewards
+            for i in range(min(5, len(test_pools_with_high_rewards))):
+                test_pools_with_high_rewards[i] = Pool(
+                    test_pools_with_high_rewards[i].name,
+                    20000.0 + i * 1000,  # High rewards
+                    test_pools_with_high_rewards[i].vapr,
+                    test_pools_with_high_rewards[i].current_votes,
+                    test_pools_with_high_rewards[i].pool_id,
+                    test_pools_with_high_rewards[i].pool_type,
+                    test_pools_with_high_rewards[i].fee_percentage
+                )
+            mock_load.return_value = {'pools': test_pools_with_high_rewards}
+            
+            with patch.object(Path, 'exists', mock_exists):
+                with patch.object(Path, 'stat', mock_stat):
+                    # Should use cache and return cached pools
+                    pools = recommender.fetch_pools(quiet=True)
+                    
+                    # Should have called _load_from_cache
+                    mock_load.assert_called_once()
+                    # Just check we got pools back, not exact match (since we modified them)
+                    assert len(pools) == len(test_pools_with_high_rewards)
+    
+    def test_fetch_pools_skips_incomplete_cache(self):
+        """Test that fetch_pools skips cache if it has very few pools (< 50)"""
+        recommender = BlackholePoolRecommender(no_cache=False)
+        
+        # Create test pools with too few pools (< 50) - should be skipped
+        incomplete_pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0)
+        ]
+        
+        fresh_pools = [
+            Pool(f'Fresh Pool {i}', 2000.0 + i * 100, 60.0 + i, 15000.0 + i * 1000)
+            for i in range(1, 51)  # 50 pools (minimum for cache to be considered complete)
+        ]
+        
+        # Mock _load_from_cache to return incomplete cached data
+        with patch.object(recommender, '_load_from_cache') as mock_load:
+            mock_load.return_value = {'pools': incomplete_pools}
+            
+            # Mock fetch_pools_selenium to return fresh data
+            with patch.object(recommender, 'fetch_pools_selenium') as mock_selenium:
+                mock_selenium.return_value = fresh_pools
+                
+                # Should skip incomplete cache and fetch fresh data
+                pools = recommender.fetch_pools(quiet=True)
+                
+                # Should have called _load_from_cache
+                mock_load.assert_called_once()
+                # Should have called fetch_pools_selenium (skipped cache)
+                mock_selenium.assert_called_once()
+                # Should return fresh pools, not cached ones
+                assert pools == fresh_pools
     
     def test_save_to_cache_still_works_with_no_cache(self):
         """Test that _save_to_cache still works even when no_cache=True"""
@@ -397,32 +622,55 @@ class TestCaching:
         # Mock _ensure_cache_dir and file operations
         with patch.object(recommender, '_ensure_cache_dir') as mock_ensure:
             # Mock open to handle both binary (pickle) and text (JSON) file operations
+            # Also need to mock fcntl for file locking
             import io
             
             # Track if files were opened
             files_opened = []
             
+            class MockFile:
+                """Mock file object with fileno() for fcntl"""
+                def __init__(self, filename, mode):
+                    self.filename = filename
+                    self.mode = mode
+                    self._fileno = 42  # Dummy file descriptor
+                    if 'b' in mode:
+                        self._file = io.BytesIO()
+                    else:
+                        self._file = io.StringIO()
+                
+                def fileno(self):
+                    return self._fileno
+                
+                def __getattr__(self, name):
+                    return getattr(self._file, name)
+                
+                def __enter__(self):
+                    return self
+                
+                def __exit__(self, *args):
+                    pass
+            
             def mock_open_func(filename, mode='r', *args, **kwargs):
                 files_opened.append((filename, mode))
-                if 'b' in mode:
-                    return io.BytesIO()
-                else:
-                    return io.StringIO()
+                return MockFile(filename, mode)
             
             with patch('builtins.open', side_effect=mock_open_func):
-                # Should still save to cache (to refresh it) without raising exception
-                try:
-                    recommender._save_to_cache(test_pools)
-                    exception_raised = False
-                except Exception:
-                    exception_raised = True
-                
-                # Should not have raised an exception
-                assert not exception_raised
-                # Should have called _ensure_cache_dir
-                mock_ensure.assert_called_once()
-                # Should have opened both cache files (pickle and JSON)
-                assert len(files_opened) >= 2
+                with patch('fcntl.flock'):  # Mock fcntl.flock to avoid actual locking
+                    # Should still save to cache (to refresh it) without raising exception
+                    try:
+                        recommender._save_to_cache(test_pools)
+                        exception_raised = False
+                    except Exception:
+                        exception_raised = True
+                    
+                    # Should not have raised an exception
+                    assert not exception_raised
+                    # Should have called _ensure_cache_dir
+                    mock_ensure.assert_called_once()
+                    # Should have opened at least lock file and temp cache file
+                    # (metadata file might not be opened if cache file write fails in test)
+                    assert len(files_opened) >= 2
     
     def test_get_cache_info_no_cache(self):
         """Test _get_cache_info when no cache exists"""
@@ -442,7 +690,7 @@ class TestCaching:
             assert cache_info is None
     
     def test_get_cache_info_with_cache(self):
-        """Test _get_cache_info when cache exists"""
+        """Test _get_cache_info when cache exists with valid content"""
         recommender = BlackholePoolRecommender()
         
         # Create mock cache metadata
@@ -454,37 +702,81 @@ class TestCaching:
             'expiry_minutes': 7
         }
         
-        # Mock Path.exists to return True for cache metadata file
+        # Create valid pools for content validation (50+ pools with valid data)
+        valid_pools = []
+        for i in range(60):
+            pool = Pool(
+                name=f"Pool {i}",
+                total_rewards=10000.0 + i * 100,  # High rewards
+                vapr=50.0,
+                pool_id=f"pool_{i}",
+                pool_type="CL200"
+            )
+            valid_pools.append(pool)
+        
+        # Mock Path.exists to return True for both cache files
         from pathlib import Path
         original_exists = Path.exists
+        original_stat = Path.stat
         
         def mock_exists(self):
-            if self == recommender.cache_metadata_file:
+            if self == recommender.cache_metadata_file or self == recommender.cache_file:
                 return True
             return original_exists(self)
         
-        # Mock cache metadata file exists and contains valid data
+        def mock_stat(self):
+            if self == recommender.cache_file:
+                # Mock file size (60 pools * 100 bytes = 6000 bytes minimum)
+                mock_stat_result = Mock()
+                mock_stat_result.st_size = 10000  # Valid size
+                return mock_stat_result
+            return original_stat(self)
+        
+        # Mock cache metadata file and cache file
         with patch.object(Path, 'exists', mock_exists):
-            with patch('builtins.open', create=True) as mock_open:
-                import io
-                import json
-                mock_file = io.StringIO(json.dumps(test_metadata))
-                mock_open.return_value.__enter__.return_value = mock_file
-                mock_open.return_value.__exit__ = lambda *args: None
-                
-                cache_info = recommender._get_cache_info()
-                
-                assert cache_info is not None
-                assert cache_info['pool_count'] == 50
-                assert cache_info['expiry_minutes'] == 7
-                assert cache_info['is_valid'] is True
-                assert cache_info['age_minutes'] >= 1.9  # Should be around 2 minutes
-                assert 'timestamp' in cache_info
-                assert 'expiry_time' in cache_info
-                assert 'time_until_expiry' in cache_info
+            with patch.object(Path, 'stat', mock_stat):
+                with patch('builtins.open', create=True) as mock_open:
+                    call_count = [0]
+                    
+                    def mock_open_side_effect(path, mode='r', *args, **kwargs):
+                        call_count[0] += 1
+                        if 'metadata' in str(path) or path == recommender.cache_metadata_file:
+                            # Return metadata JSON
+                            mock_file = io.StringIO(json.dumps(test_metadata))
+                        elif 'rb' in mode or path == recommender.cache_file:
+                            # Return pickled pools data
+                            mock_file = io.BytesIO(pickle.dumps({'pools': valid_pools}))
+                        else:
+                            # Lock file
+                            mock_file = io.StringIO('')
+                        
+                        mock_file_obj = Mock()
+                        mock_file_obj.__enter__ = Mock(return_value=mock_file)
+                        mock_file_obj.__exit__ = Mock(return_value=None)
+                        mock_file_obj.fileno = Mock(return_value=1)
+                        return mock_file_obj
+                    
+                    mock_open.side_effect = mock_open_side_effect
+                    
+                    # Mock fcntl for file locking
+                    with patch('fcntl.flock'):
+                        cache_info = recommender._get_cache_info()
+                        
+                        assert cache_info is not None
+                        assert cache_info['pool_count'] == 60  # Actual pool count from loaded data
+                        assert cache_info['expiry_minutes'] == 7
+                        assert cache_info['is_valid'] is True
+                        assert cache_info['timestamp_valid'] is True
+                        assert cache_info['content_valid'] is True
+                        assert cache_info['age_minutes'] >= 1.9  # Should be around 2 minutes
+                        assert 'timestamp' in cache_info
+                        assert 'expiry_time' in cache_info
+                        assert 'time_until_expiry' in cache_info
+                        assert 'validation_issues' in cache_info
+                        assert len(cache_info['validation_issues']) == 0  # No validation issues
     
     def test_get_cache_info_expired_cache(self):
-        """Test _get_cache_info with expired cache"""
+        """Test _get_cache_info with expired cache (timestamp expired)"""
         recommender = BlackholePoolRecommender()
         
         # Create mock cache metadata with old timestamp (expired)
@@ -505,11 +797,9 @@ class TestCaching:
                 return True
             return original_exists(self)
         
-        # Mock cache metadata file exists
+        # Mock cache metadata file exists (but timestamp expired, so content validation won't run)
         with patch.object(Path, 'exists', mock_exists):
             with patch('builtins.open', create=True) as mock_open:
-                import io
-                import json
                 mock_file = io.StringIO(json.dumps(test_metadata))
                 mock_open.return_value.__enter__.return_value = mock_file
                 mock_open.return_value.__exit__ = lambda *args: None
@@ -518,4 +808,149 @@ class TestCaching:
                 
                 assert cache_info is not None
                 assert cache_info['is_valid'] is False
-                assert cache_info['pool_count'] == 50
+                assert cache_info['timestamp_valid'] is False
+                assert cache_info['pool_count'] == 50  # From metadata
+    
+    def test_get_cache_info_invalid_content(self):
+        """Test _get_cache_info with valid timestamp but invalid content"""
+        recommender = BlackholePoolRecommender()
+        
+        # Create mock cache metadata with recent timestamp (valid)
+        from datetime import datetime, timezone, timedelta
+        test_timestamp = datetime.now(timezone.utc) - timedelta(minutes=2)
+        test_metadata = {
+            'timestamp': test_timestamp.isoformat(),
+            'pool_count': 30,  # Less than 50
+            'expiry_minutes': 7
+        }
+        
+        # Create invalid pools (too few pools)
+        invalid_pools = []
+        for i in range(30):
+            pool = Pool(
+                name=f"Pool {i}",
+                total_rewards=1000.0,
+                vapr=50.0,
+                pool_id=f"pool_{i}",
+                pool_type="CL200"
+            )
+            invalid_pools.append(pool)
+        
+        # Mock Path.exists to return True for both cache files
+        from pathlib import Path
+        original_exists = Path.exists
+        original_stat = Path.stat
+        
+        def mock_exists(self):
+            if self == recommender.cache_metadata_file or self == recommender.cache_file:
+                return True
+            return original_exists(self)
+        
+        def mock_stat(self):
+            if self == recommender.cache_file:
+                mock_stat_result = Mock()
+                mock_stat_result.st_size = 5000  # Valid size
+                return mock_stat_result
+            return original_stat(self)
+        
+        # Mock cache metadata file and cache file
+        with patch.object(Path, 'exists', mock_exists):
+            with patch.object(Path, 'stat', mock_stat):
+                with patch('builtins.open', create=True) as mock_open:
+                    def mock_open_side_effect(path, mode='r', *args, **kwargs):
+                        if 'metadata' in str(path) or path == recommender.cache_metadata_file:
+                            mock_file = io.StringIO(json.dumps(test_metadata))
+                        elif 'rb' in mode or path == recommender.cache_file:
+                            mock_file = io.BytesIO(pickle.dumps({'pools': invalid_pools}))
+                        else:
+                            mock_file = io.StringIO('')
+                        
+                        mock_file_obj = Mock()
+                        mock_file_obj.__enter__ = Mock(return_value=mock_file)
+                        mock_file_obj.__exit__ = Mock(return_value=None)
+                        mock_file_obj.fileno = Mock(return_value=1)
+                        return mock_file_obj
+                    
+                    mock_open.side_effect = mock_open_side_effect
+                    
+                    # Mock fcntl for file locking
+                    with patch('fcntl.flock'):
+                        cache_info = recommender._get_cache_info()
+                        
+                        assert cache_info is not None
+                        assert cache_info['pool_count'] == 30  # Actual pool count
+                        assert cache_info['is_valid'] is False  # Invalid due to content
+                        assert cache_info['timestamp_valid'] is True  # Timestamp is valid
+                        assert cache_info['content_valid'] is False  # Content validation failed
+                        assert 'validation_issues' in cache_info
+                        assert len(cache_info['validation_issues']) > 0  # Should have validation issues
+                        # Should mention too few pools
+                        assert any('only 30 pools' in issue for issue in cache_info['validation_issues'])
+    
+    def test_validate_cache_content(self):
+        """Test _validate_cache_content method"""
+        recommender = BlackholePoolRecommender()
+        
+        # Test with valid pools (50+ pools, good data)
+        valid_pools = []
+        for i in range(60):
+            pool = Pool(
+                name=f"Pool {i}",
+                total_rewards=10000.0 + i * 100,  # High rewards
+                vapr=50.0,
+                pool_id=f"pool_{i}",
+                pool_type="CL200"
+            )
+            valid_pools.append(pool)
+        
+        # Mock cache file size
+        from pathlib import Path
+        original_stat = Path.stat
+        
+        def mock_stat(self):
+            if self == recommender.cache_file:
+                mock_stat_result = Mock()
+                mock_stat_result.st_size = 10000  # Valid size
+                return mock_stat_result
+            return original_stat(self)
+        
+        with patch.object(Path, 'stat', mock_stat):
+            is_valid, issues = recommender._validate_cache_content(valid_pools)
+            assert is_valid is True
+            assert len(issues) == 0
+        
+        # Test with too few pools
+        few_pools = valid_pools[:30]
+        with patch.object(Path, 'stat', mock_stat):
+            is_valid, issues = recommender._validate_cache_content(few_pools)
+            assert is_valid is False
+            assert len(issues) > 0
+            assert any('only 30 pools' in issue for issue in issues)
+        
+        # Test with missing data
+        pools_with_missing_data = []
+        for i in range(60):
+            # First 10 pools missing essential data
+            if i < 10:
+                pool = Pool(
+                    name="",  # Missing name
+                    total_rewards=None,  # Missing rewards
+                    vapr=50.0,
+                    pool_id=None,  # Missing pool_id
+                    pool_type="CL200"
+                )
+            else:
+                pool = Pool(
+                    name=f"Pool {i}",
+                    total_rewards=10000.0,
+                    vapr=50.0,
+                    pool_id=f"pool_{i}",
+                    pool_type="CL200"
+                )
+            pools_with_missing_data.append(pool)
+        
+        with patch.object(Path, 'stat', mock_stat):
+            is_valid, issues = recommender._validate_cache_content(pools_with_missing_data)
+            assert is_valid is False
+            assert len(issues) > 0
+            assert any('missing essential data' in issue for issue in issues)

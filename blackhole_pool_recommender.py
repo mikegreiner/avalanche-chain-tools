@@ -16,13 +16,15 @@ import json
 import logging
 import os
 import pickle
+import fcntl
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from decimal import Decimal, getcontext
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone, timedelta
 import argparse
 import sys
+import fnmatch
 
 # Import logger and config loading from utils if available, otherwise create one
 try:
@@ -58,7 +60,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -156,13 +158,14 @@ class BlackholePoolRecommender:
         # If no_cache is True, disable cache reading (but still allow writing to refresh cache)
         self.no_cache = no_cache
         self.cache_enabled = _cache_config.get('enabled', True) and not no_cache
-        self.cache_expiry_minutes = _cache_config.get('expiry_minutes', 7)
+        self.cache_expiry_minutes = _cache_config.get('expiry_minutes', 60)  # Default: 1 hour
         cache_dir = _cache_config.get('directory', 'cache')
         # Get project root (directory containing this script)
         project_root = Path(__file__).parent
         self.cache_dir = project_root / cache_dir
         self.cache_file = self.cache_dir / 'pool_data_cache.pkl'
         self.cache_metadata_file = self.cache_dir / 'pool_data_cache_metadata.json'
+        self.cache_lock_file = self.cache_dir / 'pool_data_cache.lock'
     
     def _ensure_cache_dir(self) -> None:
         """Ensure cache directory exists"""
@@ -208,8 +211,54 @@ class BlackholePoolRecommender:
             logger.warning(f"Error checking cache validity: {e}")
             return False
     
+    def _validate_cache_content(self, pools: List[Pool]) -> Tuple[bool, List[str]]:
+        """
+        Validate cache content completeness using the same checks as the main program.
+        Returns (is_valid, validation_issues).
+        """
+        cache_is_complete = True
+        validation_issues = []
+        
+        # Check 1: Pool count (expect 50+ pools minimum)
+        if len(pools) < 50:
+            cache_is_complete = False
+            validation_issues.append(f"only {len(pools)} pools (expected 50+)")
+        
+        # Check 2: Cache file size (expect ~20KB+ for 100 pools, ~100-150 bytes per pool)
+        # Each pool has: name (~30B), total_rewards (8B), vapr (8B), current_votes (8B), 
+        # pool_id (~42B), pool_type (~10B), fee_percentage (~10B) = ~116B per pool
+        # Plus pickle overhead, so ~150B per pool minimum
+        expected_min_size = len(pools) * 100  # Conservative: 100 bytes per pool
+        if self.cache_file.exists():
+            actual_size = self.cache_file.stat().st_size
+            if actual_size < expected_min_size:
+                cache_is_complete = False
+                validation_issues.append(f"cache file too small ({actual_size} bytes, expected at least {expected_min_size} bytes)")
+        
+        # Check 3: Data quality - verify pools have required fields
+        pools_with_missing_data = 0
+        for pool in pools:
+            # Check if pool has essential fields populated
+            if not pool.name or not pool.pool_id or pool.total_rewards is None:
+                pools_with_missing_data += 1
+        if pools_with_missing_data > len(pools) * 0.1:  # More than 10% missing data
+            cache_is_complete = False
+            validation_issues.append(f"{pools_with_missing_data} pools missing essential data")
+        
+        # Check 4: Data distribution - should have pools with high rewards (indicating complete dataset)
+        high_reward_pools = [p for p in pools if p.total_rewards and p.total_rewards > 10000]
+        if len(high_reward_pools) == 0 and len(pools) >= 50:
+            # If we have 50+ pools but none with high rewards, likely incomplete
+            cache_is_complete = False
+            validation_issues.append("no high-reward pools found (suggests incomplete data)")
+        
+        return cache_is_complete, validation_issues
+    
     def _get_cache_info(self) -> Optional[Dict]:
-        """Get cache information without loading the data"""
+        """
+        Get cache information including content validation.
+        Uses the same validation logic as the main program to ensure consistency.
+        """
         if not self.cache_metadata_file.exists():
             return None
         
@@ -230,18 +279,59 @@ class BlackholePoolRecommender:
             expiry_time = cache_timestamp + timedelta(minutes=expiry_minutes)
             now = datetime.now(timezone.utc)
             
-            # Check if expired
-            is_valid = now < expiry_time
-            time_until_expiry = expiry_time - now if is_valid else timedelta(0)
+            # Check if expired by timestamp
+            timestamp_valid = now < expiry_time
+            time_until_expiry = expiry_time - now if timestamp_valid else timedelta(0)
+            
+            # Now validate cache content (same checks as main program)
+            content_valid = True
+            validation_issues = []
+            pool_count = metadata.get('pool_count', 0)
+            
+            # Only perform content validation if cache file exists and timestamp is valid
+            if timestamp_valid and self.cache_file.exists():
+                try:
+                    # Load cache data to validate content
+                    lock_file = None
+                    try:
+                        # Acquire shared lock for reading
+                        self._ensure_cache_dir()
+                        lock_file = open(self.cache_lock_file, 'w')
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+                        
+                        # Load pools from pickle file
+                        with open(self.cache_file, 'rb') as f:
+                            cached_data = pickle.load(f)
+                        
+                        pools = cached_data.get('pools', [])
+                        pool_count = len(pools)
+                        
+                        # Validate cache content using same logic as main program
+                        content_valid, validation_issues = self._validate_cache_content(pools)
+                    finally:
+                        # Release lock
+                        if lock_file:
+                            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                            lock_file.close()
+                except (pickle.UnpicklingError, OSError, KeyError) as e:
+                    # If we can't load the cache, it's invalid
+                    content_valid = False
+                    validation_issues.append(f"error loading cache: {e}")
+            
+            # Cache is valid only if both timestamp and content are valid
+            is_valid = timestamp_valid and content_valid
             
             return {
                 'timestamp': cache_timestamp,
                 'expiry_time': expiry_time,
                 'expiry_minutes': expiry_minutes,
-                'pool_count': metadata.get('pool_count', 0),
+                'pool_count': pool_count,
                 'is_valid': is_valid,
                 'time_until_expiry': time_until_expiry,
-                'age_minutes': (now - cache_timestamp).total_seconds() / 60
+                'age_minutes': (now - cache_timestamp).total_seconds() / 60,
+                'validation_issues': validation_issues,
+                'timestamp_valid': timestamp_valid,
+                'content_valid': content_valid
             }
         except (json.JSONDecodeError, ValueError, KeyError, OSError) as e:
             logger.warning(f"Error reading cache info: {e}")
@@ -253,16 +343,29 @@ class BlackholePoolRecommender:
             return None
         
         try:
-            # Load pools from pickle file
-            with open(self.cache_file, 'rb') as f:
-                cached_data = pickle.load(f)
-            
-            # Load metadata
-            with open(self.cache_metadata_file, 'r') as f:
-                metadata = json.load(f)
-            
-            logger.info(f"Loaded {len(cached_data.get('pools', []))} pools from cache (cached at {metadata.get('timestamp')})")
-            return cached_data
+            # Use file locking to prevent race conditions with concurrent writes
+            self._ensure_cache_dir()
+            lock_file = None
+            try:
+                # Acquire shared lock for reading
+                lock_file = open(self.cache_lock_file, 'w')
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+                
+                # Load pools from pickle file
+                with open(self.cache_file, 'rb') as f:
+                    cached_data = pickle.load(f)
+                
+                # Load metadata
+                with open(self.cache_metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                
+                logger.info(f"Loaded {len(cached_data.get('pools', []))} pools from cache (cached at {metadata.get('timestamp')})")
+                return cached_data
+            finally:
+                # Release lock
+                if lock_file:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    lock_file.close()
         except (pickle.UnpicklingError, OSError, KeyError) as e:
             logger.warning(f"Error loading from cache: {e}")
             return None
@@ -270,20 +373,43 @@ class BlackholePoolRecommender:
     def _clear_cache(self) -> bool:
         """Clear/delete cache files"""
         try:
+            self._ensure_cache_dir()
             deleted = False
-            if self.cache_file.exists():
-                self.cache_file.unlink()
-                deleted = True
-            if self.cache_metadata_file.exists():
-                self.cache_metadata_file.unlink()
-                deleted = True
+            
+            # Use file locking to prevent race conditions
+            lock_file = None
+            try:
+                # Acquire exclusive lock for deletion
+                lock_file = open(self.cache_lock_file, 'w')
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                
+                if self.cache_file.exists():
+                    self.cache_file.unlink()
+                    deleted = True
+                if self.cache_metadata_file.exists():
+                    self.cache_metadata_file.unlink()
+                    deleted = True
+                # Clean up temp files if they exist
+                for temp_file in [self.cache_file.with_suffix('.pkl.tmp'), 
+                                 self.cache_metadata_file.with_suffix('.json.tmp')]:
+                    if temp_file.exists():
+                        temp_file.unlink()
+            finally:
+                # Release lock
+                if lock_file:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    lock_file.close()
+            
             return deleted
         except OSError as e:
             logger.warning(f"Error clearing cache: {e}")
             return False
     
     def _save_to_cache(self, pools: List[Pool], epoch_close_utc: Optional[datetime] = None, epoch_close_local: Optional[datetime] = None) -> None:
-        """Save pool data and epoch info to cache"""
+        """
+        Save pool data and epoch info to cache.
+        Only saves if the data passes validation to prevent saving invalid cache.
+        """
         # Always save to cache if cache is enabled (even if no_cache was used to skip reading)
         # This allows --no-cache to refresh the cache
         _pool_config = _config.get('pool_recommender', {})
@@ -293,33 +419,101 @@ class BlackholePoolRecommender:
         if not cache_enabled_config:
             return
         
+        # Validate data before saving to prevent saving invalid cache
+        if not pools:
+            logger.warning("Not saving to cache: no pools to cache")
+            return
+        
+        # Use the same validation logic as cache reading to ensure consistency
+        # Note: For saving, we skip the file size check since we're creating the file
+        # but we still validate pool count, data quality, and data distribution
+        try:
+            # Create a temporary validation that checks everything except file size
+            # (since file doesn't exist yet when saving)
+            cache_is_complete = True
+            validation_issues = []
+            
+            # Check 1: Pool count (expect 50+ pools minimum)
+            if len(pools) < 50:
+                cache_is_complete = False
+                validation_issues.append(f"only {len(pools)} pools (expected 50+)")
+            
+            # Check 2: Data quality - verify pools have required fields
+            pools_with_missing_data = 0
+            for pool in pools:
+                # Check if pool has essential fields populated
+                if not pool.name or not pool.pool_id or pool.total_rewards is None:
+                    pools_with_missing_data += 1
+            if pools_with_missing_data > len(pools) * 0.1:  # More than 10% missing data
+                cache_is_complete = False
+                validation_issues.append(f"{pools_with_missing_data} pools missing essential data")
+            
+            # Check 3: Data distribution - should have pools with high rewards (indicating complete dataset)
+            high_reward_pools = [p for p in pools if p.total_rewards and p.total_rewards > 10000]
+            if len(high_reward_pools) == 0 and len(pools) >= 50:
+                # If we have 50+ pools but none with high rewards, likely incomplete
+                cache_is_complete = False
+                validation_issues.append("no high-reward pools found (suggests incomplete data)")
+            
+            if not cache_is_complete:
+                # Don't save invalid cache - log warning and return
+                logger.warning(f"Not saving to cache: validation failed - {', '.join(validation_issues)}")
+                return
+        except Exception as e:
+            logger.warning(f"Error validating cache data before save: {e}")
+            # If validation fails, don't save to prevent corrupt cache
+            return
+        
         try:
             self._ensure_cache_dir()
             
-            # Prepare cache data
-            cache_data = {
-                'pools': pools,
-                'epoch_close_utc': epoch_close_utc,
-                'epoch_close_local': epoch_close_local
-            }
-            
-            # Save pools to pickle file
-            with open(self.cache_file, 'wb') as f:
-                pickle.dump(cache_data, f)
-            
-            # Save metadata with timestamp
-            metadata = {
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-                'pool_count': len(pools),
-                'expiry_minutes': self.cache_expiry_minutes
-            }
-            
-            with open(self.cache_metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            
-            logger.info(f"Cached {len(pools)} pools (expires in {self.cache_expiry_minutes} minutes)")
+            # Use file locking to prevent race conditions with concurrent writes
+            lock_file = None
+            try:
+                # Acquire exclusive lock for writing
+                lock_file = open(self.cache_lock_file, 'w')
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                
+                # Prepare cache data
+                cache_data = {
+                    'pools': pools,
+                    'epoch_close_utc': epoch_close_utc,
+                    'epoch_close_local': epoch_close_local
+                }
+                
+                # Save pools to pickle file (atomic write: write to temp file, then rename)
+                temp_cache_file = self.cache_file.with_suffix('.pkl.tmp')
+                with open(temp_cache_file, 'wb') as f:
+                    pickle.dump(cache_data, f)
+                temp_cache_file.replace(self.cache_file)  # Atomic rename
+                
+                # Save metadata with timestamp (atomic write)
+                temp_metadata_file = self.cache_metadata_file.with_suffix('.json.tmp')
+                metadata = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'pool_count': len(pools),
+                    'expiry_minutes': self.cache_expiry_minutes
+                }
+                with open(temp_metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                temp_metadata_file.replace(self.cache_metadata_file)  # Atomic rename
+                
+                logger.info(f"Cached {len(pools)} pools (expires in {self.cache_expiry_minutes} minutes)")
+            finally:
+                # Release lock
+                if lock_file:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    lock_file.close()
         except (OSError, pickle.PicklingError) as e:
             logger.warning(f"Error saving to cache: {e}")
+            # Clean up temp files if they exist
+            for temp_file in [self.cache_file.with_suffix('.pkl.tmp'), 
+                             self.cache_metadata_file.with_suffix('.json.tmp')]:
+                if temp_file.exists():
+                    try:
+                        temp_file.unlink()
+                    except OSError:
+                        pass
     
     def fetch_pools_selenium(self, quiet: bool = False) -> List[Pool]:
         """Fetch pool data using Selenium (most reliable for React apps)"""
@@ -669,6 +863,12 @@ class BlackholePoolRecommender:
             pools = all_pools
             if not quiet:
                 print(f"\nTotal pools extracted from all pages: {len(pools)}")
+            
+            # Warn if we only got 50 pools (likely pagination failed, only first page captured)
+            if len(pools) == 50:
+                if not quiet:
+                    print(f"Warning: Only extracted {len(pools)} pools, which suggests pagination may have failed.")
+                    print("         Expected 100+ pools. The cache may be incomplete.")
             
             # Fallback methods if no pools found from pagination
             if not pools:
@@ -1804,23 +2004,31 @@ class BlackholePoolRecommender:
                 self.epoch_close_utc = cached_data.get('epoch_close_utc')
                 self.epoch_close_local = cached_data.get('epoch_close_local')
                 if pools:
-                    # Warn if cached data seems incomplete (very few pools)
-                    if len(pools) < 10 and not quiet:
-                        print(f"Warning: Cached data has only {len(pools)} pools, which seems incomplete.")
-                        print("         Consider using --no-cache to refresh with fresh data.")
-                    if not quiet:
-                        # Show concise cache info
-                        cache_info = self._get_cache_info()
-                        if cache_info:
-                            # Format times in both local and UTC
-                            cache_utc = cache_info['timestamp'].strftime('%H:%M:%S UTC')
-                            cache_local = cache_info['timestamp'].astimezone().strftime('%H:%M:%S %Z')
-                            expiry_utc = cache_info['expiry_time'].strftime('%H:%M:%S UTC')
-                            expiry_local = cache_info['expiry_time'].astimezone().strftime('%H:%M:%S %Z')
-                            print(f"Using cached pool data ({len(pools)} pools) - Cached: {cache_local} ({cache_utc}), Expires: {expiry_local} ({expiry_utc})")
-                        else:
-                            print(f"Using cached pool data ({len(pools)} pools)")
-                    return pools
+                    # Validate cache completeness using the same validation logic as --cache-info
+                    cache_is_complete, validation_issues = self._validate_cache_content(pools)
+                    
+                    if not cache_is_complete:
+                        if not quiet:
+                            print(f"Warning: Cached data appears incomplete:")
+                            for issue in validation_issues:
+                                print(f"         - {issue}")
+                            print("         Skipping cache and fetching fresh data...")
+                        # Don't return - continue to fetch fresh data
+                    else:
+                        # Cache looks good - use it
+                        if not quiet:
+                            # Show concise cache info
+                            cache_info = self._get_cache_info()
+                            if cache_info:
+                                # Format times in both local and UTC
+                                cache_utc = cache_info['timestamp'].strftime('%H:%M:%S UTC')
+                                cache_local = cache_info['timestamp'].astimezone().strftime('%H:%M:%S %Z')
+                                expiry_utc = cache_info['expiry_time'].strftime('%H:%M:%S UTC')
+                                expiry_local = cache_info['expiry_time'].astimezone().strftime('%H:%M:%S %Z')
+                                print(f"Using cached pool data ({len(pools)} pools) - Cached: {cache_local} ({cache_utc}), Expires: {expiry_local} ({expiry_utc})")
+                            else:
+                                print(f"Using cached pool data ({len(pools)} pools)")
+                        return pools
         
         # Cache miss, cache disabled, or --no-cache specified - fetch fresh data
         if not quiet:
@@ -1829,39 +2037,20 @@ class BlackholePoolRecommender:
             else:
                 print("Fetching fresh pool data...")
         
-        # Try API first (faster, but may lack voting metrics)
-        if not quiet:
-            print("Attempting to fetch pool data from API...")
-        pools = self.fetch_pools_api()
-        
-        # Check if API pools have voting metrics (VAPR or votes)
-        has_voting_data = pools and any(p.vapr > 0 or p.current_votes is not None for p in pools)
-        
-        if pools and has_voting_data:
-            if not quiet:
-                print(f"Found {len(pools)} pools via API with voting metrics")
-            # Save to cache
-            self._save_to_cache(pools, self.epoch_close_utc, self.epoch_close_local)
-            return pools
-        
-        # If API returned pools but without voting data, fall back to Selenium
-        if pools and not has_voting_data:
-            if not quiet:
-                print(f"API found {len(pools)} pools but missing voting metrics (VAPR/votes)")
-                print("Falling back to Selenium for complete voting data...")
-        
-        # Fall back to Selenium scraping (has all voting metrics)
+        # Use Selenium to scrape page (has all voting metrics: VAPR, votes, rewards)
+        # Note: The API endpoint (resources.blackhole.xyz/cl-pools-list/cl-pools.json) 
+        # provides pool metadata but NOT voting metrics, so we always need Selenium
         if SELENIUM_AVAILABLE:
-            if not quiet and not pools:
-                print("API not available, using Selenium to scrape page...")
+            if not quiet:
+                print("Using Selenium to scrape pool data...")
             pools = self.fetch_pools_selenium(quiet=quiet)
             # Save to cache after fetching
             self._save_to_cache(pools, self.epoch_close_utc, self.epoch_close_local)
             return pools
         else:
-            raise InvalidInputError("Selenium not available and API endpoint not found. Please install selenium: pip install selenium")
+            raise InvalidInputError("Selenium not available. Please install selenium: pip install selenium")
     
-    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, quiet: bool = False) -> List[Pool]:
+    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, pool_name: Optional[str] = None, quiet: bool = False) -> List[Pool]:
         """
         Fetch pools and recommend top N most profitable.
         
@@ -1874,11 +2063,18 @@ class BlackholePoolRecommender:
             hide_vamm: If True, filter out vAMM pools
             min_rewards: Minimum total rewards in USD to include (filters out smaller pools)
             max_pool_percentage: Maximum percentage of pool voting power (e.g., 0.5 for 0.5%). Filters out pools where adding your full voting power would exceed this threshold.
+            pool_name: Shell-style wildcard pattern to filter pools by name (case-insensitive). If no wildcards are provided, automatically wraps pattern with * (e.g., "btc.b" becomes "*btc.b*"). Examples: "WAVAX/*", "*BLACK*", "CL200-*", "btc.b"
             quiet: If True, suppress progress messages (useful for JSON output)
+            
+        Returns:
+            List of Pool objects matching the criteria
         """
         if not quiet:
             print("Fetching pool data...")
         pools = self.fetch_pools(quiet=quiet)
+        
+        # Store initial pool count for error reporting
+        initial_pool_count = len(pools) if pools else 0
         
         if not pools:
             if not quiet:
@@ -1903,6 +2099,25 @@ class BlackholePoolRecommender:
             filtered_count = original_count - len(pools)
             if filtered_count > 0 and not quiet:
                 print(f"Filtered out {filtered_count} pool(s) with total rewards < ${min_rewards:,.2f}")
+        
+        # Filter pools by name using shell-style wildcards (case-insensitive)
+        if pool_name is not None:
+            original_count = len(pools)
+            # If pattern doesn't contain wildcards, wrap it with *pattern* for contains matching
+            pattern = pool_name
+            if '*' not in pattern and '?' not in pattern:
+                pattern = f"*{pattern}*"
+            
+            # Use fnmatch for shell-style wildcard matching (case-insensitive)
+            filtered_pools = []
+            for pool in pools:
+                # Case-insensitive matching: convert both pool name and pattern to lowercase
+                if fnmatch.fnmatch(pool.name.lower(), pattern.lower()):
+                    filtered_pools.append(pool)
+            pools = filtered_pools
+            filtered_count = original_count - len(pools)
+            if filtered_count > 0 and not quiet:
+                print(f"Filtered out {filtered_count} pool(s) that don't match pattern '{pool_name}'")
         
         # Filter out pools where user would exceed max pool percentage threshold
         if max_pool_percentage is not None and user_voting_power is not None:
@@ -1948,6 +2163,9 @@ class BlackholePoolRecommender:
                 key=lambda p: p.profitability_score(), 
                 reverse=True
             )
+        
+        # Store initial pool count in instance variable for error reporting
+        self._initial_pool_count = initial_pool_count
         
         return sorted_pools[:top_n]
     
@@ -2599,7 +2817,10 @@ window.BLACKHOLE_POOL_DATA = {{
                 estimated_reward = pool.estimate_user_rewards(user_voting_power)
                 new_total_votes = (pool.current_votes or 0) + user_voting_power
                 user_share_pct = (user_voting_power / new_total_votes * 100) if new_total_votes > 0 else 0
-                output_lines.append(f"   Your Estimated Reward: ${estimated_reward:,.2f} ({user_share_pct:.2f}% share)")
+                # Emphasize the estimated reward line with bold text and visual marker
+                bold_start = "\033[1m"  # ANSI escape code for bold
+                bold_end = "\033[0m"    # ANSI escape code to reset
+                output_lines.append(f"   {bold_start}>>> Your Estimated Reward: ${estimated_reward:,.2f} ({user_share_pct:.2f}% share){bold_end}")
             output_lines.append(f"   Profitability Score: {score:.2f}")
             output_lines.append("")
         
@@ -2733,6 +2954,12 @@ def main():
         help='Output file (optional)'
     )
     parser.add_argument(
+        '--pool-name',
+        type=str,
+        default=None,
+        help='Filter pools by name using shell-style wildcards (case-insensitive). If no wildcards are provided, automatically wraps pattern with * (e.g., "btc.b" becomes "*btc.b*"). Examples: "WAVAX/*", "*BLACK*", "CL200-*", "btc.b"'
+    )
+    parser.add_argument(
         '--select-pools',
         action='store_true',
         help='Generate a JavaScript console script to automatically select recommended pools. Copy and paste the script into your browser console while on the voting page.'
@@ -2780,8 +3007,27 @@ def main():
             print(f"Cache file: {recommender.cache_file}")
             print(f"Metadata file: {recommender.cache_metadata_file}")
             print()
-            print(f"Status: {'Valid' if cache_info['is_valid'] else 'Expired'}")
+            # Determine status message
+            if cache_info['is_valid']:
+                status = 'Valid'
+            elif not cache_info.get('timestamp_valid', True):
+                status = 'Expired (timestamp)'
+            elif not cache_info.get('content_valid', True):
+                status = 'Invalid (content validation failed)'
+            else:
+                status = 'Expired'
+            
+            print(f"Status: {status}")
             print(f"Pools cached: {cache_info['pool_count']}")
+            
+            # Show validation issues if any
+            validation_issues = cache_info.get('validation_issues', [])
+            if validation_issues:
+                print()
+                print("Validation issues:")
+                for issue in validation_issues:
+                    print(f"  - {issue}")
+            
             print()
             # Show last refreshed in both local and UTC
             cache_timestamp = cache_info['timestamp']
@@ -2789,7 +3035,10 @@ def main():
             print(f"Last refreshed:")
             print(f"  Local: {cache_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             print(f"  UTC:   {cache_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-            print(f"Age: {cache_info['age_minutes']:.1f} minutes")
+            age_seconds = int(cache_info['age_minutes'] * 60)
+            age_minutes = age_seconds // 60
+            age_secs = age_seconds % 60
+            print(f"Age: {age_minutes}m {age_secs}s")
             print()
             # Show expiry time in both local and UTC
             expiry_timestamp = cache_info['expiry_time']
@@ -2806,7 +3055,12 @@ def main():
                 print(f"Expired at:")
                 print(f"  Local: {expiry_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                 print(f"  UTC:   {expiry_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                print("Cache is expired and will be refreshed on next run")
+                if not cache_info.get('timestamp_valid', True):
+                    print("Cache timestamp expired and will be refreshed on next run")
+                elif not cache_info.get('content_valid', True):
+                    print("Cache content validation failed and will be refreshed on next run")
+                else:
+                    print("Cache is expired and will be refreshed on next run")
             print()
             print(f"Cache expiry window: {cache_info['expiry_minutes']} minutes")
             print("="*60)
@@ -2848,14 +3102,30 @@ def main():
         # If --no-headless is set, force headless=False; otherwise use config default
         headless_param = False if args.no_headless else None
         recommender = BlackholePoolRecommender(headless=headless_param, no_cache=args.no_cache)
-        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, max_pool_percentage=args.max_pool_percentage, quiet=args.json or args.output)
+        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, max_pool_percentage=args.max_pool_percentage, pool_name=args.pool_name, quiet=args.json or args.output)
         
         if not recommendations:
-            print("\nNo recommendations generated. This may be because:")
-            print("1. The website structure has changed")
-            print("2. Selenium/ChromeDriver is not properly installed")
-            print("3. Network connectivity issues")
-            print("\nTo debug, try running with --no-headless to see the browser.")
+            # Check if pools were fetched but filtered out
+            initial_pool_count = getattr(recommender, '_initial_pool_count', 0)
+            if initial_pool_count > 0:
+                print("\nNo pools matched your filter criteria.")
+                print("\nFilters applied:")
+                if args.pool_name:
+                    print(f"  - Pool name pattern: '{args.pool_name}'")
+                if args.hide_vamm:
+                    print(f"  - Hide vAMM pools: enabled")
+                if args.min_rewards is not None:
+                    print(f"  - Minimum rewards: ${args.min_rewards:,.2f}")
+                if args.max_pool_percentage is not None and args.voting_power is not None:
+                    print(f"  - Maximum pool percentage: {args.max_pool_percentage}%")
+                print(f"\nTotal pools available: {initial_pool_count}")
+                print("\nTry adjusting your filters or removing some filter options.")
+            else:
+                print("\nNo recommendations generated. This may be because:")
+                print("1. The website structure has changed")
+                print("2. Selenium/ChromeDriver is not properly installed")
+                print("3. Network connectivity issues")
+                print("\nTo debug, try running with --no-headless to see the browser.")
             sys.exit(1)
         
         # Get output (either JSON or text)

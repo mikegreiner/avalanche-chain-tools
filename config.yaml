@@ -62,5 +62,5 @@ pool_recommender:
     implicit_wait: 10
   cache:
     enabled: true
-    expiry_minutes: 7  # Cache expires after 7 minutes (default 5-10 min window)
+    expiry_minutes: 60  # Cache expires after 1 hour (use --no-cache to force refresh)
     directory: "cache"  # Cache directory (relative to project root)
