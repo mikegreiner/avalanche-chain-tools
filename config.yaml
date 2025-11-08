@@ -123,9 +123,3 @@ blackhole:
   # - StakedAvUSDV2: 0x06d47f3fb376649c3a9dafe069b3d6e35572219e
   # - StakedUSDeOFT: 0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2
   # See docs/CONTRACT_RESEARCH.md and docs/CONTRACT_ADDRESSES.md for details
-=======
-  cache:
-    enabled: true
-    expiry_minutes: 7  # Cache expires after 7 minutes (default 5-10 min window)
-    directory: "cache"  # Cache directory (relative to project root)
->>>>>>> main
