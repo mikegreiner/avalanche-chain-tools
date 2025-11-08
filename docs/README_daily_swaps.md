@@ -38,6 +38,12 @@ python3 avalanche_daily_swaps.py "0x1234567890123456789012345678901234567890" -o
 python3 avalanche_daily_swaps.py "0x..." -o output/swaps_analysis.md
 ```
 
+### Customize Header Size
+```bash
+# Start with ## instead of # (useful for embedding in larger documents)
+python3 avalanche_daily_swaps.py "0x..." --header-size 2
+```
+
 ## Example Output
 
 ```markdown
@@ -99,12 +105,19 @@ Check the script version:
 python3 avalanche_daily_swaps.py --version
 ```
 
-Current version: **1.0.0**
+Current version: **1.1.0**
 
 ## Notes
 
 - The script focuses specifically on swaps TO BTC.b (Bitcoin on Avalanche)
-- USD prices are fetched from multiple sources (Snowtrace + CoinGecko)
+- USD prices are fetched from multiple sources:
+  - Snowtrace API (for AVAX/WAVAX)
+  - DefiLlama API (free, no rate limits, good coverage)
+  - CoinGecko API (with retry logic for rate limits)
+  - DexScreener API (free alternative)
+- The script searches a 7-day window (target date ? 3 days) but only shows swaps from the target date
+- ERC-721 NFT transfers are automatically skipped (only ERC-20 token transfers are analyzed)
 - All addresses, transactions, and contracts are clickable links to Snowtrace.io
 - Timestamps are shown in both local timezone and UTC
-- The script handles rate limiting and provides detailed error messages
+- The script handles rate limiting with automatic retries and provides detailed error messages
+- Use `--header-size` to customize markdown header sizes (default: 1, range: 1-5)

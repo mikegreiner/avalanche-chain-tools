@@ -37,6 +37,9 @@ Thumbs.db
 # Output files (generated analysis reports, recommendations, etc.)
 output/
 
+# Cache files (temporary cached data)
+cache/
+
 # Debug files (development/debugging scripts)
 debug/
 

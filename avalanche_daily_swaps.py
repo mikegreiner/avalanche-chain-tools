@@ -24,7 +24,7 @@ from avalanche_utils import (
 from avalanche_base import AvalancheTool
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 class AvalancheDailySwapAnalyzer(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
@@ -33,6 +33,22 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
         super().__init__(snowtrace_api_base, headers)
         # BTC.b contract address
         self.btc_b_address: str = TOKEN_ADDRESSES['BTC_B']
+    
+    def _header(self, level: int, starting_header_size: int = 1, text: str = "") -> str:
+        """
+        Generate a markdown header with configurable starting size.
+        
+        Args:
+            level: Header level (1 = h1, 2 = h2, etc.)
+            starting_header_size: Base header size to start from (default: 1)
+            text: Header text
+            
+        Returns:
+            Markdown header string
+        """
+        actual_level = starting_header_size + level - 1
+        hashes = '#' * actual_level
+        return f"{hashes} {text}\n\n" if text else f"{hashes} "
         
     def get_address_transactions(self, address: str, start_block: int, end_block: int) -> List[Dict[str, Any]]:
         """Fetch all transactions for an address within a block range"""
@@ -142,9 +158,9 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             print(f"Warning: Error fetching balance for {token_address}: {e}")
             return 0
     
-    def get_token_price(self, token_address: str) -> float:
+    def get_token_price(self, token_address: str, token_symbol: Optional[str] = None) -> float:
         """Get current token price in USD from multiple sources"""
-        return get_token_price(token_address, headers=self.headers)
+        return get_token_price(token_address, headers=self.headers, token_symbol=token_symbol)
     
     def parse_swap_transaction(self, tx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse a transaction to extract swap information"""
@@ -168,11 +184,37 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             other_transfers = []
             
             for log in logs:
+                # Check for Transfer event signature
                 if len(log.get('topics', [])) >= 3 and log['topics'][0] == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
+                    topics_count = len(log.get('topics', []))
                     from_addr = '0x' + log['topics'][1][-40:]
                     to_addr = '0x' + log['topics'][2][-40:]
-                    value_hex = log['data']
-                    value = int(value_hex, 16)
+                    value_hex = log.get('data', '0x0')
+                    
+                    # ERC-20 Transfer: 3 topics, value in data field
+                    # ERC-721 Transfer: 4 topics (with indexed tokenId), empty data
+                    # Skip ERC-721/NFT transfers (4+ topics with empty data)
+                    if topics_count >= 4 and (not value_hex or value_hex == '0x' or len(value_hex) <= 2):
+                        # This is likely an ERC-721 NFT transfer, skip it
+                        logger.debug(f"Skipping ERC-721 NFT transfer from {from_addr} to {to_addr}")
+                        continue
+                    
+                    # Handle empty or invalid hex values for ERC-20 transfers
+                    if not value_hex or value_hex == '0x' or len(value_hex) <= 2:
+                        value_hex = '0x0'
+                    
+                    try:
+                        value = int(value_hex, 16)
+                    except (ValueError, TypeError):
+                        # Skip this log if we can't parse the value
+                        logger.debug(f"Skipping log with invalid data: {value_hex}")
+                        continue
+                    
+                    # Skip zero-value transfers (they're not swaps)
+                    if value == 0:
+                        logger.debug(f"Skipping zero-value transfer from {from_addr} to {to_addr}")
+                        continue
+                    
                     token_addr = log['address']
                     
                     # Check if this involves our target address
@@ -209,7 +251,8 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                 for transfer in other_sent:
                     token_info = self.get_token_info(transfer['token_address'])
                     formatted_amount = self.format_amount(transfer['value'], token_info['decimals'])
-                    price = self.get_token_price(transfer['token_address'])
+                    # Pass token symbol for symbol-based price lookup fallback
+                    price = self.get_token_price(transfer['token_address'], token_symbol=token_info.get('symbol'))
                     usd_value = float(formatted_amount) * price if price > 0 else 0
                     
                     swap_data['tokens_sent'].append({
@@ -234,8 +277,16 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
         """Convert timestamp to human-readable format with both local and UTC times"""
         return format_timestamp(timestamp, include_utc=True)
     
-    def analyze_daily_swaps(self, address: str, target_date: str = None) -> str:
-        """Analyze daily swap transactions for the given address"""
+    def analyze_daily_swaps(self, address: str, target_date: str = None, 
+                           starting_header_size: int = 1) -> str:
+        """
+        Analyze daily swap transactions for the given address
+        
+        Args:
+            address: Avalanche C-Chain address to analyze
+            target_date: Target date in YYYY-MM-DD format (default: today)
+            starting_header_size: Starting markdown header size (1 = #, 2 = ##, etc., default: 1)
+        """
         try:
             # Parse target date or use today
             if target_date:
@@ -256,6 +307,13 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             # Also search a few days before and after to catch any nearby transactions
             search_start = start_of_day - timedelta(days=3)
             search_end = end_of_day + timedelta(days=3)
+            
+            # Cap search_end to current time to avoid requesting future blocks
+            current_time = datetime.now()
+            if search_end > current_time:
+                search_end = current_time
+                logger.debug(f"Capped search_end to current time: {search_end}")
+            
             search_start_timestamp = int(search_start.timestamp())
             search_end_timestamp = int(search_end.timestamp())
             
@@ -337,7 +395,8 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             logger.info(f"Found {len(daily_swaps)} swap transactions to BTC.b")
             
             if not daily_swaps and not nearby_swaps:
-                return f"# Daily Swap Analysis - {target_dt.strftime('%B %d, %Y')}\n\n**Address:** [{address}](https://snowtrace.io/address/{address})\n\nNo swap transactions to BTC.b found for this date or nearby dates (?3 days).\n"
+                header = self._header(1, starting_header_size, f"Daily Swap Analysis - {target_dt.strftime('%B %d, %Y')}")
+                return f"{header}**Address:** [{address}](https://snowtrace.io/address/{address})\n\nNo swap transactions to BTC.b found for this date or nearby dates (?3 days).\n"
             elif not daily_swaps and nearby_swaps:
                 # Use nearby swaps if no exact date matches
                 daily_swaps = nearby_swaps
@@ -345,7 +404,8 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             
             # Get BTC.b info for totals
             btc_b_info = self.get_token_info(self.btc_b_address)
-            btc_b_price = self.get_token_price(self.btc_b_address)
+            # Pass token symbol for symbol-based price lookup fallback
+            btc_b_price = self.get_token_price(self.btc_b_address, token_symbol=btc_b_info.get('symbol'))
             
             # Get current BTC.b balance for the address
             current_btc_b_balance = self.get_token_balance(address, self.btc_b_address)
@@ -377,7 +437,7 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                     total_usd_sent += token['usd_value']
             
             # Generate markdown output
-            markdown = f"# Daily Swap Analysis - {target_dt.strftime('%B %d, %Y')}\n\n"
+            markdown = self._header(1, starting_header_size, f"Daily Swap Analysis - {target_dt.strftime('%B %d, %Y')}")
             markdown += f"**Address:** [{address}](https://snowtrace.io/address/{address})\n"
             markdown += f"**Date:** {target_dt.strftime('%B %d, %Y')}\n"
             markdown += f"**Total Swaps:** {len(daily_swaps)}\n\n"
@@ -397,7 +457,7 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             markdown += f"**Total USD Value Swapped:** ${total_usd_sent:.2f}\n\n"
             
             # List all tokens swapped (alphabetically)
-            markdown += "## Tokens Swapped (Alphabetical)\n\n"
+            markdown += self._header(2, starting_header_size, "Tokens Swapped (Alphabetical)")
             sorted_tokens = sorted(token_totals.items(), key=lambda x: x[1]['token_info']['symbol'])
             
             for token_addr, data in sorted_tokens:
@@ -416,7 +476,7 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                 btc_b_amount = self.format_amount(swap['btc_b_received'], btc_b_info['decimals'])
                 timestamp_str = self.format_timestamp(swap['timestamp'])
                 
-                markdown += f"## Swap #{i}\n\n"
+                markdown += self._header(2, starting_header_size, f"Swap #{i}")
                 markdown += f"**Transaction:** [{swap['tx_hash']}](https://snowtrace.io/tx/{swap['tx_hash']})\n"
                 markdown += f"**Time:** {timestamp_str}\n"
                 markdown += f"**BTC.b Received:** {btc_b_amount}\n\n"
@@ -439,6 +499,13 @@ def main():
     parser.add_argument('-d', '--date', help='Target date in YYYY-MM-DD format (default: today)')
     parser.add_argument('-o', '--output', help='Output file (optional)')
     parser.add_argument(
+        '--header-size',
+        type=int,
+        default=1,
+        choices=[1, 2, 3, 4, 5],
+        help='Starting markdown header size (1 = #, 2 = ##, etc., default: 1)'
+    )
+    parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {__version__}'
@@ -447,7 +514,7 @@ def main():
     args = parser.parse_args()
     
     analyzer = AvalancheDailySwapAnalyzer()
-    result = analyzer.analyze_daily_swaps(args.address, args.date)
+    result = analyzer.analyze_daily_swaps(args.address, args.date, starting_header_size=args.header_size)
     
     if args.output:
         with open(args.output, 'w') as f:

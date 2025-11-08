@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from pathlib import Path
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 try:
     from blackhole_pool_recommender import BlackholePoolRecommender, Pool
@@ -561,6 +561,12 @@ Examples:
                        help='Minimum total rewards in USD to include')
     parser.add_argument('--max-pool-percentage', type=float, default=None,
                        help='Maximum percentage of pool voting power')
+    parser.add_argument('--no-cache', action='store_true',
+                       help='Skip cache and fetch fresh data (will still refresh the cache with new data)')
+    parser.add_argument('--cache-info', action='store_true',
+                       help='Show detailed cache information and exit')
+    parser.add_argument('--clear-cache', action='store_true',
+                       help='Clear/delete cache files and exit')
     parser.add_argument('--epoch-close-mountain', type=str, default=None,
                        help='Epoch close time in Mountain Time (for reference)')
     parser.add_argument('-o', '--output', type=str, default=None,
@@ -568,6 +574,84 @@ Examples:
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     
     args = parser.parse_args()
+    
+    # Handle --clear-cache flag
+    if args.clear_cache:
+        try:
+            recommender = BlackholePoolRecommender()
+            if recommender._clear_cache():
+                print("Cache cleared successfully.")
+                print(f"Deleted: {recommender.cache_file}")
+                print(f"Deleted: {recommender.cache_metadata_file}")
+            else:
+                print("No cache files found to clear.")
+        except Exception as e:
+            print(f"Error clearing cache: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+        
+        sys.exit(0)
+    
+    # Handle --cache-info flag
+    if args.cache_info:
+        try:
+            recommender = BlackholePoolRecommender()
+            cache_info = recommender._get_cache_info()
+            
+            if cache_info:
+                print("\n" + "="*60)
+                print("CACHE INFORMATION")
+                print("="*60)
+                print(f"Cache file: {recommender.cache_file}")
+                print(f"Metadata file: {recommender.cache_metadata_file}")
+                print()
+                print(f"Status: {'Valid' if cache_info['is_valid'] else 'Expired'}")
+                print(f"Pools cached: {cache_info['pool_count']}")
+                print()
+                # Show last refreshed in both local and UTC
+                cache_timestamp = cache_info['timestamp']
+                cache_local = cache_timestamp.astimezone()
+                print(f"Last refreshed:")
+                print(f"  Local: {cache_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                print(f"  UTC:   {cache_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                print(f"Age: {cache_info['age_minutes']:.1f} minutes")
+                print()
+                # Show expiry time in both local and UTC
+                expiry_timestamp = cache_info['expiry_time']
+                expiry_local = expiry_timestamp.astimezone()
+                if cache_info['is_valid']:
+                    time_left = cache_info['time_until_expiry']
+                    minutes_left = int(time_left.total_seconds() / 60)
+                    seconds_left = int(time_left.total_seconds() % 60)
+                    print(f"Expires at:")
+                    print(f"  Local: {expiry_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                    print(f"  UTC:   {expiry_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    print(f"Time until expiry: {minutes_left}m {seconds_left}s")
+                else:
+                    print(f"Expired at:")
+                    print(f"  Local: {expiry_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                    print(f"  UTC:   {expiry_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    print("Cache is expired and will be refreshed on next run")
+                print()
+                print(f"Cache expiry window: {cache_info['expiry_minutes']} minutes")
+                print("="*60)
+            else:
+                print("\nNo cache found or cache is invalid.")
+                print(f"Cache directory: {recommender.cache_dir}")
+                print(f"Cache file: {recommender.cache_file}")
+                print(f"Metadata file: {recommender.cache_metadata_file}")
+                if not recommender.cache_dir.exists():
+                    print("\nCache directory does not exist yet.")
+                elif not recommender.cache_file.exists():
+                    print("\nCache file does not exist yet.")
+                elif not recommender.cache_metadata_file.exists():
+                    print("\nCache metadata file does not exist yet.")
+        except Exception as e:
+            print(f"Error getting cache info: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+        
+        sys.exit(0)
     
     # Get tracking file paths
     tracking_file, history_file = get_tracking_files(args.output)
@@ -584,7 +668,7 @@ Examples:
     
     try:
         print("[DEBUG] Creating BlackholePoolRecommender instance...", file=sys.stderr)
-        recommender = BlackholePoolRecommender()
+        recommender = BlackholePoolRecommender(no_cache=args.no_cache)
         print("[DEBUG] Recommender created successfully", file=sys.stderr)
     except Exception as e:
         print(f"Error creating recommender: {e}", file=sys.stderr)

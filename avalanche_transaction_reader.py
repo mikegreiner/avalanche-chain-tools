@@ -24,13 +24,29 @@ from avalanche_utils import (
 from avalanche_base import AvalancheTool
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 class AvalancheTransactionReader(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
                  headers: Optional[Dict[str, str]] = None) -> None:
         """Initialize the transaction reader"""
         super().__init__(snowtrace_api_base, headers)
+    
+    def _header(self, level: int, starting_header_size: int = 1, text: str = "") -> str:
+        """
+        Generate a markdown header with configurable starting size.
+        
+        Args:
+            level: Header level (1 = h1, 2 = h2, etc.)
+            starting_header_size: Base header size to start from (default: 1)
+            text: Header text
+            
+        Returns:
+            Markdown header string
+        """
+        actual_level = starting_header_size + level - 1
+        hashes = '#' * actual_level
+        return f"{hashes} {text}\n\n" if text else f"{hashes} "
         
     def extract_tx_hash_from_input(self, input_str: str) -> str:
         """
@@ -127,9 +143,9 @@ class AvalancheTransactionReader(AvalancheTool):
         """Get token information (name, symbol, decimals)"""
         return get_token_info(token_address, headers=self.headers)
     
-    def get_token_price(self, token_address: str) -> float:
+    def get_token_price(self, token_address: str, token_symbol: Optional[str] = None) -> float:
         """Get current token price in USD from multiple sources"""
-        return get_token_price(token_address, headers=self.headers)
+        return get_token_price(token_address, headers=self.headers, token_symbol=token_symbol)
     
     def parse_transfer_logs(self, logs: List[Dict]) -> List[Dict]:
         """Parse ERC-20 Transfer event logs"""
@@ -180,12 +196,13 @@ class AvalancheTransactionReader(AvalancheTool):
         """Format token amount with proper decimal places"""
         return format_amount(amount, decimals, precision='standard')
     
-    def process_transaction(self, input_str: str) -> str:
+    def process_transaction(self, input_str: str, starting_header_size: int = 1) -> str:
         """
         Main method to process transaction and return markdown output.
         
         Args:
             input_str: Snowtrace.io URL or transaction hash (0x...)
+            starting_header_size: Starting markdown header size (1 = #, 2 = ##, etc., default: 1)
             
         Returns:
             Formatted markdown string with transaction details
@@ -231,7 +248,10 @@ class AvalancheTransactionReader(AvalancheTool):
             for token_addr, data in token_totals.items():
                 token_info = self.get_token_info(token_addr)
                 formatted_amount = self.format_amount(data['total_amount'], token_info['decimals'])
-                price = self.get_token_price(token_addr)
+                # Pass token symbol for symbol-based price lookup fallback
+                # Small delay to avoid hitting rate limits (DefiLlama is tried first and has no rate limits)
+                time.sleep(0.25)
+                price = self.get_token_price(token_addr, token_symbol=token_info.get('symbol'))
                 usd_value = float(formatted_amount) * price if price > 0 else 0
                 
                 results.append({
@@ -251,7 +271,7 @@ class AvalancheTransactionReader(AvalancheTool):
             tokens_without_price = [r for r in results if r['usd_value'] == 0]
             
             # Generate markdown output
-            markdown = "# Tokens Received\n\n"
+            markdown = self._header(1, starting_header_size, "Tokens Received")
             markdown += f"**Transaction:** [{tx_hash}](https://snowtrace.io/tx/{tx_hash})\n"
             markdown += f"**Recipient:** [{from_address}](https://snowtrace.io/address/{from_address})\n"
             markdown += f"**Date & Time:** {timestamp_str}\n\n"
@@ -282,6 +302,13 @@ def main():
     parser.add_argument('input', help='Snowtrace.io transaction URL or transaction hash (0x...)')
     parser.add_argument('-o', '--output', help='Output file (optional)')
     parser.add_argument(
+        '--header-size',
+        type=int,
+        default=1,
+        choices=[1, 2, 3, 4, 5],
+        help='Starting markdown header size (1 = #, 2 = ##, etc., default: 1)'
+    )
+    parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {__version__}'
@@ -290,7 +317,7 @@ def main():
     args = parser.parse_args()
     
     reader = AvalancheTransactionReader()
-    result = reader.process_transaction(args.input)
+    result = reader.process_transaction(args.input, starting_header_size=args.header_size)
     
     if args.output:
         with open(args.output, 'w') as f:

@@ -14,10 +14,13 @@ import time
 import re
 import json
 import logging
+import os
+import pickle
+from pathlib import Path
 from typing import List, Dict, Optional
 from decimal import Decimal, getcontext
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone, timedelta
 import argparse
 import sys
 
@@ -55,7 +58,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.1.3"
+__version__ = "1.2.0"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -134,7 +137,7 @@ class Pool:
 
 
 class BlackholePoolRecommender:
-    def __init__(self, headless: Optional[bool] = None):
+    def __init__(self, headless: Optional[bool] = None, no_cache: bool = False):
         self.url = "https://blackhole.xyz/vote"
         # Use config value if headless not explicitly provided
         _pool_config = _config.get('pool_recommender', {})
@@ -148,6 +151,176 @@ class BlackholePoolRecommender:
         self.epoch_close_utc: Optional[datetime] = None
         self.epoch_close_local: Optional[datetime] = None
         
+        # Cache configuration
+        _cache_config = _pool_config.get('cache', {})
+        # If no_cache is True, disable cache reading (but still allow writing to refresh cache)
+        self.no_cache = no_cache
+        self.cache_enabled = _cache_config.get('enabled', True) and not no_cache
+        self.cache_expiry_minutes = _cache_config.get('expiry_minutes', 7)
+        cache_dir = _cache_config.get('directory', 'cache')
+        # Get project root (directory containing this script)
+        project_root = Path(__file__).parent
+        self.cache_dir = project_root / cache_dir
+        self.cache_file = self.cache_dir / 'pool_data_cache.pkl'
+        self.cache_metadata_file = self.cache_dir / 'pool_data_cache_metadata.json'
+    
+    def _ensure_cache_dir(self) -> None:
+        """Ensure cache directory exists"""
+        # Always ensure cache dir exists if cache is enabled in config (even if no_cache is True)
+        # This allows --no-cache to still refresh the cache
+        _pool_config = _config.get('pool_recommender', {})
+        _cache_config = _pool_config.get('cache', {})
+        cache_enabled_config = _cache_config.get('enabled', True)
+        if cache_enabled_config:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _is_cache_valid(self) -> bool:
+        """Check if cache exists and is still valid (not expired)"""
+        if not self.cache_enabled:
+            return False
+        
+        if not self.cache_file.exists() or not self.cache_metadata_file.exists():
+            return False
+        
+        try:
+            # Read metadata to check timestamp
+            with open(self.cache_metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            cache_timestamp_str = metadata.get('timestamp')
+            if not cache_timestamp_str:
+                return False
+            
+            # Parse timestamp (ensure it's timezone-aware)
+            cache_timestamp = datetime.fromisoformat(cache_timestamp_str)
+            if cache_timestamp.tzinfo is None:
+                # If timezone-naive, assume UTC
+                cache_timestamp = cache_timestamp.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            
+            # Check if cache is expired
+            expiry_delta = timedelta(minutes=self.cache_expiry_minutes)
+            if now - cache_timestamp > expiry_delta:
+                return False
+            
+            return True
+        except (json.JSONDecodeError, ValueError, KeyError, OSError) as e:
+            logger.warning(f"Error checking cache validity: {e}")
+            return False
+    
+    def _get_cache_info(self) -> Optional[Dict]:
+        """Get cache information without loading the data"""
+        if not self.cache_metadata_file.exists():
+            return None
+        
+        try:
+            with open(self.cache_metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            cache_timestamp_str = metadata.get('timestamp')
+            if not cache_timestamp_str:
+                return None
+            
+            # Parse timestamp
+            cache_timestamp = datetime.fromisoformat(cache_timestamp_str)
+            if cache_timestamp.tzinfo is None:
+                cache_timestamp = cache_timestamp.replace(tzinfo=timezone.utc)
+            
+            expiry_minutes = metadata.get('expiry_minutes', self.cache_expiry_minutes)
+            expiry_time = cache_timestamp + timedelta(minutes=expiry_minutes)
+            now = datetime.now(timezone.utc)
+            
+            # Check if expired
+            is_valid = now < expiry_time
+            time_until_expiry = expiry_time - now if is_valid else timedelta(0)
+            
+            return {
+                'timestamp': cache_timestamp,
+                'expiry_time': expiry_time,
+                'expiry_minutes': expiry_minutes,
+                'pool_count': metadata.get('pool_count', 0),
+                'is_valid': is_valid,
+                'time_until_expiry': time_until_expiry,
+                'age_minutes': (now - cache_timestamp).total_seconds() / 60
+            }
+        except (json.JSONDecodeError, ValueError, KeyError, OSError) as e:
+            logger.warning(f"Error reading cache info: {e}")
+            return None
+    
+    def _load_from_cache(self) -> Optional[Dict]:
+        """Load pool data and epoch info from cache"""
+        if not self._is_cache_valid():
+            return None
+        
+        try:
+            # Load pools from pickle file
+            with open(self.cache_file, 'rb') as f:
+                cached_data = pickle.load(f)
+            
+            # Load metadata
+            with open(self.cache_metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            logger.info(f"Loaded {len(cached_data.get('pools', []))} pools from cache (cached at {metadata.get('timestamp')})")
+            return cached_data
+        except (pickle.UnpicklingError, OSError, KeyError) as e:
+            logger.warning(f"Error loading from cache: {e}")
+            return None
+    
+    def _clear_cache(self) -> bool:
+        """Clear/delete cache files"""
+        try:
+            deleted = False
+            if self.cache_file.exists():
+                self.cache_file.unlink()
+                deleted = True
+            if self.cache_metadata_file.exists():
+                self.cache_metadata_file.unlink()
+                deleted = True
+            return deleted
+        except OSError as e:
+            logger.warning(f"Error clearing cache: {e}")
+            return False
+    
+    def _save_to_cache(self, pools: List[Pool], epoch_close_utc: Optional[datetime] = None, epoch_close_local: Optional[datetime] = None) -> None:
+        """Save pool data and epoch info to cache"""
+        # Always save to cache if cache is enabled (even if no_cache was used to skip reading)
+        # This allows --no-cache to refresh the cache
+        _pool_config = _config.get('pool_recommender', {})
+        _cache_config = _pool_config.get('cache', {})
+        cache_enabled_config = _cache_config.get('enabled', True)
+        
+        if not cache_enabled_config:
+            return
+        
+        try:
+            self._ensure_cache_dir()
+            
+            # Prepare cache data
+            cache_data = {
+                'pools': pools,
+                'epoch_close_utc': epoch_close_utc,
+                'epoch_close_local': epoch_close_local
+            }
+            
+            # Save pools to pickle file
+            with open(self.cache_file, 'wb') as f:
+                pickle.dump(cache_data, f)
+            
+            # Save metadata with timestamp
+            metadata = {
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'pool_count': len(pools),
+                'expiry_minutes': self.cache_expiry_minutes
+            }
+            
+            with open(self.cache_metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            logger.info(f"Cached {len(pools)} pools (expires in {self.cache_expiry_minutes} minutes)")
+        except (OSError, pickle.PicklingError) as e:
+            logger.warning(f"Error saving to cache: {e}")
+    
     def fetch_pools_selenium(self, quiet: bool = False) -> List[Pool]:
         """Fetch pool data using Selenium (most reliable for React apps)"""
         if not SELENIUM_AVAILABLE:
@@ -609,6 +782,43 @@ class BlackholePoolRecommender:
                     if not text or len(text) < 10:
                         continue
                     
+                    # Check if pool element is disabled/inactive (won't pay rewards)
+                    # Look for disabled state, opacity, inactive styling, or tooltip indicators
+                    pool_disabled = False
+                    try:
+                        element_classes = element.get_attribute('class') or ''
+                        element_style = element.get_attribute('style') or ''
+                        element_opacity = element.value_of_css_property('opacity') if hasattr(element, 'value_of_css_property') else None
+                        
+                        # Check for disabled/inactive indicators in class names
+                        disabled_indicators = ['disabled', 'inactive', 'no-reward', 'paused', 'gray', 'grey']
+                        if any(indicator in element_classes.lower() for indicator in disabled_indicators):
+                            pool_disabled = True
+                        
+                        # Check opacity (low opacity might indicate disabled state)
+                        if element_opacity and float(element_opacity) < 0.5:  # Very low opacity might indicate disabled
+                            pool_disabled = True
+                        if 'opacity' in element_style.lower():
+                            opacity_match = re.search(r'opacity\s*:\s*([\d.]+)', element_style)
+                            if opacity_match and float(opacity_match.group(1)) < 0.5:
+                                pool_disabled = True
+                        
+                        # Check for tooltip indicating pool is not votable (won't pay rewards)
+                        # Non-votable pools have a 'data-tooltip-id="no-locks-available"' attribute in button container
+                        try:
+                            button_containers = element.find_elements(By.XPATH, ".//*[contains(@class, 'liquidity-pool-cell-btn')] | .//*[contains(@class, 'button')] | .//button")
+                            for btn_container in button_containers[:3]:  # Check first few button containers
+                                tooltip_id = btn_container.get_attribute('data-tooltip-id') or ''
+                                tooltip_text = btn_container.get_attribute('data-tooltip-content') or btn_container.get_attribute('title') or ''
+                                # Check for indicators that pool won't pay rewards
+                                if 'no-locks-available' in tooltip_id.lower() or 'no reward' in tooltip_text.lower():
+                                    pool_disabled = True
+                                    break
+                        except:
+                            pass
+                    except:
+                        pass
+                    
                     # Extract pool name and metadata from left section
                     name = "Unknown"
                     pool_type = None
@@ -739,6 +949,7 @@ class BlackholePoolRecommender:
                     # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
                     # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
                     total_rewards = 0.0
+                    rewards_text_found = None  # Track the actual rewards text we found
                     try:
                         # Use find_elements to avoid hanging on implicit wait
                         right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
@@ -750,25 +961,48 @@ class BlackholePoolRecommender:
                         # Look for TOTAL REWARDS - it's in slot 6 or 7, contains "Fees + Incentives"
                         if len(slots) >= 7:
                             # Try slot 6 first (most common)
-                            rewards_text = slots[6].text
+                            rewards_text = slots[6].text.strip()
                             if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
-                                rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
-                                if rewards_match:
-                                    total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
-                            
-                            # If not found, try slot 7
-                            if total_rewards == 0.0 and len(slots) >= 8:
-                                rewards_text = slots[7].text
-                                if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
+                                rewards_text_found = rewards_text
+                                # Explicitly check for $0, "--", empty, or "No rewards" or similar
+                                # Empty or whitespace-only text might indicate no rewards
+                                if not rewards_text or rewards_text.strip() == '' or rewards_text.strip() == '--':
+                                    total_rewards = 0.0  # Empty or "--" means no rewards
+                                elif any(zero_indicator in rewards_text for zero_indicator in ['$0', '$0.00', '$0,000', '--', '?', '?', 'no reward', 'n/a', 'n/a']):
+                                    total_rewards = 0.0  # Explicitly set to 0 if we see indicators
+                                else:
                                     rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
                                     if rewards_match:
                                         total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                            
+                            # If not found, try slot 7
+                            if total_rewards == 0.0 and len(slots) >= 8:
+                                rewards_text = slots[7].text.strip()
+                                if 'Fees + Incentives' in rewards_text or 'fee' in rewards_text.lower():
+                                    rewards_text_found = rewards_text
+                                    # Explicitly check for $0, "--", empty, or "No rewards" or similar
+                                    if not rewards_text or rewards_text.strip() == '' or rewards_text.strip() == '--':
+                                        total_rewards = 0.0  # Empty or "--" means no rewards
+                                    elif any(zero_indicator in rewards_text for zero_indicator in ['$0', '$0.00', '$0,000', '--', '?', '?', 'no reward', 'n/a', 'n/a']):
+                                        total_rewards = 0.0  # Explicitly set to 0 if we see indicators
+                                    else:
+                                        rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
+                                        if rewards_match:
+                                            total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
                         
                         # Fallback: search all slots for "Fees + Incentives"
-                        if total_rewards == 0.0:
+                        if total_rewards == 0.0 and rewards_text_found is None:
                             for slot in slots:
-                                slot_text = slot.text
+                                slot_text = slot.text.strip()
                                 if 'Fees + Incentives' in slot_text or ('fee' in slot_text.lower() and 'incentive' in slot_text.lower()):
+                                    rewards_text_found = slot_text
+                                    # Explicitly check for $0, "--", empty, or "No rewards" or similar
+                                    if not slot_text or slot_text.strip() == '' or slot_text.strip() == '--':
+                                        total_rewards = 0.0  # Empty or "--" means no rewards
+                                        break
+                                    elif any(zero_indicator in slot_text for zero_indicator in ['$0', '$0.00', '$0,000', '--', '?', '?', 'no reward', 'n/a', 'n/a']):
+                                        total_rewards = 0.0  # Explicitly set to 0 if we see indicators
+                                        break
                                     rewards_match = re.search(r'\$[\d,]+\.?\d*', slot_text)
                                     if rewards_match:
                                         total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
@@ -776,8 +1010,9 @@ class BlackholePoolRecommender:
                     except Exception as e:
                         pass
                     
-                    # Fallback: if not found in column, search full text
-                    if total_rewards == 0.0:
+                    # Fallback: if not found in column, search full text (but only if we didn't already find $0)
+                    # Only use fallback if we haven't explicitly found a rewards field that says $0
+                    if total_rewards == 0.0 and rewards_text_found is None:
                         # Find all $ amounts
                         rewards_matches = re.findall(r'\$[\d,]+\.?\d*', text)
                         if rewards_matches:
@@ -785,7 +1020,9 @@ class BlackholePoolRecommender:
                             for match in rewards_matches:
                                 try:
                                     val = float(match.replace('$', '').replace(',', '').replace('~', ''))
-                                    reward_values.append(val)
+                                    # Skip explicit $0 values
+                                    if val > 0:
+                                        reward_values.append(val)
                                 except:
                                     pass
                             if reward_values:
@@ -794,8 +1031,9 @@ class BlackholePoolRecommender:
                                 # Skip TVL (usually largest), take next largest
                                 if len(reward_values) > 1:
                                     total_rewards = reward_values[1]  # Second largest
-                                else:
+                                elif reward_values:
                                     total_rewards = reward_values[0]
+                            # If all values are $0, keep total_rewards as 0.0
                     
                     # Extract VAPR - it's the 5th column (index 4)
                     vapr = 0.0
@@ -925,17 +1163,26 @@ class BlackholePoolRecommender:
                             if vote_candidates:
                                 votes = max(vote_candidates)
                     
-                    # Only add pool if it has meaningful data
-                    if total_rewards > 0 or vapr > 0:
+                    # Only add pool if it has meaningful data AND is not disabled
+                    # Require total_rewards > 0 (not just vapr > 0) to ensure pool will actually pay rewards
+                    if not pool_disabled and total_rewards > 0:
                         pools.append(Pool(
                             name=name if name != "Unknown" else f"Pool_{len(pools)+1}",
                             total_rewards=total_rewards,
                             vapr=vapr,
                             current_votes=votes,
-                            pool_id=pool_id,  # May be None if not found
+                            pool_id=pool_id,  # May be None if not found - use this to distinguish pools with same token pair
                             pool_type=pool_type,
                             fee_percentage=fee_percentage
                         ))
+                    elif pool_disabled:
+                        # Log skipped pools for debugging
+                        pool_identifier = pool_id or name
+                        logger.debug(f"Skipping pool {pool_identifier} ({pool_type or 'unknown type'}) - appears disabled/inactive")
+                    elif total_rewards == 0.0:
+                        # Log pools with $0 rewards for debugging (including pool type to help identify which one)
+                        pool_identifier = pool_id or name
+                        logger.debug(f"Skipping pool {pool_identifier} ({pool_type or 'unknown type'}) - total rewards is $0 (likely shows '--' in UI)")
                 except Exception as e:
                     extraction_errors.append(str(e))
                     continue
@@ -1543,12 +1790,45 @@ class BlackholePoolRecommender:
     
     def fetch_pools(self, quiet: bool = False) -> List[Pool]:
         """
-        Main method to fetch pools - tries API first, then Selenium.
+        Main method to fetch pools - checks cache first, then tries API, then Selenium.
         
         Note: The discovered API endpoint (resources.blackhole.xyz/cl-pools-list/cl-pools.json)
         provides pool metadata but NOT voting metrics (VAPR, votes, rewards).
         For complete voting recommendations, we need Selenium scraping which has all metrics.
         """
+        # Check cache first (unless --no-cache was specified)
+        if self.cache_enabled and not self.no_cache:
+            cached_data = self._load_from_cache()
+            if cached_data:
+                pools = cached_data.get('pools', [])
+                self.epoch_close_utc = cached_data.get('epoch_close_utc')
+                self.epoch_close_local = cached_data.get('epoch_close_local')
+                if pools:
+                    # Warn if cached data seems incomplete (very few pools)
+                    if len(pools) < 10 and not quiet:
+                        print(f"Warning: Cached data has only {len(pools)} pools, which seems incomplete.")
+                        print("         Consider using --no-cache to refresh with fresh data.")
+                    if not quiet:
+                        # Show concise cache info
+                        cache_info = self._get_cache_info()
+                        if cache_info:
+                            # Format times in both local and UTC
+                            cache_utc = cache_info['timestamp'].strftime('%H:%M:%S UTC')
+                            cache_local = cache_info['timestamp'].astimezone().strftime('%H:%M:%S %Z')
+                            expiry_utc = cache_info['expiry_time'].strftime('%H:%M:%S UTC')
+                            expiry_local = cache_info['expiry_time'].astimezone().strftime('%H:%M:%S %Z')
+                            print(f"Using cached pool data ({len(pools)} pools) - Cached: {cache_local} ({cache_utc}), Expires: {expiry_local} ({expiry_utc})")
+                        else:
+                            print(f"Using cached pool data ({len(pools)} pools)")
+                    return pools
+        
+        # Cache miss, cache disabled, or --no-cache specified - fetch fresh data
+        if not quiet:
+            if self.no_cache:
+                print("Fetching fresh pool data (cache disabled)...")
+            else:
+                print("Fetching fresh pool data...")
+        
         # Try API first (faster, but may lack voting metrics)
         if not quiet:
             print("Attempting to fetch pool data from API...")
@@ -1560,6 +1840,8 @@ class BlackholePoolRecommender:
         if pools and has_voting_data:
             if not quiet:
                 print(f"Found {len(pools)} pools via API with voting metrics")
+            # Save to cache
+            self._save_to_cache(pools, self.epoch_close_utc, self.epoch_close_local)
             return pools
         
         # If API returned pools but without voting data, fall back to Selenium
@@ -1572,7 +1854,10 @@ class BlackholePoolRecommender:
         if SELENIUM_AVAILABLE:
             if not quiet and not pools:
                 print("API not available, using Selenium to scrape page...")
-            return self.fetch_pools_selenium(quiet=quiet)
+            pools = self.fetch_pools_selenium(quiet=quiet)
+            # Save to cache after fetching
+            self._save_to_cache(pools, self.epoch_close_utc, self.epoch_close_local)
+            return pools
         else:
             raise InvalidInputError("Selenium not available and API endpoint not found. Please install selenium: pip install selenium")
     
@@ -2424,6 +2709,21 @@ def main():
         help='Minimum total rewards in USD to include (e.g., 1000). Filters out smaller pools to focus on more stable rewards.'
     )
     parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Skip cache and fetch fresh data (will still refresh the cache with new data)'
+    )
+    parser.add_argument(
+        '--cache-info',
+        action='store_true',
+        help='Show detailed cache information and exit'
+    )
+    parser.add_argument(
+        '--clear-cache',
+        action='store_true',
+        help='Clear/delete cache files and exit'
+    )
+    parser.add_argument(
         '--no-headless',
         action='store_true',
         help='Show browser window (for debugging)'
@@ -2449,14 +2749,105 @@ def main():
         default=None,
         help='Your voting power in veBLACK (e.g., 15000) - will estimate USD rewards'
     )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug logging (shows detailed information about skipped pools and extraction details)'
+    )
     
     args = parser.parse_args()
+    
+    # Handle --clear-cache flag
+    if args.clear_cache:
+        recommender = BlackholePoolRecommender()
+        if recommender._clear_cache():
+            print("Cache cleared successfully.")
+            print(f"Deleted: {recommender.cache_file}")
+            print(f"Deleted: {recommender.cache_metadata_file}")
+        else:
+            print("No cache files found to clear.")
+        sys.exit(0)
+    
+    # Handle --cache-info flag
+    if args.cache_info:
+        recommender = BlackholePoolRecommender()
+        cache_info = recommender._get_cache_info()
+        
+        if cache_info:
+            print("\n" + "="*60)
+            print("CACHE INFORMATION")
+            print("="*60)
+            print(f"Cache file: {recommender.cache_file}")
+            print(f"Metadata file: {recommender.cache_metadata_file}")
+            print()
+            print(f"Status: {'Valid' if cache_info['is_valid'] else 'Expired'}")
+            print(f"Pools cached: {cache_info['pool_count']}")
+            print()
+            # Show last refreshed in both local and UTC
+            cache_timestamp = cache_info['timestamp']
+            cache_local = cache_timestamp.astimezone()
+            print(f"Last refreshed:")
+            print(f"  Local: {cache_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            print(f"  UTC:   {cache_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            print(f"Age: {cache_info['age_minutes']:.1f} minutes")
+            print()
+            # Show expiry time in both local and UTC
+            expiry_timestamp = cache_info['expiry_time']
+            expiry_local = expiry_timestamp.astimezone()
+            if cache_info['is_valid']:
+                time_left = cache_info['time_until_expiry']
+                minutes_left = int(time_left.total_seconds() / 60)
+                seconds_left = int(time_left.total_seconds() % 60)
+                print(f"Expires at:")
+                print(f"  Local: {expiry_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                print(f"  UTC:   {expiry_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                print(f"Time until expiry: {minutes_left}m {seconds_left}s")
+            else:
+                print(f"Expired at:")
+                print(f"  Local: {expiry_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                print(f"  UTC:   {expiry_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                print("Cache is expired and will be refreshed on next run")
+            print()
+            print(f"Cache expiry window: {cache_info['expiry_minutes']} minutes")
+            print("="*60)
+        else:
+            print("\nNo cache found or cache is invalid.")
+            print(f"Cache directory: {recommender.cache_dir}")
+            print(f"Cache file: {recommender.cache_file}")
+            print(f"Metadata file: {recommender.cache_metadata_file}")
+            if not recommender.cache_dir.exists():
+                print("\nCache directory does not exist yet.")
+            elif not recommender.cache_file.exists():
+                print("\nCache file does not exist yet.")
+            elif not recommender.cache_metadata_file.exists():
+                print("\nCache metadata file does not exist yet.")
+        
+        sys.exit(0)
+    
+    # Set logging level based on --debug flag
+    if args.debug:
+        # Set logger level to DEBUG
+        logger.setLevel(logging.DEBUG)
+        # Ensure handler is configured to show DEBUG messages
+        # If no handler exists, add one
+        if not logger.handlers:
+            handler = logging.StreamHandler(sys.stderr)
+            handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        else:
+            # Update existing handlers to DEBUG level
+            for handler in logger.handlers:
+                handler.setLevel(logging.DEBUG)
+        # Also set root logger level
+        logging.getLogger().setLevel(logging.DEBUG)
     
     try:
         # Use config default for headless, but CLI flag can override
         # If --no-headless is set, force headless=False; otherwise use config default
         headless_param = False if args.no_headless else None
-        recommender = BlackholePoolRecommender(headless=headless_param)
+        recommender = BlackholePoolRecommender(headless=headless_param, no_cache=args.no_cache)
         recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, max_pool_percentage=args.max_pool_percentage, quiet=args.json or args.output)
         
         if not recommendations:

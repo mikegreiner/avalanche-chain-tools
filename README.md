@@ -6,7 +6,7 @@ A collection of Python tools for analyzing Avalanche C-Chain transactions, swaps
 
 ### 1. Avalanche Transaction Reader
 **Script:** `avalanche_transaction_reader.py`  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 Reads Avalanche C-Chain transactions from Snowtrace.io and extracts token transfer information with USD value calculations.
 
@@ -14,7 +14,8 @@ Reads Avalanche C-Chain transactions from Snowtrace.io and extracts token transf
 - Fetches transaction data from Snowtrace.io API
 - Parses ERC-20 token transfer events
 - Calculates total tokens received by the transaction sender
-- Fetches token metadata and USD prices (Snowtrace + CoinGecko)
+- Fetches token metadata and USD prices from multiple sources (Snowtrace, DefiLlama, CoinGecko, DexScreener)
+- Configurable markdown header sizes (useful for embedding in larger documents)
 - Outputs formatted markdown with clickable links
 
 **Usage:**
@@ -24,6 +25,9 @@ python3 avalanche_transaction_reader.py "0xabcdef1234567890abcdef1234567890abcde
 
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_transaction_reader.py "0x..." -o analysis.md
+
+# Customize header size (start with ## instead of #)
+python3 avalanche_transaction_reader.py "0x..." --header-size 2
 
 # Check version
 python3 avalanche_transaction_reader.py --version
@@ -69,15 +73,18 @@ python3 avalanche_transaction_narrator.py --version
 
 ### 3. Avalanche Daily Swap Analyzer
 **Script:** `avalanche_daily_swaps.py`  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 Analyzes daily swap transactions for a given Avalanche C-Chain address, focusing on swaps to BTC.b.
 
 **Features:**
 - Analyzes all transactions for an address on a specific date
 - Filters for swap transactions to BTC.b (Bitcoin on Avalanche)
+- Automatically skips ERC-721 NFT transfers (only processes ERC-20 token transfers)
 - Shows detailed breakdown of each swap with token amounts and USD values
 - Calculates totals for BTC.b received and USD value swapped
+- Fetches token prices from multiple sources (Snowtrace, DefiLlama, CoinGecko, DexScreener)
+- Configurable markdown header sizes (useful for embedding in larger documents)
 
 **Usage:**
 ```bash
@@ -90,6 +97,9 @@ python3 avalanche_daily_swaps.py "0x1234567890123456789012345678901234567890" -d
 # Save to file (or use output/ directory - gitignored)
 python3 avalanche_daily_swaps.py "0x..." -o swaps_analysis.md
 
+# Customize header size (start with ## instead of #)
+python3 avalanche_daily_swaps.py "0x..." --header-size 2
+
 # Check version
 python3 avalanche_daily_swaps.py --version
 ```
@@ -100,7 +110,7 @@ python3 avalanche_daily_swaps.py --version
 
 ### 4. Blackhole DEX Pool Recommender
 **Script:** `blackhole_pool_recommender.py`  
-**Version:** 1.1.2
+**Version:** 1.2.0
 
 Analyzes liquidity pools on Blackhole DEX and recommends the most profitable pools for voting, accounting for dilution and estimating personal rewards.
 
@@ -110,6 +120,8 @@ Analyzes liquidity pools on Blackhole DEX and recommends the most profitable poo
 - Calculates profitability score factoring in dilution
 - Estimates personal USD rewards based on voting power
 - Recommends top pools sorted by estimated reward
+- Automatic caching for faster subsequent runs (shared across tools)
+- Cache management options (`--no-cache`, `--cache-info`, `--clear-cache`)
 
 **Usage:**
 ```bash
@@ -131,6 +143,15 @@ python3 blackhole_pool_recommender.py --min-rewards 1000
 # Combine filters
 python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 500 --hide-vamm
 
+# Skip cache and fetch fresh data
+python3 blackhole_pool_recommender.py --no-cache
+
+# View detailed cache information
+python3 blackhole_pool_recommender.py --cache-info
+
+# Clear cache files
+python3 blackhole_pool_recommender.py --clear-cache
+
 # Debug mode (shows browser)
 python3 blackhole_pool_recommender.py --no-headless
 
@@ -147,12 +168,14 @@ python3 blackhole_pool_recommender.py --version
 
 ### 5. Pool Tracking Tool
 **Script:** `track_pool_changes.py`  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 Tracks changes in recommended pools over time, helping you identify which pools receive the most late-breaking votes and which pools' rewards hold up best (least dilution) until the voting window closes.
 
 **Features:**
 - Monitors recommended pools over time
+- Uses shared cache for faster runs
+- Cache management options (`--no-cache`, `--cache-info`, `--clear-cache`)
 - Tracks profitability score changes
 - Identifies pools receiving late-breaking votes
 - Shows which pools' rewards hold up best (least dilution)
@@ -172,6 +195,15 @@ python3 track_pool_changes.py --history
 
 # Use custom output file
 python3 track_pool_changes.py --init --top 30 --voting-power 18169.28 --min-rewards 5000 --max-pool-percentage 0.5 -o output/pool_tracking_2025-11-05
+
+# Skip cache and fetch fresh data
+python3 track_pool_changes.py --snapshot --top 10 --voting-power 15000 --no-cache
+
+# View detailed cache information
+python3 track_pool_changes.py --cache-info
+
+# Clear cache files
+python3 track_pool_changes.py --clear-cache
 
 # Check version
 python3 track_pool_changes.py --version
@@ -281,12 +313,17 @@ cp .env.example .env
 ## Notes
 
 - All scripts use the Snowtrace.io API for transaction data
-- USD prices are fetched from multiple sources (Snowtrace + CoinGecko)
+- USD prices are fetched from multiple sources:
+  - **Snowtrace API** (for AVAX/WAVAX)
+  - **DefiLlama API** (free, no rate limits, good coverage)
+  - **CoinGecko API** (with retry logic for rate limits)
+  - **DexScreener API** (free alternative)
 - The Blackhole Pool Recommender uses Selenium for web scraping (with API fallback)
 - All addresses, transactions, and contracts in outputs are clickable links to Snowtrace.io
 - Timestamps are shown in both local timezone and UTC
 - **Output files**: You can save generated files to an `output/` directory (gitignored) or any location you prefer
 - **Logging**: All tools use Python's logging module - adjust levels via `config.yaml` or environment
+- **Header sizes**: Transaction Reader and Daily Swap Analyzer support `--header-size` option to customize markdown header levels (useful for embedding in larger documents)
 
 ## License
 

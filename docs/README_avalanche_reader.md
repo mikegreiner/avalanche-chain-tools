@@ -8,7 +8,7 @@ A Python script that reads Avalanche C-Chain transactions from Snowtrace.io and 
 - Parses ERC-20 token transfer events
 - Calculates total tokens received by the transaction sender
 - Fetches token metadata (name, symbol, decimals)
-- Gets current USD prices from multiple sources (Snowtrace, CoinGecko)
+- Gets current USD prices from multiple sources (Snowtrace, DefiLlama, CoinGecko, DexScreener)
 - Calculates and displays total USD value of all tokens
 - Shows human-readable transaction date and time in both local timezone and UTC
 - Creates clickable links to transaction, address, and token contract pages on Snowtrace.io
@@ -37,6 +37,12 @@ python3 avalanche_transaction_reader.py "0xabcdef1234567890abcdef1234567890abcde
 
 # Or save to an output directory (recommended, gitignored)
 python3 avalanche_transaction_reader.py "0x..." -o output/analysis.md
+```
+
+### Customize Header Size
+```bash
+# Start with ## instead of # (useful for embedding in larger documents)
+python3 avalanche_transaction_reader.py "0x..." --header-size 2
 ```
 
 ## Example Output
@@ -74,13 +80,18 @@ Check the script version:
 python3 avalanche_transaction_reader.py --version
 ```
 
-Current version: **1.0.0**
+Current version: **1.1.0**
 
 ## Notes
 
 - The script accepts either full Snowtrace.io URLs or just transaction hashes (0x...)
 - The script analyzes token transfers where the transaction sender is the recipient
-- USD prices are fetched from multiple sources: Snowtrace API (for AVAX) and CoinGecko API
+- USD prices are fetched from multiple sources:
+  - Snowtrace API (for AVAX/WAVAX)
+  - DefiLlama API (free, no rate limits, good coverage)
+  - CoinGecko API (with retry logic for rate limits)
+  - DexScreener API (free alternative)
 - The script displays total USD value of all tokens received
 - Unknown tokens will show "Price not available" in the individual entries
 - The script handles ERC-20 Transfer events with proper decimal formatting
+- Use `--header-size` to customize markdown header sizes (default: 1, range: 1-5)

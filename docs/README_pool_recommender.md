@@ -86,6 +86,52 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage
 python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage 0.5 --min-rewards 1000 --hide-vamm
 ```
 
+### Caching
+
+The pool recommender automatically caches pool data to speed up subsequent runs. By default, cached data is used for 7 minutes (configurable in `config.yaml`).
+
+**Benefits:**
+- Faster subsequent runs within the cache window
+- Shared cache across all tools (pool recommender, pool tracker, etc.)
+- Caches all pools (not filtered), so different filter combinations work with cached data
+- Cache status shown on each run (when cached data is used)
+
+**Cache Status Display:**
+When using cached data, you'll see concise cache information:
+```
+Using cached pool data (50 pools) - Cached: 10:23:15 UTC, Expires: 10:30:15 UTC
+```
+
+**Skip Cache (Refresh Data):**
+```bash
+python3 blackhole_pool_recommender.py --no-cache
+```
+
+This will skip reading from cache and fetch fresh data, but will still save the new data to cache (refreshing it).
+
+**View Detailed Cache Information:**
+```bash
+python3 blackhole_pool_recommender.py --cache-info
+```
+
+This shows detailed cache information including:
+- Cache file locations
+- Status (Valid/Expired)
+- Number of pools cached
+- Last refresh time and age
+- Expiry time and time until expiry
+- Cache expiry window
+
+**Configuration:**
+Cache settings can be configured in `config.yaml`:
+```yaml
+pool_recommender:
+  cache:
+    enabled: true
+    expiry_minutes: 7  # Cache expires after 7 minutes
+    directory: "cache"  # Cache directory
+```
+
 ### Debug Mode (shows browser)
 ```bash
 python3 blackhole_pool_recommender.py --no-headless
@@ -127,6 +173,13 @@ pip install pyperclip
 ```
 
 If `pyperclip` is not installed, the script will still be saved to a file and you can manually copy it.
+
+### Skip Cache (Refresh Data)
+```bash
+python3 blackhole_pool_recommender.py --no-cache
+```
+
+This will skip reading from cache and fetch fresh data, but will still save the new data to cache (refreshing it).
 
 ### Check Version
 ```bash
@@ -191,7 +244,7 @@ Then update `blackhole_pool_recommender.py` with the correct:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.1.2
+Version: 1.2.0
 Generated: 2025-01-15 14:30:00
 Epoch Close (UTC): 2025-01-16 23:59:59 UTC
 Epoch Close (Local): 2025-01-16 16:59:59 PST
@@ -212,7 +265,7 @@ Top 5 Most Profitable Pools:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.1.2
+Version: 1.2.0
 Generated: 2025-01-15 14:30:00
 Epoch Close (UTC): 2025-01-16 23:59:59 UTC
 Epoch Close (Local): 2025-01-16 16:59:59 PST
@@ -343,6 +396,9 @@ If you cannot vote for vAMM pools, use the `--hide-vamm` flag to filter them out
 | `--json` | flag | Output results as JSON instead of formatted text |
 | `--max-pool-percentage N` | float | Maximum percentage of pool voting power (e.g., 0.5 for 0.5%). Filters out pools where adding your full voting power would exceed this threshold. Requires `--voting-power`. |
 | `--min-rewards N` | float | Minimum total rewards in USD to include (filters smaller pools) |
+| `--no-cache` | flag | Skip cache and fetch fresh data (will still refresh the cache with new data) |
+| `--cache-info` | flag | Show detailed cache information and exit |
+| `--clear-cache` | flag | Clear/delete cache files and exit |
 | `--no-headless` | flag | Show browser window (for debugging) |
 | `-o, --output FILE` | string | Save output to file |
 | `--select-pools` | flag | Generate a JavaScript console script to automatically select recommended pools. Saves script to file and copies to clipboard (if pyperclip installed). |
