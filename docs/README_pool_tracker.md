@@ -36,6 +36,9 @@ This saves the current recommended pools as a baseline for comparison. The basel
 - `--hide-vamm`: Hide vAMM pools from results
 - `--min-rewards N`: Minimum total rewards in USD to include
 - `--max-pool-percentage N`: Maximum percentage of pool voting power (filters out pools where you'd have too large a share)
+- `--no-cache`: Skip cache and fetch fresh data (will still refresh the cache)
+- `--cache-info`: Show detailed cache information and exit
+- `--clear-cache`: Clear/delete cache files and exit
 - `-o, --output NAME`: Output file base name (e.g., `output/pool_tracking`). Files will be saved as `{base}_baseline.json` and `{base}_history.json`
 
 **Example:**

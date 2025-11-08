@@ -321,3 +321,201 @@ class TestPoolRecommender:
         assert script is not None
         assert isinstance(script, str)
         assert '0x1234567890123456789012345678901234567890' in script
+
+
+class TestCaching:
+    """Tests for caching functionality"""
+    
+    def test_init_with_no_cache(self):
+        """Test initialization with no_cache=True"""
+        recommender = BlackholePoolRecommender(no_cache=True)
+        
+        assert recommender.no_cache is True
+        assert recommender.cache_enabled is False  # Cache reading disabled
+    
+    def test_init_without_no_cache(self):
+        """Test initialization without no_cache (default)"""
+        recommender = BlackholePoolRecommender()
+        
+        assert recommender.no_cache is False
+        # cache_enabled depends on config, but should not be forced False
+    
+    def test_fetch_pools_skips_cache_when_no_cache_true(self):
+        """Test that fetch_pools skips cache when no_cache=True"""
+        recommender = BlackholePoolRecommender(no_cache=True)
+        
+        test_pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0)
+        ]
+        
+        # Mock _load_from_cache to return cached data
+        with patch.object(recommender, '_load_from_cache') as mock_load:
+            mock_load.return_value = {'pools': test_pools}
+            
+            # Mock fetch_pools_api to return fresh data
+            with patch.object(recommender, 'fetch_pools_api') as mock_api:
+                mock_api.return_value = test_pools
+                
+                # Should skip cache and call fetch_pools_api
+                pools = recommender.fetch_pools(quiet=True)
+                
+                # Should not have called _load_from_cache
+                mock_load.assert_not_called()
+                # Should have called fetch_pools_api
+                mock_api.assert_called_once()
+    
+    def test_fetch_pools_uses_cache_when_no_cache_false(self):
+        """Test that fetch_pools uses cache when no_cache=False"""
+        recommender = BlackholePoolRecommender(no_cache=False)
+        
+        test_pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0)
+        ]
+        
+        # Mock _load_from_cache to return cached data
+        with patch.object(recommender, '_load_from_cache') as mock_load:
+            mock_load.return_value = {'pools': test_pools}
+            
+            # Should use cache and return cached pools
+            pools = recommender.fetch_pools(quiet=True)
+            
+            # Should have called _load_from_cache
+            mock_load.assert_called_once()
+            assert pools == test_pools
+    
+    def test_save_to_cache_still_works_with_no_cache(self):
+        """Test that _save_to_cache still works even when no_cache=True"""
+        recommender = BlackholePoolRecommender(no_cache=True)
+        
+        test_pools = [
+            Pool('Test Pool 1', 1000.0, 50.0, 10000.0),
+            Pool('Test Pool 2', 2000.0, 75.0, 5000.0)
+        ]
+        
+        # Mock _ensure_cache_dir and file operations
+        with patch.object(recommender, '_ensure_cache_dir') as mock_ensure:
+            # Mock open to handle both binary (pickle) and text (JSON) file operations
+            import io
+            
+            # Track if files were opened
+            files_opened = []
+            
+            def mock_open_func(filename, mode='r', *args, **kwargs):
+                files_opened.append((filename, mode))
+                if 'b' in mode:
+                    return io.BytesIO()
+                else:
+                    return io.StringIO()
+            
+            with patch('builtins.open', side_effect=mock_open_func):
+                # Should still save to cache (to refresh it) without raising exception
+                try:
+                    recommender._save_to_cache(test_pools)
+                    exception_raised = False
+                except Exception:
+                    exception_raised = True
+                
+                # Should not have raised an exception
+                assert not exception_raised
+                # Should have called _ensure_cache_dir
+                mock_ensure.assert_called_once()
+                # Should have opened both cache files (pickle and JSON)
+                assert len(files_opened) >= 2
+    
+    def test_get_cache_info_no_cache(self):
+        """Test _get_cache_info when no cache exists"""
+        recommender = BlackholePoolRecommender()
+        
+        # Mock cache metadata file not existing by patching Path.exists
+        from pathlib import Path
+        original_exists = Path.exists
+        
+        def mock_exists(self):
+            if self == recommender.cache_metadata_file:
+                return False
+            return original_exists(self)
+        
+        with patch.object(Path, 'exists', mock_exists):
+            cache_info = recommender._get_cache_info()
+            assert cache_info is None
+    
+    def test_get_cache_info_with_cache(self):
+        """Test _get_cache_info when cache exists"""
+        recommender = BlackholePoolRecommender()
+        
+        # Create mock cache metadata
+        from datetime import datetime, timezone, timedelta
+        test_timestamp = datetime.now(timezone.utc) - timedelta(minutes=2)
+        test_metadata = {
+            'timestamp': test_timestamp.isoformat(),
+            'pool_count': 50,
+            'expiry_minutes': 7
+        }
+        
+        # Mock Path.exists to return True for cache metadata file
+        from pathlib import Path
+        original_exists = Path.exists
+        
+        def mock_exists(self):
+            if self == recommender.cache_metadata_file:
+                return True
+            return original_exists(self)
+        
+        # Mock cache metadata file exists and contains valid data
+        with patch.object(Path, 'exists', mock_exists):
+            with patch('builtins.open', create=True) as mock_open:
+                import io
+                import json
+                mock_file = io.StringIO(json.dumps(test_metadata))
+                mock_open.return_value.__enter__.return_value = mock_file
+                mock_open.return_value.__exit__ = lambda *args: None
+                
+                cache_info = recommender._get_cache_info()
+                
+                assert cache_info is not None
+                assert cache_info['pool_count'] == 50
+                assert cache_info['expiry_minutes'] == 7
+                assert cache_info['is_valid'] is True
+                assert cache_info['age_minutes'] >= 1.9  # Should be around 2 minutes
+                assert 'timestamp' in cache_info
+                assert 'expiry_time' in cache_info
+                assert 'time_until_expiry' in cache_info
+    
+    def test_get_cache_info_expired_cache(self):
+        """Test _get_cache_info with expired cache"""
+        recommender = BlackholePoolRecommender()
+        
+        # Create mock cache metadata with old timestamp (expired)
+        from datetime import datetime, timezone, timedelta
+        test_timestamp = datetime.now(timezone.utc) - timedelta(minutes=10)  # 10 minutes ago
+        test_metadata = {
+            'timestamp': test_timestamp.isoformat(),
+            'pool_count': 50,
+            'expiry_minutes': 7  # Expired 3 minutes ago
+        }
+        
+        # Mock Path.exists to return True for cache metadata file
+        from pathlib import Path
+        original_exists = Path.exists
+        
+        def mock_exists(self):
+            if self == recommender.cache_metadata_file:
+                return True
+            return original_exists(self)
+        
+        # Mock cache metadata file exists
+        with patch.object(Path, 'exists', mock_exists):
+            with patch('builtins.open', create=True) as mock_open:
+                import io
+                import json
+                mock_file = io.StringIO(json.dumps(test_metadata))
+                mock_open.return_value.__enter__.return_value = mock_file
+                mock_open.return_value.__exit__ = lambda *args: None
+                
+                cache_info = recommender._get_cache_info()
+                
+                assert cache_info is not None
+                assert cache_info['is_valid'] is False
+                assert cache_info['pool_count'] == 50

@@ -4,6 +4,27 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.2.0 (new)
+- **Caching System**: Added automatic caching of pool data to speed up subsequent runs
+  - Caches all pools (not filtered) so different filter combinations work with cached data
+  - Shared cache across all tools (pool recommender, pool tracker, etc.)
+  - Configurable cache expiry (default: 7 minutes)
+  - Cache status shown on each run with local and UTC times
+  - `--no-cache` option to skip cache and fetch fresh data (still refreshes cache)
+  - `--cache-info` option to show detailed cache information
+  - `--clear-cache` option to manually clear cache files
+  - Warning when cached data seems incomplete (< 10 pools)
+  - Cache directory configurable in `config.yaml`
+
+### Enhanced - Pool Tracking (`track_pool_changes.py`)
+- **Version**: 1.1.0 (new)
+- **Caching Support**: Now uses shared cache from pool recommender
+  - Faster runs when cache is available
+  - `--no-cache` option to skip cache and fetch fresh data
+  - `--cache-info` option to show detailed cache information
+  - `--clear-cache` option to manually clear cache files
+
 ### Enhanced - Token Price Lookup (`avalanche_utils.py`)
 - **Multiple Price Sources**: Added DefiLlama and DexScreener APIs as alternatives to CoinGecko
   - DefiLlama API (free, no rate limits) - primary fallback

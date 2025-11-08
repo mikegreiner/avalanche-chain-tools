@@ -60,3 +60,7 @@ pool_recommender:
   selenium:
     headless: true
     implicit_wait: 10
+  cache:
+    enabled: true
+    expiry_minutes: 7  # Cache expires after 7 minutes (default 5-10 min window)
+    directory: "cache"  # Cache directory (relative to project root)

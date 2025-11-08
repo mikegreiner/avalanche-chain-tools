@@ -110,7 +110,7 @@ python3 avalanche_daily_swaps.py --version
 
 ### 4. Blackhole DEX Pool Recommender
 **Script:** `blackhole_pool_recommender.py`  
-**Version:** 1.1.2
+**Version:** 1.2.0
 
 Analyzes liquidity pools on Blackhole DEX and recommends the most profitable pools for voting, accounting for dilution and estimating personal rewards.
 
@@ -120,6 +120,8 @@ Analyzes liquidity pools on Blackhole DEX and recommends the most profitable poo
 - Calculates profitability score factoring in dilution
 - Estimates personal USD rewards based on voting power
 - Recommends top pools sorted by estimated reward
+- Automatic caching for faster subsequent runs (shared across tools)
+- Cache management options (`--no-cache`, `--cache-info`, `--clear-cache`)
 
 **Usage:**
 ```bash
@@ -141,6 +143,15 @@ python3 blackhole_pool_recommender.py --min-rewards 1000
 # Combine filters
 python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 500 --hide-vamm
 
+# Skip cache and fetch fresh data
+python3 blackhole_pool_recommender.py --no-cache
+
+# View detailed cache information
+python3 blackhole_pool_recommender.py --cache-info
+
+# Clear cache files
+python3 blackhole_pool_recommender.py --clear-cache
+
 # Debug mode (shows browser)
 python3 blackhole_pool_recommender.py --no-headless
 
@@ -157,12 +168,14 @@ python3 blackhole_pool_recommender.py --version
 
 ### 5. Pool Tracking Tool
 **Script:** `track_pool_changes.py`  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 Tracks changes in recommended pools over time, helping you identify which pools receive the most late-breaking votes and which pools' rewards hold up best (least dilution) until the voting window closes.
 
 **Features:**
 - Monitors recommended pools over time
+- Uses shared cache for faster runs
+- Cache management options (`--no-cache`, `--cache-info`, `--clear-cache`)
 - Tracks profitability score changes
 - Identifies pools receiving late-breaking votes
 - Shows which pools' rewards hold up best (least dilution)
@@ -182,6 +195,15 @@ python3 track_pool_changes.py --history
 
 # Use custom output file
 python3 track_pool_changes.py --init --top 30 --voting-power 18169.28 --min-rewards 5000 --max-pool-percentage 0.5 -o output/pool_tracking_2025-11-05
+
+# Skip cache and fetch fresh data
+python3 track_pool_changes.py --snapshot --top 10 --voting-power 15000 --no-cache
+
+# View detailed cache information
+python3 track_pool_changes.py --cache-info
+
+# Clear cache files
+python3 track_pool_changes.py --clear-cache
 
 # Check version
 python3 track_pool_changes.py --version
