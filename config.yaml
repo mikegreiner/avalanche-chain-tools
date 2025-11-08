@@ -60,7 +60,10 @@ pool_recommender:
   selenium:
     headless: true
     implicit_wait: 10
-<<<<<<< HEAD
+  cache:
+    enabled: true
+    expiry_minutes: 60  # Cache expires after 1 hour (use --no-cache to force refresh)
+    directory: "cache"  # Cache directory (relative to project root)
 
 # Blackhole Voter Settings
 blackhole_voter:

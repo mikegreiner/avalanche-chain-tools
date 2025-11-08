@@ -90,6 +90,7 @@ def save_baseline(recommender: BlackholePoolRecommender, args: argparse.Namespac
             hide_vamm=args.hide_vamm,
             min_rewards=args.min_rewards,
             max_pool_percentage=args.max_pool_percentage,
+            pool_name=args.pool_name,
             quiet=True
         )
     except Exception as e:
@@ -171,6 +172,7 @@ def save_snapshot(recommender: BlackholePoolRecommender, args: argparse.Namespac
             hide_vamm=args.hide_vamm,
             min_rewards=args.min_rewards,
             max_pool_percentage=args.max_pool_percentage,
+            pool_name=args.pool_name,
             quiet=True
         )
     except Exception as e:
@@ -561,6 +563,8 @@ Examples:
                        help='Minimum total rewards in USD to include')
     parser.add_argument('--max-pool-percentage', type=float, default=None,
                        help='Maximum percentage of pool voting power')
+    parser.add_argument('--pool-name', type=str, default=None,
+                       help='Filter pools by name using shell-style wildcards (case-insensitive). If no wildcards are provided, automatically wraps pattern with * (e.g., "btc.b" becomes "*btc.b*"). Examples: "WAVAX/*", "*BLACK*", "CL200-*", "btc.b"')
     parser.add_argument('--no-cache', action='store_true',
                        help='Skip cache and fetch fresh data (will still refresh the cache with new data)')
     parser.add_argument('--cache-info', action='store_true',
@@ -605,8 +609,27 @@ Examples:
                 print(f"Cache file: {recommender.cache_file}")
                 print(f"Metadata file: {recommender.cache_metadata_file}")
                 print()
-                print(f"Status: {'Valid' if cache_info['is_valid'] else 'Expired'}")
+                # Determine status message
+                if cache_info['is_valid']:
+                    status = 'Valid'
+                elif not cache_info.get('timestamp_valid', True):
+                    status = 'Expired (timestamp)'
+                elif not cache_info.get('content_valid', True):
+                    status = 'Invalid (content validation failed)'
+                else:
+                    status = 'Expired'
+                
+                print(f"Status: {status}")
                 print(f"Pools cached: {cache_info['pool_count']}")
+                
+                # Show validation issues if any
+                validation_issues = cache_info.get('validation_issues', [])
+                if validation_issues:
+                    print()
+                    print("Validation issues:")
+                    for issue in validation_issues:
+                        print(f"  - {issue}")
+                
                 print()
                 # Show last refreshed in both local and UTC
                 cache_timestamp = cache_info['timestamp']
@@ -614,7 +637,10 @@ Examples:
                 print(f"Last refreshed:")
                 print(f"  Local: {cache_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                 print(f"  UTC:   {cache_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                print(f"Age: {cache_info['age_minutes']:.1f} minutes")
+                age_seconds = int(cache_info['age_minutes'] * 60)
+                age_minutes = age_seconds // 60
+                age_secs = age_seconds % 60
+                print(f"Age: {age_minutes}m {age_secs}s")
                 print()
                 # Show expiry time in both local and UTC
                 expiry_timestamp = cache_info['expiry_time']
@@ -631,7 +657,12 @@ Examples:
                     print(f"Expired at:")
                     print(f"  Local: {expiry_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                     print(f"  UTC:   {expiry_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                    print("Cache is expired and will be refreshed on next run")
+                    if not cache_info.get('timestamp_valid', True):
+                        print("Cache timestamp expired and will be refreshed on next run")
+                    elif not cache_info.get('content_valid', True):
+                        print("Cache content validation failed and will be refreshed on next run")
+                    else:
+                        print("Cache is expired and will be refreshed on next run")
                 print()
                 print(f"Cache expiry window: {cache_info['expiry_minutes']} minutes")
                 print("="*60)
