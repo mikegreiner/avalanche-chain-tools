@@ -5,6 +5,7 @@ import pytest
 import json
 import pickle
 import io
+import re
 from unittest.mock import Mock, patch
 from blackhole_pool_recommender import BlackholePoolRecommender, Pool
 
@@ -954,3 +955,51 @@ class TestCaching:
             assert is_valid is False
             assert len(issues) > 0
             assert any('missing essential data' in issue for issue in issues)
+
+
+class TestVAPRExtraction:
+    """Tests for VAPR extraction with comma-separated numbers"""
+    
+    def test_vapr_extraction_with_commas(self):
+        """Test that VAPR values with commas are correctly extracted"""
+        # Test the regex pattern used in the code
+        vapr_pattern = r'([\d,]+\.?\d*)\s*%'
+        
+        # Test cases: (input_text, expected_value)
+        test_cases = [
+            ("1,684.6%", 1684.6),
+            ("697.20%", 697.20),
+            ("1,000%", 1000.0),
+            ("50.5%", 50.5),
+            ("10,000.25%", 10000.25),
+            ("VAPR: 1,234.56%", 1234.56),
+            ("Some text 2,500.75% more text", 2500.75),
+        ]
+        
+        for input_text, expected_value in test_cases:
+            match = re.search(vapr_pattern, input_text)
+            assert match is not None, f"Pattern should match '{input_text}'"
+            extracted_value = float(match.group(1).replace(',', ''))
+            assert extracted_value == expected_value, \
+                f"Expected {expected_value} from '{input_text}', got {extracted_value}"
+    
+    def test_vapr_extraction_findall_with_commas(self):
+        """Test findall pattern for multiple VAPR values with commas"""
+        vapr_pattern = r'([\d,]+\.?\d*)\s*%'
+        
+        # Text with multiple percentages
+        text = "Pool has VAPR: 1,684.6% and fee: 0.5%"
+        percentages = re.findall(vapr_pattern, text)
+        
+        assert len(percentages) == 2
+        vapr_values = [float(p.replace(',', '')) for p in percentages]
+        
+        # Should extract both values correctly
+        assert 1684.6 in vapr_values
+        assert 0.5 in vapr_values
+        
+        # Test with large VAPR value
+        text2 = "VAPR: 2,500.75%"
+        percentages2 = re.findall(vapr_pattern, text2)
+        assert len(percentages2) == 1
+        assert float(percentages2[0].replace(',', '')) == 2500.75
