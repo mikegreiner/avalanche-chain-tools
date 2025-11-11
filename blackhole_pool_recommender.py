@@ -60,7 +60,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -1248,17 +1248,17 @@ class BlackholePoolRecommender:
                         # VAPR is usually 5th column (index 4) or look for "vapr" class
                         if len(slots) >= 5:
                             vapr_text = slots[4].text
-                            vapr_match = re.search(r'(\d+\.?\d*)\s*%', vapr_text)
+                            vapr_match = re.search(r'([\d,]+\.?\d*)\s*%', vapr_text)
                             if vapr_match:
-                                vapr = float(vapr_match.group(1))
+                                vapr = float(vapr_match.group(1).replace(',', ''))
                     except:
                         pass
                     
                     # Fallback: search text for percentages
                     if vapr == 0.0:
-                        percentages = re.findall(r'(\d+\.?\d*)\s*%', text)
+                        percentages = re.findall(r'([\d,]+\.?\d*)\s*%', text)
                         if percentages:
-                            vapr_values = [float(p) for p in percentages]
+                            vapr_values = [float(p.replace(',', '')) for p in percentages]
                             # VAPR is usually > 50%
                             large_percentages = [v for v in vapr_values if v > 50]
                             if large_percentages:
@@ -1742,8 +1742,8 @@ class BlackholePoolRecommender:
                     total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '')) if rewards_match else 0.0
                     
                     # Extract VAPR
-                    vapr_match = re.search(r'(\d+\.?\d*)\s*%', text)
-                    vapr = float(vapr_match.group(1)) if vapr_match else 0.0
+                    vapr_match = re.search(r'([\d,]+\.?\d*)\s*%', text)
+                    vapr = float(vapr_match.group(1).replace(',', '')) if vapr_match else 0.0
                     
                     if name != "Unknown" or total_rewards > 0:
                         pools.append(Pool(
@@ -1772,8 +1772,8 @@ class BlackholePoolRecommender:
                         rewards_match = re.search(r'\$[\d,]+\.?\d*', text)
                         total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '')) if rewards_match else 0.0
                         
-                        vapr_match = re.search(r'(\d+\.?\d*)\s*%', text)
-                        vapr = float(vapr_match.group(1)) if vapr_match else 0.0
+                        vapr_match = re.search(r'([\d,]+\.?\d*)\s*%', text)
+                        vapr = float(vapr_match.group(1).replace(',', '')) if vapr_match else 0.0
                         
                         if total_rewards > 0:
                             pools.append(Pool(
@@ -1847,9 +1847,9 @@ class BlackholePoolRecommender:
                     current_pool.total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', ''))
                 
                 # Extract VAPR
-                vapr_match = re.search(r'(\d+\.?\d*)\s*%', line)
+                vapr_match = re.search(r'([\d,]+\.?\d*)\s*%', line)
                 if vapr_match:
-                    current_pool.vapr = float(vapr_match.group(1))
+                    current_pool.vapr = float(vapr_match.group(1).replace(',', ''))
         
         if current_pool:
             pools.append(current_pool)

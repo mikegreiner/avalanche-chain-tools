@@ -255,7 +255,7 @@ Then update `blackhole_pool_recommender.py` with the correct:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.2.0
+Version: 1.3.1
 Generated: 2025-01-15 14:30:00
 Epoch Close (UTC): 2025-01-16 23:59:59 UTC
 Epoch Close (Local): 2025-01-16 16:59:59 PST
@@ -276,7 +276,7 @@ Top 5 Most Profitable Pools:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.2.0
+Version: 1.3.1
 Generated: 2025-01-15 14:30:00
 Epoch Close (UTC): 2025-01-16 23:59:59 UTC
 Epoch Close (Local): 2025-01-16 16:59:59 PST
@@ -308,7 +308,7 @@ Top 5 Pools (sorted by estimated reward):
 ### JSON Output Example
 ```json
 {
-  "version": "1.1.1",
+  "version": "1.3.1",
   "generated": "2025-01-15 14:30:00",
   "user_voting_power": 15000,
   "filters": {
