@@ -110,7 +110,7 @@ python3 avalanche_daily_swaps.py --version
 
 ### 4. Blackhole DEX Pool Recommender
 **Script:** `blackhole_pool_recommender.py`  
-**Version:** 1.3.1
+**Version:** 1.3.2
 
 Analyzes liquidity pools on Blackhole DEX and recommends the most profitable pools for voting, accounting for dilution and estimating personal rewards.
 
@@ -157,6 +157,9 @@ python3 blackhole_pool_recommender.py --no-headless
 
 # Save to file
 python3 blackhole_pool_recommender.py --voting-power 15000 -o recommendations.txt
+
+# Single-line display mode (compact, aligned format)
+python3 blackhole_pool_recommender.py --voting-power 15000 --single-line
 
 # Check version
 python3 blackhole_pool_recommender.py --version

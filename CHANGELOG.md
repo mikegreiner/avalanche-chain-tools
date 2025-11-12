@@ -4,6 +4,15 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.3.2
+- **Single-Line Display Mode**: Added `--single-line` option for compact, aligned output format
+  - Displays each pool on a single line with pool name, estimated reward, and share percentage
+  - Pool names are left-aligned, dollar amounts are right-aligned (bolded), share percentages are left-aligned
+  - More compact and easier to scan than the default multi-line format
+  - Requires `--voting-power` to display estimated rewards
+  - Example: `1. CL200-SPX/USDC:        $1,423.94 (29.17% share)`
+
 ### Fixed - Pool Recommender (`blackhole_pool_recommender.py`)
 - **Version**: 1.3.1
 - **VAPR Extraction Bug Fix**: Fixed VAPR extraction to correctly handle comma-separated numbers

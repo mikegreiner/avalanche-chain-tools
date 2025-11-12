@@ -160,6 +160,26 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --json -o recommendat
 python3 blackhole_pool_recommender.py -o output/pool_recommendations.txt
 ```
 
+### Single-Line Display Mode
+```bash
+python3 blackhole_pool_recommender.py --voting-power 15000 --single-line
+```
+
+This displays each pool on a single line with aligned dollar amounts and share percentages for easier scanning. The format is:
+```
+1. CL200-SPX/USDC:        $1,423.94 (29.17% share)
+2. CL1-USDC/GHO:              $383.37 (53.15% share)
+3. CL200-SUPER/USDC:         $290.16 (3.39% share)
+```
+
+**Features:**
+- Pool names are left-aligned
+- Dollar amounts are right-aligned (bolded)
+- Share percentages are left-aligned
+- More compact and easier to scan than the default multi-line format
+
+**Note:** Requires `--voting-power` to display estimated rewards. Without voting power, only pool names are shown.
+
 ### Automatically Select Recommended Pools
 ```bash
 python3 blackhole_pool_recommender.py --top 10 --voting-power 15000 --select-pools
@@ -255,7 +275,7 @@ Then update `blackhole_pool_recommender.py` with the correct:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.3.1
+Version: 1.3.2
 Generated: 2025-01-15 14:30:00
 Epoch Close (UTC): 2025-01-16 23:59:59 UTC
 Epoch Close (Local): 2025-01-16 16:59:59 PST
@@ -276,7 +296,7 @@ Top 5 Most Profitable Pools:
 ================================================================================
 BLACKHOLE DEX POOL RECOMMENDATIONS
 ================================================================================
-Version: 1.3.1
+Version: 1.3.2
 Generated: 2025-01-15 14:30:00
 Epoch Close (UTC): 2025-01-16 23:59:59 UTC
 Epoch Close (Local): 2025-01-16 16:59:59 PST
@@ -305,10 +325,34 @@ Top 5 Pools (sorted by estimated reward):
    Profitability Score: 37.69
 ```
 
+### With Single-Line Display Mode
+```
+================================================================================
+BLACKHOLE DEX POOL RECOMMENDATIONS
+================================================================================
+Version: 1.3.2
+Generated: 2025-01-15 14:30:00
+Epoch Close (UTC): 2025-01-16 23:59:59 UTC
+Epoch Close (Local): 2025-01-16 16:59:59 PST
+Estimated rewards based on voting power: 15,763 veBLACK
+Note: Estimates assume you vote ALL your voting power in each pool individually
+      In reality, votes dilute rewards as more people vote
+
+Top 5 Pools (sorted by estimated reward):
+
+1. CL200-SPX/USDC:        $1,423.94 (29.17% share)
+2. CL1-USDC/GHO:              $383.37 (53.15% share)
+3. CL200-SUPER/USDC:         $290.16 (3.39% share)
+4. vAMM-SUPER/WAVAX:         $267.37 (26.37% share)
+5. vAMM-SUPER/USDC:          $236.88 (4.13% share)
+```
+
+Note: Dollar amounts are bolded in the actual output. The single-line format provides a compact, easy-to-scan view with aligned columns.
+
 ### JSON Output Example
 ```json
 {
-  "version": "1.3.1",
+  "version": "1.3.2",
   "generated": "2025-01-15 14:30:00",
   "user_voting_power": 15000,
   "filters": {
@@ -414,6 +458,7 @@ If you cannot vote for vAMM pools, use the `--hide-vamm` flag to filter them out
 | `-o, --output FILE` | string | Save output to file |
 | `--pool-name PATTERN` | string | Filter pools by name using shell-style wildcards (case-insensitive). If no wildcards are provided, automatically wraps pattern with `*` (e.g., `"btc.b"` becomes `"*btc.b*"`). Examples: `"WAVAX/*"`, `"*BLACK*"`, `"CL200-*"`, `"btc.b"`. Uses `*` for any characters and `?` for a single character. |
 | `--select-pools` | flag | Generate a JavaScript console script to automatically select recommended pools. Saves script to file and copies to clipboard (if pyperclip installed). |
+| `--single-line` | flag | Display each pool on a single line with aligned dollar amounts and share percentages. Requires `--voting-power`. |
 | `--top N` | int | Number of top pools to recommend (default: 5) |
 | `--voting-power N` | float | Your voting power in veBLACK for reward estimation |
 
