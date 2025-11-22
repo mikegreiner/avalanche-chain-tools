@@ -23,8 +23,15 @@ from avalanche_utils import (
 )
 from avalanche_base import AvalancheTool
 
+try:
+    from eth_abi import decode as eth_abi_decode
+    ETH_ABI_AVAILABLE = True
+except ImportError:
+    ETH_ABI_AVAILABLE = False
+    logger.warning("eth-abi not available. Voting transaction details will be limited.")
+
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 class AvalancheTransactionNarrator(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
@@ -556,8 +563,71 @@ class AvalancheTransactionNarrator(AvalancheTool):
         # Fallback: at least show the token
         return f"Approved spending of {token_symbol} tokens"
     
+    def decode_vote_transaction(self, input_data: str) -> Optional[Dict]:
+        """
+        Decode the vote() function call to extract pool addresses and weights
+        vote(uint256 tokenId, address[] poolVote, uint256[] weights)
+        """
+        if not ETH_ABI_AVAILABLE:
+            return None
+            
+        # Function signature: 0x7ac09bf7
+        function_sig = input_data[:10]
+        
+        if function_sig != '0x7ac09bf7':
+            return None
+        
+        # Remove function signature and decode parameters
+        params_data = input_data[10:]
+        
+        try:
+            # Convert hex string to bytes
+            params_bytes = bytes.fromhex(params_data)
+            
+            # Decode: uint256, address[], uint256[]
+            token_id, pool_addresses, weights = eth_abi_decode(
+                ['uint256', 'address[]', 'uint256[]'],
+                params_bytes
+            )
+            
+            return {
+                'token_id': token_id,
+                'pool_addresses': pool_addresses,
+                'weights': weights
+            }
+        except Exception as e:
+            logger.debug(f"Error decoding vote transaction: {e}")
+            return None
+    
+    def get_pool_tokens(self, pool_address: str) -> Dict[str, Optional[str]]:
+        """Get token0 and token1 from AlgebraPool contract"""
+        results = {}
+        
+        # AlgebraPool has token0() and token1() functions
+        # Function signatures: token0(): 0x0dfe1681, token1(): 0xd21220a7
+        for token_num, func_sig in [('token0', '0x0dfe1681'), ('token1', '0xd21220a7')]:
+            url = f"{self.snowtrace_api_base}?module=proxy&action=eth_call&to={pool_address}&data={func_sig}&apikey={API_KEY_TOKEN}"
+            
+            try:
+                response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
+                response.raise_for_status()
+                data = response.json()
+                
+                result = data.get('result', '')
+                if result and result != '0x':
+                    # Extract address from result (last 40 chars of the hex)
+                    token_address = '0x' + result[-40:]
+                    results[token_num] = token_address
+                else:
+                    results[token_num] = None
+            except Exception as e:
+                logger.debug(f"Error getting {token_num} for {pool_address}: {e}")
+                results[token_num] = None
+        
+        return results
+    
     def describe_vote(self, tx: Dict, token_transfers: List[Dict]) -> str:
-        """Describe a voting transaction"""
+        """Describe a voting transaction with pool details"""
         to_address = tx.get('to', '').lower()
         
         # Check if this is a Blackhole voting transaction
@@ -568,7 +638,45 @@ class AvalancheTransactionNarrator(AvalancheTool):
         ]
         
         if to_address in [c.lower() for c in voter_contracts]:
-            return "Voted on Blackhole DEX pools"
+            # Try to decode voting details
+            input_data = tx.get('input', '')
+            vote_data = self.decode_vote_transaction(input_data)
+            
+            if vote_data:
+                token_id = vote_data['token_id']
+                pool_addresses = vote_data['pool_addresses']
+                weights = vote_data['weights']
+                total_weight = sum(weights)
+                
+                # Build description with pool details
+                pool_count = len(pool_addresses)
+                desc = f"Voted on {pool_count} Blackhole DEX pool{'s' if pool_count != 1 else ''} with veBLACK NFT #{token_id}"
+                
+                # Add pool details
+                pool_details = []
+                for pool_addr, weight in zip(pool_addresses, weights):
+                    weight_pct = (weight / total_weight * 100) if total_weight > 0 else 0
+                    
+                    # Try to get pool token pair
+                    tokens = self.get_pool_tokens(pool_addr)
+                    if tokens.get('token0') and tokens.get('token1'):
+                        try:
+                            token0_info = self.get_token_info(tokens['token0'])
+                            token1_info = self.get_token_info(tokens['token1'])
+                            pair_name = f"{token0_info['symbol']}/{token1_info['symbol']}"
+                        except Exception:
+                            pair_name = f"{pool_addr[:8]}...{pool_addr[-6:]}"
+                    else:
+                        pair_name = f"{pool_addr[:8]}...{pool_addr[-6:]}"
+                    
+                    pool_details.append(f"{pair_name} ({weight_pct:.1f}%)")
+                
+                if pool_details:
+                    desc += ": " + ", ".join(pool_details)
+                
+                return desc
+            else:
+                return "Voted on Blackhole DEX pools"
         
         return "Voted on pools"
     
