@@ -13,6 +13,23 @@ All notable changes to the published tools will be documented in this file.
   - Added tests to verify comma-separated VAPR extraction
 
 ### Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.3.2
+- **Single-Line Display Mode**: Added `--single-line` option for compact, aligned output format
+  - Displays each pool on a single line with pool name, estimated reward, and share percentage
+  - Pool names are left-aligned, dollar amounts are right-aligned (bolded), share percentages are left-aligned
+  - More compact and easier to scan than the default multi-line format
+  - Requires `--voting-power` to display estimated rewards
+  - Example: `1. CL200-SPX/USDC:        $1,423.94 (29.17% share)`
+
+### Fixed - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.3.1
+- **VAPR Extraction Bug Fix**: Fixed VAPR extraction to correctly handle comma-separated numbers
+  - Updated regex patterns to match numbers with commas (e.g., "1,684.6%" instead of truncating to "1%")
+  - All VAPR extraction points now properly remove commas before converting to float
+  - Fixes display issue where large VAPR values (e.g., 1,684.6%) were incorrectly shown as smaller values (e.g., 697.20%)
+  - Added tests to verify comma-separated VAPR extraction
+
+### Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
 - **Version**: 1.2.0 (new)
 - **Caching System**: Added automatic caching of pool data to speed up subsequent runs
   - Caches all pools (not filtered) so different filter combinations work with cached data

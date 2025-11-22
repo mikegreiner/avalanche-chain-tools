@@ -141,6 +141,82 @@ class TestPoolRecommender:
         assert 'BLACKHOLE DEX POOL RECOMMENDATIONS' in output
         assert 'Test Pool' in output
     
+    def test_print_recommendations_single_line(self):
+        """Test single-line output format"""
+        recommender = BlackholePoolRecommender()
+        
+        pools = [
+            Pool('CL200-SPX/USDC', 5000.0, 50.0, 10000.0),
+            Pool('CL1-USDC/GHO', 2000.0, 75.0, 5000.0),
+            Pool('CL200-SUPER/USDC', 3000.0, 60.0, 8000.0)
+        ]
+        
+        output = recommender.print_recommendations(
+            pools,
+            user_voting_power=15000.0,
+            single_line=True,
+            return_output=True
+        )
+        
+        assert isinstance(output, str)
+        assert 'BLACKHOLE DEX RECOMMENDATIONS' in output or 'BLACKHOLE DEX POOL RECOMMENDATIONS' in output
+        
+        # Check that each pool appears on a single line with the expected format
+        lines = output.split('\n')
+        pool_lines = [line for line in lines if line.strip().startswith(('1.', '2.', '3.'))]
+        
+        assert len(pool_lines) == 3
+        
+        # Check format: should have pool name, dollar amount, and share percentage
+        for line in pool_lines:
+            assert '$' in line  # Should have dollar amount
+            assert '% share' in line  # Should have share percentage
+            assert 'CL200' in line or 'CL1' in line  # Should have pool name
+        
+        # Check that dollar amounts are aligned (all should have similar spacing)
+        # The dollar signs should be at similar positions after padding
+        dollar_positions = []
+        for line in pool_lines:
+            dollar_pos = line.find('$')
+            if dollar_pos > 0:
+                dollar_positions.append(dollar_pos)
+        
+        # All dollar signs should be at similar positions (within a few characters for alignment)
+        if len(dollar_positions) > 1:
+            max_pos = max(dollar_positions)
+            min_pos = min(dollar_positions)
+            # Allow some variation but should be roughly aligned
+            assert (max_pos - min_pos) < 10  # Should be within 10 characters
+    
+    def test_print_recommendations_single_line_no_voting_power(self):
+        """Test single-line output format without voting power"""
+        recommender = BlackholePoolRecommender()
+        
+        pools = [
+            Pool('CL200-SPX/USDC', 5000.0, 50.0, 10000.0),
+            Pool('CL1-USDC/GHO', 2000.0, 75.0, 5000.0)
+        ]
+        
+        output = recommender.print_recommendations(
+            pools,
+            single_line=True,
+            return_output=True
+        )
+        
+        assert isinstance(output, str)
+        
+        # Without voting power, should just show pool names
+        lines = output.split('\n')
+        pool_lines = [line for line in lines if line.strip().startswith(('1.', '2.'))]
+        
+        assert len(pool_lines) == 2
+        # Should have pool names but no dollar amounts (since no voting power)
+        for line in pool_lines:
+            assert 'CL200' in line or 'CL1' in line
+            # Should not have dollar amounts or share percentages when no voting power
+            assert '$' not in line
+            assert '% share' not in line
+    
     def test_recommend_pools_sorting(self):
         """Test pool sorting by profitability"""
         recommender = BlackholePoolRecommender()

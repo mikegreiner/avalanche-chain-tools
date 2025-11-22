@@ -9,7 +9,10 @@ A Python script that analyzes recent transactions for a given Avalanche C-Chain 
 - Generates chronological narrative with activity indicators: `[NFT]`, `[SWAP]`, `[TX]`, `[REWARD]`
 - Identifies Blackhole DEX operations:
   - Swaps (single-step and multi-step)
-  - Voting transactions
+  - Voting transactions with detailed pool information:
+    - veBLACK NFT token ID used for voting
+    - Pool token pairs (e.g., WAVAX/USDC, BTC.b/WAVAX)
+    - Voting weight distribution percentages
   - Voting rewards claims
   - Supermassive NFT reward claims and restaking
   - Merge operations (combining veBLACK locks)
@@ -84,9 +87,10 @@ python3 avalanche_transaction_narrator.py --version
 - **November 02, 2025 at 08:15:23 AM MST / November 02, 2025 at 03:15:23 PM UTC:** Blackhole DEX swap: 100 WAVAX for 89.5 USDC
 - **November 02, 2025 at 08:20:10 AM MST / November 02, 2025 at 03:20:10 PM UTC:** Blackhole DEX multi-step swap: 50 USDC ? WAVAX ? 0.0023 BTC.b
 
-### [TX] Other Activities (2)
+### [TX] Other Activities (3)
 - **November 02, 2025 at 07:36:25 AM MST / November 02, 2025 at 02:36:25 PM UTC:** Approved BlackholeRouter to spend unlimited WAVAX
 - **November 02, 2025 at 08:14:50 AM MST / November 02, 2025 at 03:14:50 PM UTC:** Approved BlackholeRouter to spend 1000 USDC
+- **November 02, 2025 at 09:30:15 AM MST / November 02, 2025 at 04:30:15 PM UTC:** Voted on 3 Blackhole DEX pools with veBLACK NFT #4438: WAVAX/USDC (50.0%), BTC.b/WAVAX (25.0%), WETH.e/WAVAX (25.0%)
 
 ## Detailed Transaction Log
 
@@ -145,7 +149,11 @@ The narrator recognizes and describes the following transaction types:
 - **General claims**: Other reward claim transactions
 
 ### Voting & NFT Operations
-- **Vote transactions**: Calls to the Blackhole DEX voter contract
+- **Vote transactions**: Calls to the Blackhole DEX voter contract with detailed information:
+  - veBLACK NFT token ID used for voting
+  - Number of pools voted for
+  - Token pairs for each pool (e.g., WAVAX/USDC, BTC.b/WAVAX)
+  - Weight distribution percentages across pools
 - **Merge operations**: Merging veBLACK NFT locks (with token IDs when available)
 
 ### Approvals
@@ -183,7 +191,7 @@ Check the script version:
 python3 avalanche_transaction_narrator.py --version
 ```
 
-Current version: **1.1.0**
+Current version: **1.2.0**
 
 ## Notes
 
@@ -195,6 +203,7 @@ Current version: **1.1.0**
 - Transaction receipts are fetched to determine success/failure status
 - Contract names are cached to reduce API calls
 - The script automatically detects Blackhole DEX operations based on known contract addresses
+- Voting transaction decoding requires the `eth-abi` package (automatically installed with requirements.txt)
 
 ## Known Limitations
 

@@ -39,7 +39,7 @@ python3 avalanche_transaction_reader.py --version
 
 ### 2. Avalanche Transaction Narrator
 **Script:** `avalanche_transaction_narrator.py`  
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 Generates human-friendly descriptions of recent transactions for a given Avalanche C-Chain address, organizing activities by type (swaps, voting rewards, Supermassive NFT activities, etc.).
 
@@ -47,7 +47,11 @@ Generates human-friendly descriptions of recent transactions for a given Avalanc
 - Analyzes recent transactions for an address
 - Organizes transactions into meaningful activity types
 - Generates chronological narrative with activity indicators ([NFT], [SWAP], [TX], [REWARD])
-- Identifies Blackhole DEX swaps, voting rewards, and Supermassive NFT activities
+- Identifies Blackhole DEX operations with detailed information:
+  - Swaps (single-step and multi-step)
+  - **Voting transactions with pool details** (veBLACK NFT ID, pool token pairs, weight percentages)
+  - Voting rewards and Supermassive NFT activities
+  - Merge operations (combining veBLACK locks)
 - Shows transaction status (SUCCESS/FAILED) with gas information for failed transactions
 - Enhanced approval descriptions showing token and contract names (e.g., "Approved BlackholeRouter to spend WAVAX")
 - Correctly distinguishes between merge() and vote() transactions
@@ -110,7 +114,7 @@ python3 avalanche_daily_swaps.py --version
 
 ### 4. Blackhole DEX Pool Recommender
 **Script:** `blackhole_pool_recommender.py`  
-**Version:** 1.2.0
+**Version:** 1.3.2
 
 Analyzes liquidity pools on Blackhole DEX and recommends the most profitable pools for voting, accounting for dilution and estimating personal rewards.
 
@@ -157,6 +161,9 @@ python3 blackhole_pool_recommender.py --no-headless
 
 # Save to file
 python3 blackhole_pool_recommender.py --voting-power 15000 -o recommendations.txt
+
+# Single-line display mode (compact, aligned format)
+python3 blackhole_pool_recommender.py --voting-power 15000 --single-line
 
 # Check version
 python3 blackhole_pool_recommender.py --version

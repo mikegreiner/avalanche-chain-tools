@@ -60,7 +60,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -2753,7 +2753,7 @@ window.BLACKHOLE_POOL_DATA = {{
                 driver.quit()
             raise
     
-    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, output_json: bool = False, return_output: bool = False):
+    def print_recommendations(self, pools: List[Pool], user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, output_json: bool = False, return_output: bool = False, single_line: bool = False):
         """Print formatted recommendations"""
         if not pools:
             if return_output:
@@ -2791,38 +2791,71 @@ window.BLACKHOLE_POOL_DATA = {{
         else:
             output_lines.append(f"\nTop {len(pools)} Most Profitable Pools:\n")
         
-        for i, pool in enumerate(pools, 1):
-            score = pool.profitability_score()
-            output_lines.append(f"{i}. {pool.name}")
-            if pool.pool_type:
-                # Convert pool type to human-readable format
-                type_name_map = {
-                    'CL200': 'Concentrated Liquidity, 200x',
-                    'CL1': 'Concentrated Liquidity, 1x',
-                    'vAMM': 'Virtual AMM'
-                }
-                human_readable_type = type_name_map.get(pool.pool_type, pool.pool_type)
-                type_info = f" {human_readable_type} ({pool.pool_type})"
-                if pool.fee_percentage:
-                    type_info += f" {pool.fee_percentage}"
-                output_lines.append(f"   Type:{type_info}")
-            output_lines.append(f"   Total Rewards: ${pool.total_rewards:,.2f}")
-            output_lines.append(f"   VAPR: {pool.vapr:.2f}%")
-            if pool.current_votes is not None:
-                output_lines.append(f"   Current Votes: {pool.current_votes:,.0f}")
-                # Calculate and display rewards per vote
-                rewards_per_vote = pool.total_rewards / pool.current_votes
-                output_lines.append(f"   Rewards per Vote: ${rewards_per_vote:.4f}")
-            if user_voting_power:
+        # ANSI escape codes for bold text
+        bold_start = "\033[1m"  # ANSI escape code for bold
+        bold_end = "\033[0m"    # ANSI escape code to reset
+        
+        if single_line and user_voting_power:
+            # Calculate maximum length of pool name prefix (number + pool name + ": ")
+            # and maximum length of dollar amount to align both
+            max_prefix_length = 0
+            max_dollar_length = 0
+            for i, pool in enumerate(pools, 1):
+                prefix = f"{i}. {pool.name}: "
+                max_prefix_length = max(max_prefix_length, len(prefix))
                 estimated_reward = pool.estimate_user_rewards(user_voting_power)
-                new_total_votes = (pool.current_votes or 0) + user_voting_power
-                user_share_pct = (user_voting_power / new_total_votes * 100) if new_total_votes > 0 else 0
-                # Emphasize the estimated reward line with bold text and visual marker
-                bold_start = "\033[1m"  # ANSI escape code for bold
-                bold_end = "\033[0m"    # ANSI escape code to reset
-                output_lines.append(f"   {bold_start}>>> Your Estimated Reward: ${estimated_reward:,.2f} ({user_share_pct:.2f}% share){bold_end}")
-            output_lines.append(f"   Profitability Score: {score:.2f}")
-            output_lines.append("")
+                dollar_str = f"${estimated_reward:,.2f}"
+                max_dollar_length = max(max_dollar_length, len(dollar_str))
+        
+        for i, pool in enumerate(pools, 1):
+            if single_line:
+                # Single-line format: pool name and estimated reward only
+                if user_voting_power:
+                    estimated_reward = pool.estimate_user_rewards(user_voting_power)
+                    new_total_votes = (pool.current_votes or 0) + user_voting_power
+                    user_share_pct = (user_voting_power / new_total_votes * 100) if new_total_votes > 0 else 0
+                    # Pad the prefix to align the dollar amounts
+                    prefix = f"{i}. {pool.name}: "
+                    padded_prefix = prefix.ljust(max_prefix_length)
+                    # Format and pad the dollar amount to align share percentages
+                    dollar_str = f"${estimated_reward:,.2f}"
+                    padded_dollar = dollar_str.rjust(max_dollar_length)
+                    # Only bold the dollar amount
+                    output_lines.append(f"{padded_prefix}{bold_start}{padded_dollar}{bold_end} ({user_share_pct:.2f}% share)")
+                else:
+                    # If no voting power provided, just show pool name
+                    output_lines.append(f"{i}. {pool.name}")
+            else:
+                # Original multi-line format
+                score = pool.profitability_score()
+                output_lines.append(f"{i}. {pool.name}")
+                if pool.pool_type:
+                    # Convert pool type to human-readable format
+                    type_name_map = {
+                        'CL200': 'Concentrated Liquidity, 200x',
+                        'CL1': 'Concentrated Liquidity, 1x',
+                        'vAMM': 'Virtual AMM'
+                    }
+                    human_readable_type = type_name_map.get(pool.pool_type, pool.pool_type)
+                    type_info = f" {human_readable_type} ({pool.pool_type})"
+                    if pool.fee_percentage:
+                        type_info += f" {pool.fee_percentage}"
+                    output_lines.append(f"   Type:{type_info}")
+                output_lines.append(f"   Total Rewards: ${pool.total_rewards:,.2f}")
+                output_lines.append(f"   VAPR: {pool.vapr:.2f}%")
+                if pool.current_votes is not None:
+                    output_lines.append(f"   Current Votes: {pool.current_votes:,.0f}")
+                    # Calculate and display rewards per vote
+                    rewards_per_vote = pool.total_rewards / pool.current_votes
+                    output_lines.append(f"   Rewards per Vote: ${rewards_per_vote:.4f}")
+                if user_voting_power:
+                    estimated_reward = pool.estimate_user_rewards(user_voting_power)
+                    new_total_votes = (pool.current_votes or 0) + user_voting_power
+                    user_share_pct = (user_voting_power / new_total_votes * 100) if new_total_votes > 0 else 0
+                    # Emphasize the estimated reward line with bold text and visual marker
+                    output_lines.append(f"   {bold_start}>>> Your Estimated Reward: ${estimated_reward:,.2f} ({user_share_pct:.2f}% share){bold_end}")
+                output_lines.append(f"   Profitability Score: {score:.2f}")
+                output_lines.append("")
         
         output_text = "\n".join(output_lines)
         
@@ -2963,6 +2996,11 @@ def main():
         '--select-pools',
         action='store_true',
         help='Generate a JavaScript console script to automatically select recommended pools. Copy and paste the script into your browser console while on the voting page.'
+    )
+    parser.add_argument(
+        '--single-line',
+        action='store_true',
+        help='Display each pool on a single line with pool name and estimated reward only'
     )
     parser.add_argument(
         '--top',
@@ -3136,7 +3174,8 @@ def main():
             min_rewards=args.min_rewards,
             max_pool_percentage=args.max_pool_percentage,
             output_json=args.json,
-            return_output=bool(args.output)
+            return_output=bool(args.output),
+            single_line=args.single_line
         )
         
         # Write to file if specified
