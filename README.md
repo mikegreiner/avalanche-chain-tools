@@ -39,7 +39,7 @@ python3 avalanche_transaction_reader.py --version
 
 ### 2. Avalanche Transaction Narrator
 **Script:** `avalanche_transaction_narrator.py`  
-**Version:** 1.2.0
+**Version:** 1.3.0
 
 Generates human-friendly descriptions of recent transactions for a given Avalanche C-Chain address, organizing activities by type (swaps, voting rewards, Supermassive NFT activities, etc.).
 
@@ -50,11 +50,16 @@ Generates human-friendly descriptions of recent transactions for a given Avalanc
 - Identifies Blackhole DEX operations with detailed information:
   - Swaps (single-step and multi-step)
   - **Voting transactions with pool details** (veBLACK NFT ID, pool token pairs, weight percentages)
-  - Voting rewards and Supermassive NFT activities
+  - **Supermassive NFT claim transactions** with comprehensive NFT info:
+    - NFT token ID, total locked amount, and voting power
+    - Permalocked vs time-locked status
+    - Example: "Claimed 12.34 BLACK rewards from veBLACK NFT #4438 (18226.40 veBLACK permalocked)"
+  - Voting rewards and other Supermassive NFT activities
   - Merge operations (combining veBLACK locks)
 - Shows transaction status (SUCCESS/FAILED) with gas information for failed transactions
 - Enhanced approval descriptions showing token and contract names (e.g., "Approved BlackholeRouter to spend WAVAX")
 - Correctly distinguishes between merge() and vote() transactions
+- Uses web3.py to query VotingEscrow contract for real-time NFT data
 
 **Usage:**
 ```bash
