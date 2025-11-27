@@ -209,3 +209,107 @@ class TestTransactionNarrator:
         except ImportError:
             # If eth-abi not available, should have basic description
             assert 'Voted on Blackhole DEX pools' in description
+    
+    def test_get_nft_info_from_claim_logs(self):
+        """Test extracting NFT info from claim transaction logs"""
+        narrator = AvalancheTransactionNarrator()
+        
+        # Mock receipt with RewardsClaimer and VotingEscrow Withdraw events
+        # Based on real transaction 0x57b9c3b46825b908bbdafefd24fb833056d845c765cdaa42ca416168356c6726
+        receipt = {
+            'logs': [
+                {
+                    'address': '0x88a49cfcee0ed5b176073dde12186c4c922a9cd0',  # RewardsClaimer
+                    'topics': [
+                        '0xcae2990aa9af8eb1c64713b7eddb3a80bf18e49a94a13fe0d0002b5d61d58f00'
+                    ],
+                    'data': '0x0000000000000000000000000000000000000000000000000000000000001156000000000000000000000000000000000000000000000000ab4409135411d25400000000000000000000000000000000000000000000000000000000692794800000000000000000000000000000000000000000000000000000000000000014'
+                },
+                {
+                    'address': '0xeac562811cc6abdbb2c9ee88719eca4ee79ad763',  # VotingEscrow
+                    'topics': [
+                        '0xff04ccafc360e16b67d682d17bd9503c4c6b9a131f6be6325762dc9ffc7de624',
+                        '0x00000000000000000000000088a49cfcee0ed5b176073dde12186c4c922a9cd0',
+                        '0x0000000000000000000000000000000000000000000000000000000000000000'
+                    ],
+                    'data': '0x0000000000000000000000000000000000000000000000000000000000001156000000000000000000000000000000000000000000000000ab4409135411d254000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000692875fe'
+                }
+            ]
+        }
+        
+        nft_info = narrator.get_nft_info_from_claim_logs(receipt, {})
+        
+        assert nft_info is not None
+        assert nft_info['token_id'] == 4438  # 0x1156
+        assert nft_info['amount'] == int('0xab4409135411d254', 16)
+        assert 'locked_amount' in nft_info
+        assert abs(nft_info['locked_amount'] - 12.34) < 0.01  # Should be ~12.34 BLACK
+    
+    @patch.object(AvalancheTransactionNarrator, 'get_transaction_receipt')
+    @patch.object(AvalancheTransactionNarrator, 'get_token_info')
+    def test_describe_claim_with_nft_info(self, mock_get_token_info, mock_get_receipt):
+        """Test describing a claim transaction with NFT information"""
+        narrator = AvalancheTransactionNarrator()
+        
+        tx = {
+            'from': '0xc081b59fe4fb3de77e641342b210bebf882d0ea4',
+            'to': '0x88a49cfcee0ed5b176073dde12186c4c922a9cd0',  # RewardsClaimer
+            'hash': '0x57b9c3b46825b908bbdafefd24fb833056d845c765cdaa42ca416168356c6726'
+        }
+        
+        # Mock receipt with claim events
+        mock_receipt = {
+            'logs': [
+                {
+                    'address': '0x88a49cfcee0ed5b176073dde12186c4c922a9cd0',
+                    'topics': [
+                        '0xcae2990aa9af8eb1c64713b7eddb3a80bf18e49a94a13fe0d0002b5d61d58f00'
+                    ],
+                    'data': '0x0000000000000000000000000000000000000000000000000000000000001156000000000000000000000000000000000000000000000000ab4409135411d25400000000000000000000000000000000000000000000000000000000692794800000000000000000000000000000000000000000000000000000000000000014'
+                },
+                {
+                    'address': '0xeac562811cc6abdbb2c9ee88719eca4ee79ad763',
+                    'topics': [
+                        '0xff04ccafc360e16b67d682d17bd9503c4c6b9a131f6be6325762dc9ffc7de624',
+                        '0x00000000000000000000000088a49cfcee0ed5b176073dde12186c4c922a9cd0',
+                        '0x0000000000000000000000000000000000000000000000000000000000000000'
+                    ],
+                    'data': '0x0000000000000000000000000000000000000000000000000000000000001156000000000000000000000000000000000000000000000000ab4409135411d254000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000692875fe'
+                },
+                {
+                    'address': '0xcd94a87696fac69edae3a70fe5725307ae1c43f6',  # BLACK token
+                    'topics': [
+                        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+                        '0x00000000000000000000000088a49cfcee0ed5b176073dde12186c4c922a9cd0',
+                        '0x0000000000000000000000000000000000000000000000000000000000000000'  # Burn to zero address
+                    ],
+                    'data': '0x000000000000000000000000000000000000000000000000ab4409135411d254'
+                }
+            ]
+        }
+        
+        mock_get_receipt.return_value = mock_receipt
+        
+        # Mock token info
+        mock_get_token_info.return_value = {
+            'name': 'BLACKHOLE',
+            'symbol': 'BLACK',
+            'decimals': 18
+        }
+        
+        # Mock token transfers
+        token_transfers = [
+            {
+                'from': '0x88a49cfcee0ed5b176073dde12186c4c922a9cd0',
+                'to': '0x0000000000000000000000000000000000000000',
+                'amount': '12.340999',
+                'token_info': {'name': 'BLACKHOLE', 'symbol': 'BLACK', 'decimals': 18}
+            }
+        ]
+        
+        description = narrator.describe_claim(token_transfers, tx, mock_receipt)
+        
+        assert 'veBLACK NFT #4438' in description
+        assert 'BLACK' in description
+        # Description will vary based on whether web3 is available and can query contract
+        # Should contain either "BLACK was locked", "BLACK permalocked", "BLACK locked until", or "BLACK rewards"

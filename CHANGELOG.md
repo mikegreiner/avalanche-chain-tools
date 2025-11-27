@@ -4,6 +4,21 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced - Transaction Narrator (`avalanche_transaction_narrator.py`)
+- **Version**: 1.3.0
+- **Supermassive NFT Claim Details**: Enhanced claim transaction descriptions to include comprehensive NFT information
+  - Shows veBLACK NFT token ID for all claim transactions from RewardsClaimer contract
+  - Displays **total locked BLACK amount** and **voting power** by querying VotingEscrow contract via web3.py
+  - Uses `web3.py` library for proper ABI encoding/decoding and contract calls
+  - Supports permalocked NFTs (displays "permalocked" status) and time-locked NFTs (shows expiration date)
+  - Automatically detects and parses RewardsClaimer and VotingEscrow events from transaction logs
+  - Example outputs:
+    - Permalocked NFT: `Claimed 12.34 BLACK rewards from veBLACK NFT #4438 (18226.40 veBLACK permalocked)`
+    - Time-locked NFT: `Claimed rewards from veBLACK NFT #1234 (103.27 BLACK locked until 2029-07-04, 93.04 veBLACK voting power)`
+  - For permalocked NFTs, voting power equals locked amount, so only displayed once for clarity
+  - **New dependency**: Added `web3>=6.0.0` to requirements.txt
+  - Works for both regular claims and burn/claim operations
+
 ### Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
 - **Version**: 1.3.2
 - **Single-Line Display Mode**: Added `--single-line` option for compact, aligned output format

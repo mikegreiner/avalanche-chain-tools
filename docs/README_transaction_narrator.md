@@ -144,7 +144,15 @@ The narrator recognizes and describes the following transaction types:
 - **Standard swaps**: Generic token swap transactions
 
 ### Claims & Rewards
-- **Supermassive NFT rewards**: Claims from Blackhole DEX Supermassive NFT system
+- **Supermassive NFT rewards**: Claims from Blackhole DEX Supermassive NFT system with detailed information:
+  - veBLACK NFT token ID
+  - **Total BLACK locked** in the NFT (queried from contract)
+  - **Voting power** in veBLACK
+  - Lock status (permalocked or expiration date)
+  - Examples:
+    - Permalocked: `Claimed 12.34 BLACK rewards from veBLACK NFT #4438 (18226.40 veBLACK permalocked)`
+    - Time-locked: `Claimed rewards from veBLACK NFT #1234 (103.27 BLACK locked until 2029-07-04, 93.04 veBLACK voting power)`
+  - Note: For permalocked NFTs, voting power equals locked amount, so only shown once
 - **Voting rewards**: Multiple token types received (typical of voting rewards)
 - **General claims**: Other reward claim transactions
 
@@ -191,7 +199,7 @@ Check the script version:
 python3 avalanche_transaction_narrator.py --version
 ```
 
-Current version: **1.2.0**
+Current version: **1.3.0**
 
 ## Notes
 

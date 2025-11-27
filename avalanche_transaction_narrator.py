@@ -30,8 +30,15 @@ except ImportError:
     ETH_ABI_AVAILABLE = False
     logger.warning("eth-abi not available. Voting transaction details will be limited.")
 
+try:
+    from web3 import Web3
+    WEB3_AVAILABLE = True
+except ImportError:
+    WEB3_AVAILABLE = False
+    logger.warning("web3 not available. NFT locked amount and voting power queries will be limited.")
+
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 class AvalancheTransactionNarrator(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
@@ -308,7 +315,7 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     classification['description'] = self.describe_swap(token_transfers, tx)
                 elif func_name in ['claim', 'getReward', 'claimReward']:
                     classification['type'] = 'claim'
-                    classification['description'] = self.describe_claim(token_transfers, tx)
+                    classification['description'] = self.describe_claim(token_transfers, tx, receipt)
                 elif func_name == 'vote':
                     classification['type'] = 'vote'
                     classification['description'] = self.describe_vote(tx, token_transfers)
@@ -317,7 +324,7 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     classification['description'] = self.describe_merge(tx, token_transfers, classification.get('status', 'unknown'))
                 elif func_name == 'distributeRewards':
                     classification['type'] = 'claim'
-                    classification['description'] = self.describe_claim(token_transfers, tx)
+                    classification['description'] = self.describe_claim(token_transfers, tx, receipt)
                 elif func_name in ['transfer', 'transferFrom']:
                     classification['type'] = 'transfer'
                     classification['description'] = self.describe_transfer(token_transfers, tx)
@@ -353,7 +360,7 @@ class AvalancheTransactionNarrator(AvalancheTool):
                                 classification['description'] = self.describe_merge(tx, token_transfers, classification.get('status', 'unknown'))
                     elif contract_name in ['RewardsClaimer', 'RewardsDistributor'] and classification['type'] == 'unknown':
                         classification['type'] = 'claim'
-                        classification['description'] = self.describe_claim(token_transfers, tx)
+                        classification['description'] = self.describe_claim(token_transfers, tx, receipt)
                 
                 # Try to classify based on token transfers
                 if classification['type'] == 'unknown':
@@ -422,10 +429,179 @@ class AvalancheTransactionNarrator(AvalancheTool):
             received_desc = ", ".join([f"{t['amount']} {t['token_info']['symbol']}" for t in received_tokens])
             return f"Swapped {sent_desc} for {received_desc}"
     
-    def describe_claim(self, token_transfers: List[Dict], tx: Dict) -> str:
-        """Describe a claim transaction"""
+    def get_nft_info_from_claim_logs(self, receipt: Optional[Dict], tx: Dict) -> Optional[Dict]:
+        """
+        Extract Supermassive NFT information from claim transaction logs.
+        
+        The RewardsClaimer emits a log with:
+        - Topic: 0xcae2990aa9af8eb1c64713b7eddb3a80bf18e49a94a13fe0d0002b5d61d58f00
+        - Data contains: tokenId (uint256), amount (uint256), timestamp (uint256), week (uint256)
+        
+        Also looks for VotingEscrow Withdraw event to get the locked amount:
+        - Topic: 0xff04ccafc360e16b67d682d17bd9503c4c6b9a131f6be6325762dc9ffc7de624
+        - Data contains: tokenId (uint256), locked_amount (uint256), ? (uint256), timestamp (uint256)
+        
+        Args:
+            receipt: Transaction receipt with logs
+            tx: Transaction dict
+            
+        Returns:
+            Dict with 'token_id', 'amount', 'timestamp', 'week', 'locked_amount' or None if not found
+        """
+        if not receipt:
+            return None
+        
+        # Look for the RewardsClaimer event
+        claim_event_topic = '0xcae2990aa9af8eb1c64713b7eddb3a80bf18e49a94a13fe0d0002b5d61d58f00'
+        rewards_claimer_address = '0x88a49cfcee0ed5b176073dde12186c4c922a9cd0'
+        
+        # Look for VotingEscrow Withdraw event (to get locked amount)
+        withdraw_event_topic = '0xff04ccafc360e16b67d682d17bd9503c4c6b9a131f6be6325762dc9ffc7de624'
+        voting_escrow_address = '0xeac562811cc6abdbb2c9ee88719eca4ee79ad763'
+        
+        nft_info = None
+        locked_amount = None
+        
+        for log in receipt.get('logs', []):
+            # Check for RewardsClaimer event
+            if (log.get('address', '').lower() == rewards_claimer_address.lower() and 
+                len(log.get('topics', [])) > 0 and 
+                log['topics'][0] == claim_event_topic):
+                
+                # Parse the data field
+                data = log.get('data', '0x')
+                if len(data) >= 258:  # 0x + 4 * 64 hex chars (4 uint256 values)
+                    try:
+                        # Remove 0x prefix and parse each 64-char chunk
+                        hex_data = data[2:] if data.startswith('0x') else data
+                        token_id = int(hex_data[0:64], 16)
+                        amount = int(hex_data[64:128], 16)
+                        timestamp = int(hex_data[128:192], 16)
+                        week = int(hex_data[192:256], 16)
+                        
+                        nft_info = {
+                            'token_id': token_id,
+                            'amount': amount,
+                            'timestamp': timestamp,
+                            'week': week
+                        }
+                    except (ValueError, IndexError) as e:
+                        logger.debug(f"Error parsing claim log data: {e}")
+            
+            # Check for VotingEscrow Withdraw event
+            elif (log.get('address', '').lower() == voting_escrow_address.lower() and 
+                  len(log.get('topics', [])) > 0 and 
+                  log['topics'][0] == withdraw_event_topic):
+                
+                # Parse the data field
+                data = log.get('data', '0x')
+                if len(data) >= 258:  # 0x + 4 * 64 hex chars
+                    try:
+                        hex_data = data[2:] if data.startswith('0x') else data
+                        # First uint256 is token_id, second is the locked amount that was withdrawn
+                        token_id_from_withdraw = int(hex_data[0:64], 16)
+                        locked_amount_raw = int(hex_data[64:128], 16)
+                        locked_amount = locked_amount_raw / 1e18  # Convert to BLACK
+                        
+                        # If we found the claim info and the token IDs match, add locked amount
+                        if nft_info and nft_info['token_id'] == token_id_from_withdraw:
+                            nft_info['locked_amount'] = locked_amount
+                            
+                            # Note: We can't get the original lock end time from the withdraw event
+                            # since the NFT was fully claimed/burned. The third value is 0.
+                            # We'll try to get it from the contract for active NFTs.
+                    except (ValueError, IndexError) as e:
+                        logger.debug(f"Error parsing withdraw log data: {e}")
+        
+        return nft_info
+    
+    def get_nft_locked_info(self, token_id: int) -> Optional[Dict]:
+        """
+        Get locked amount, end time, and voting power for a Supermassive NFT.
+        
+        Args:
+            token_id: The NFT token ID
+            
+        Returns:
+            Dict with 'locked_amount' (in BLACK), 'lock_end' (timestamp), 'voting_power' (veBLACK), or None if error
+        """
+        if not WEB3_AVAILABLE:
+            logger.debug("web3.py not available, cannot query NFT info")
+            return None
+        
+        try:
+            # Connect to Avalanche C-Chain RPC
+            w3 = Web3(Web3.HTTPProvider('https://api.avax.network/ext/bc/C/rpc'))
+            
+            if not w3.is_connected():
+                logger.debug("Failed to connect to Avalanche RPC")
+                return None
+            
+            # VotingEscrow contract address with checksum
+            voting_escrow = Web3.to_checksum_address('0xeac562811cc6abdbb2c9ee88719eca4ee79ad763')
+            
+            # Minimal ABI for the functions we need
+            abi = [
+                {
+                    'inputs': [{'name': 'tokenId', 'type': 'uint256'}],
+                    'name': 'locked',
+                    'outputs': [
+                        {'name': 'amount', 'type': 'int128'},
+                        {'name': 'end', 'type': 'uint256'}
+                    ],
+                    'stateMutability': 'view',
+                    'type': 'function'
+                },
+                {
+                    'inputs': [{'name': 'tokenId', 'type': 'uint256'}],
+                    'name': 'balanceOfNFT',
+                    'outputs': [{'name': '', 'type': 'uint256'}],
+                    'stateMutability': 'view',
+                    'type': 'function'
+                }
+            ]
+            
+            # Create contract instance
+            contract = w3.eth.contract(address=voting_escrow, abi=abi)
+            
+            nft_info = {}
+            
+            # Get locked amount and end time
+            try:
+                locked_data = contract.functions.locked(token_id).call()
+                locked_amount = locked_data[0] / 1e18  # Convert to BLACK
+                lock_end = locked_data[1]
+                
+                nft_info['locked_amount'] = locked_amount
+                nft_info['lock_end'] = lock_end
+            except Exception as e:
+                logger.debug(f"Error calling locked() for token {token_id}: {e}")
+            
+            # Get voting power
+            try:
+                voting_power_raw = contract.functions.balanceOfNFT(token_id).call()
+                voting_power = voting_power_raw / 1e18  # Convert to veBLACK
+                nft_info['voting_power'] = voting_power
+            except Exception as e:
+                logger.debug(f"Error calling balanceOfNFT() for token {token_id}: {e}")
+            
+            return nft_info if nft_info else None
+            
+        except Exception as e:
+            logger.debug(f"Error getting NFT locked info for token {token_id}: {e}")
+            return None
+    
+    def describe_claim(self, token_transfers: List[Dict], tx: Dict, receipt: Optional[Dict] = None) -> str:
+        """Describe a claim transaction with Supermassive NFT information"""
         if not token_transfers:
             return "Claimed rewards (no token transfers detected)"
+        
+        # Get receipt if not provided
+        if not receipt:
+            receipt = self.get_transaction_receipt(tx['hash'])
+        
+        # Try to extract NFT info from claim logs
+        nft_info = self.get_nft_info_from_claim_logs(receipt, tx)
         
         # Filter out zero amounts
         non_zero_transfers = [t for t in token_transfers if float(t['amount']) > 0]
@@ -445,10 +621,54 @@ class AvalancheTransactionNarrator(AvalancheTool):
             if any('BLACK' in token for token in claimed_tokens):
                 # Check if there are any outgoing transfers (indicating restaking)
                 outgoing_transfers = [t for t in non_zero_transfers if t['from'].lower() == tx['from'].lower()]
+                
+                # Build base description
                 if outgoing_transfers:
-                    return f"Claimed and restaked Blackhole DEX Supermassive rewards: {', '.join(claimed_tokens)}"
+                    base_desc = f"Claimed and restaked Blackhole DEX Supermassive rewards: {', '.join(claimed_tokens)}"
                 else:
-                    return f"Claimed Blackhole DEX Supermassive rewards: {', '.join(claimed_tokens)}"
+                    base_desc = f"Claimed Blackhole DEX Supermassive rewards: {', '.join(claimed_tokens)}"
+                
+                # Add NFT information if available
+                if nft_info:
+                    token_id = nft_info['token_id']
+                    nft_desc = f" from veBLACK NFT #{token_id}"
+                    
+                    # Always try to get current NFT state from contract first
+                    nft_locked_info = self.get_nft_locked_info(token_id)
+                    
+                    if nft_locked_info and nft_locked_info.get('locked_amount', 0) > 0:
+                        # NFT still exists - show current state
+                        locked_amount = nft_locked_info.get('locked_amount', 0)
+                        lock_end = nft_locked_info.get('lock_end', 0)
+                        voting_power = nft_locked_info.get('voting_power', 0)
+                        
+                        lock_end_dt = datetime.fromtimestamp(lock_end) if lock_end > 0 else None
+                        
+                        # Check if permalocked (lock end is very far in future or 0)
+                        is_permalocked = lock_end == 0 or (lock_end_dt and lock_end_dt.year > 2100)
+                        
+                        if is_permalocked:
+                            # For permalocked NFTs, voting power equals locked amount, so just show once
+                            nft_desc += f" ({locked_amount:.2f} veBLACK permalocked)"
+                        else:
+                            # For time-locked NFTs, show both locked amount and voting power (which decays over time)
+                            nft_desc += f" ({locked_amount:.2f} BLACK locked until {lock_end_dt.strftime('%Y-%m-%d')}"
+                            if voting_power > 0:
+                                nft_desc += f", {voting_power:.2f} veBLACK voting power"
+                            nft_desc += ")"
+                    elif 'locked_amount' in nft_info:
+                        # Check if the withdrawn amount is much less than typical full lock
+                        # If so, the NFT likely still exists but we couldn't query its current state
+                        withdrawn_amount = nft_info['locked_amount']
+                        if withdrawn_amount < 100:  # Likely just claimed rewards, not full unlock
+                            nft_desc += f" (claimed {withdrawn_amount:.2f} BLACK rewards; check blackhole.xyz for full NFT details)"
+                        else:
+                            # Larger amount - might be full unlock
+                            nft_desc += f" ({withdrawn_amount:.2f} BLACK unlocked)"
+                    
+                    return base_desc + nft_desc
+                
+                return base_desc
             else:
                 # Check if this is voting rewards (multiple different token types)
                 unique_symbols = set()
@@ -462,8 +682,51 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     return f"Claimed rewards: {', '.join(claimed_tokens)}"
         elif burned_tokens:
             # If no tokens were claimed but tokens were burned, this might be a burn/claim operation
+            # Note: "Burn" here means BLACK rewards were sent to zero address, not that the NFT was burned
             if any('BLACK' in token for token in burned_tokens):
-                return f"Burned {', '.join(burned_tokens)} (claim operation)"
+                base_desc = f"Claimed {', '.join(burned_tokens)} rewards (burned to zero address)"
+                
+                # Add NFT information if available
+                if nft_info:
+                    token_id = nft_info['token_id']
+                    nft_desc = f" from veBLACK NFT #{token_id}"
+                    
+                    # Always try to get current NFT state from contract first
+                    nft_locked_info = self.get_nft_locked_info(token_id)
+                    
+                    if nft_locked_info and nft_locked_info.get('locked_amount', 0) > 0:
+                        # NFT still exists - show current state
+                        locked_amount = nft_locked_info.get('locked_amount', 0)
+                        lock_end = nft_locked_info.get('lock_end', 0)
+                        voting_power = nft_locked_info.get('voting_power', 0)
+                        
+                        lock_end_dt = datetime.fromtimestamp(lock_end) if lock_end > 0 else None
+                        
+                        # Check if permalocked (lock end is very far in future or 0)
+                        is_permalocked = lock_end == 0 or (lock_end_dt and lock_end_dt.year > 2100)
+                        
+                        if is_permalocked:
+                            # For permalocked NFTs, voting power equals locked amount, so just show once
+                            nft_desc += f" ({locked_amount:.2f} veBLACK permalocked)"
+                        else:
+                            # For time-locked NFTs, show both locked amount and voting power (which decays over time)
+                            nft_desc += f" ({locked_amount:.2f} BLACK locked until {lock_end_dt.strftime('%Y-%m-%d')}"
+                            if voting_power > 0:
+                                nft_desc += f", {voting_power:.2f} veBLACK voting power"
+                            nft_desc += ")"
+                    elif 'locked_amount' in nft_info:
+                        # Check if the withdrawn amount is much less than typical full lock
+                        # If so, the NFT likely still exists but we couldn't query its current state
+                        withdrawn_amount = nft_info['locked_amount']
+                        if withdrawn_amount < 100:  # Likely just claimed rewards, not full unlock
+                            nft_desc += f" (claimed {withdrawn_amount:.2f} BLACK rewards; check blackhole.xyz for full NFT details)"
+                        else:
+                            # Larger amount - might be full unlock
+                            nft_desc += f" ({withdrawn_amount:.2f} BLACK unlocked)"
+                    
+                    return base_desc + nft_desc
+                
+                return base_desc
             else:
                 return f"Burned {', '.join(burned_tokens)}"
         else:
