@@ -24,7 +24,7 @@ from avalanche_utils import (
 from avalanche_base import AvalancheTool
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 class AvalancheDailySwapAnalyzer(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
@@ -162,7 +162,7 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
         """Get current token price in USD from multiple sources"""
         return get_token_price(token_address, headers=self.headers, token_symbol=token_symbol)
     
-    def parse_swap_transaction(self, tx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def parse_swap_transaction(self, tx: Dict[str, Any], user_address: str) -> Optional[Dict[str, Any]]:
         """Parse a transaction to extract swap information"""
         try:
             # Get transaction receipt to check for token transfers
@@ -178,6 +178,9 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                 return None
                 
             logs = receipt_data.get('result', {}).get('logs', [])
+            
+            # Use user_address for matching (not tx['from'] which might be a router)
+            user_addr_lower = user_address.lower()
             
             # Look for transfers involving BTC.b
             btc_b_transfers = []
@@ -217,8 +220,8 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                     
                     token_addr = log['address']
                     
-                    # Check if this involves our target address
-                    if from_addr.lower() == tx['from'].lower() or to_addr.lower() == tx['from'].lower():
+                    # Check if this involves the user's address (not just tx['from'] which might be a router)
+                    if from_addr.lower() == user_addr_lower or to_addr.lower() == user_addr_lower:
                         if token_addr.lower() == self.btc_b_address.lower():
                             btc_b_transfers.append({
                                 'from': from_addr,
@@ -234,9 +237,9 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                                 'token_address': token_addr
                             })
             
-            # Check if this is a swap to BTC.b (received BTC.b and sent other tokens)
-            btc_b_received = sum(t['value'] for t in btc_b_transfers if t['to'].lower() == tx['from'].lower())
-            other_sent = [t for t in other_transfers if t['from'].lower() == tx['from'].lower()]
+            # Check if this is a swap to BTC.b (user received BTC.b and sent other tokens)
+            btc_b_received = sum(t['value'] for t in btc_b_transfers if t['to'].lower() == user_addr_lower)
+            other_sent = [t for t in other_transfers if t['from'].lower() == user_addr_lower]
             
             if btc_b_received > 0 and other_sent:
                 # This looks like a swap to BTC.b
@@ -370,6 +373,7 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
             daily_transactions = []
             nearby_swaps = []
             nearby_transactions = []
+            failed_swaps = []  # Track transactions that failed to parse as swaps
             
             for tx in transactions:
                 tx_timestamp = int(tx['timeStamp'])
@@ -378,19 +382,31 @@ class AvalancheDailySwapAnalyzer(AvalancheTool):
                 # Check if it's on the target date
                 if start_timestamp <= tx_timestamp < end_timestamp:
                     daily_transactions.append(tx)
-                    swap_data = self.parse_swap_transaction(tx)
+                    swap_data = self.parse_swap_transaction(tx, address)
                     if swap_data:
                         daily_swaps.append(swap_data)
+                    else:
+                        # Track failed swaps for debugging
+                        failed_swaps.append({
+                            'tx_hash': tx['hash'],
+                            'timestamp': tx_timestamp,
+                            'from': tx.get('from'),
+                            'to': tx.get('to')
+                        })
                 # Check if it's in the nearby range (3 days before/after)
                 elif search_start_timestamp <= tx_timestamp < search_end_timestamp:
                     nearby_transactions.append(tx)
-                    swap_data = self.parse_swap_transaction(tx)
+                    swap_data = self.parse_swap_transaction(tx, address)
                     if swap_data:
                         nearby_swaps.append(swap_data)
             
             print(f"Found {len(daily_transactions)} transactions on target date")
             print(f"Found {len(nearby_transactions)} transactions in nearby range (?3 days)")
             print(f"Found {len(nearby_swaps)} swap transactions in nearby range")
+            if failed_swaps:
+                print(f"Found {len(failed_swaps)} transactions on target date that were not detected as swaps:")
+                for failed in failed_swaps[:5]:  # Show first 5
+                    print(f"  - {failed['tx_hash']} at {datetime.fromtimestamp(failed['timestamp'], tz=pytz.UTC)}")
             
             logger.info(f"Found {len(daily_swaps)} swap transactions to BTC.b")
             

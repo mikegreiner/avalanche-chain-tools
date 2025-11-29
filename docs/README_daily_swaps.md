@@ -6,7 +6,9 @@ A Python script that analyzes daily swap transactions for a given Avalanche C-Ch
 
 - Analyzes all transactions for a given address on a specific date
 - Filters for swap transactions to BTC.b (Bitcoin on Avalanche)
+- **Fixed swap detection** - now correctly identifies user swaps by using the user's address instead of the router address
 - Shows detailed breakdown of each swap with token amounts and USD values
+- **Debug output** for transactions that weren't detected as swaps (helps identify edge cases)
 - Calculates totals for BTC.b received and USD value swapped
 - Displays human-readable timestamps in both local timezone and UTC
 - Creates clickable links to transactions, addresses, and token contracts on Snowtrace.io

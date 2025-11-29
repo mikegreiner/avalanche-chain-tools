@@ -18,6 +18,12 @@ A Python script that analyzes recent transactions for a given Avalanche C-Chain 
   - Merge operations (combining veBLACK locks)
 - Shows transaction status (`[SUCCESS]` or `[FAILED]`) for all transactions
 - Displays gas information for failed transactions
+- **Extracts revert reasons for failed transactions** using multiple methods:
+  - RPC transaction tracing (most reliable)
+  - Direct RPC calls to simulate transaction
+  - Snowtrace API fallback
+  - Decodes Error(string) and Panic(uint256) revert reasons
+- **Caching for receipts and transaction data** to reduce duplicate API calls and improve performance
 - Enhanced approval descriptions showing:
   - Token name (e.g., "WAVAX", "BTC.b", "BLACK")
   - Contract name (e.g., "BlackholeRouter", "VotingEscrow") instead of truncated addresses

@@ -39,7 +39,7 @@ python3 avalanche_transaction_reader.py --version
 
 ### 2. Avalanche Transaction Narrator
 **Script:** `avalanche_transaction_narrator.py`  
-**Version:** 1.3.0
+**Version:** 1.3.1
 
 Generates human-friendly descriptions of recent transactions for a given Avalanche C-Chain address, organizing activities by type (swaps, voting rewards, Supermassive NFT activities, etc.).
 
@@ -57,9 +57,11 @@ Generates human-friendly descriptions of recent transactions for a given Avalanc
   - Voting rewards and other Supermassive NFT activities
   - Merge operations (combining veBLACK locks)
 - Shows transaction status (SUCCESS/FAILED) with gas information for failed transactions
+- **Extracts revert reasons for failed transactions** using multiple methods (RPC trace, direct RPC calls, Snowtrace API)
 - Enhanced approval descriptions showing token and contract names (e.g., "Approved BlackholeRouter to spend WAVAX")
 - Correctly distinguishes between merge() and vote() transactions
 - Uses web3.py to query VotingEscrow contract for real-time NFT data
+- **Caching for receipts and transaction data** to reduce duplicate API calls
 
 **Usage:**
 ```bash
@@ -82,18 +84,20 @@ python3 avalanche_transaction_narrator.py --version
 
 ### 3. Avalanche Daily Swap Analyzer
 **Script:** `avalanche_daily_swaps.py`  
-**Version:** 1.1.0
+**Version:** 1.1.1
 
 Analyzes daily swap transactions for a given Avalanche C-Chain address, focusing on swaps to BTC.b.
 
 **Features:**
 - Analyzes all transactions for an address on a specific date
 - Filters for swap transactions to BTC.b (Bitcoin on Avalanche)
+- **Fixed swap detection to correctly identify user swaps** (now uses user address instead of router address)
 - Automatically skips ERC-721 NFT transfers (only processes ERC-20 token transfers)
 - Shows detailed breakdown of each swap with token amounts and USD values
 - Calculates totals for BTC.b received and USD value swapped
 - Fetches token prices from multiple sources (Snowtrace, DefiLlama, CoinGecko, DexScreener)
 - Configurable markdown header sizes (useful for embedding in larger documents)
+- **Debug output for transactions that weren't detected as swaps** (helps identify edge cases)
 
 **Usage:**
 ```bash
@@ -119,7 +123,7 @@ python3 avalanche_daily_swaps.py --version
 
 ### 4. Blackhole DEX Pool Recommender
 **Script:** `blackhole_pool_recommender.py`  
-**Version:** 1.3.2
+**Version:** 1.4.0
 
 Analyzes liquidity pools on Blackhole DEX and recommends the most profitable pools for voting, accounting for dilution and estimating personal rewards.
 
@@ -127,8 +131,11 @@ Analyzes liquidity pools on Blackhole DEX and recommends the most profitable poo
 - Fetches pool data from https://blackhole.xyz/vote
 - Analyzes pools accounting for dilution (rewards per vote)
 - Calculates profitability score factoring in dilution
+- **Stability scoring based on vote density** (votes per dollar of rewards) - higher density = more stable
+- **Stability-adjusted scoring** that combines estimated rewards with stability metrics
 - Estimates personal USD rewards based on voting power
-- Recommends top pools sorted by estimated reward
+- **Flexible sorting options** (`--sort-by`): auto, reward, profitability, or stability
+- Recommends top pools sorted by selected method
 - Automatic caching for faster subsequent runs (shared across tools)
 - Cache management options (`--no-cache`, `--cache-info`, `--clear-cache`)
 
@@ -148,6 +155,12 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --hide-vamm
 
 # Filter by minimum total rewards (focus on larger, more stable pools)
 python3 blackhole_pool_recommender.py --min-rewards 1000
+
+# Sort by stability (useful near epoch close when votes are pouring in)
+python3 blackhole_pool_recommender.py --voting-power 15000 --sort-by stability
+
+# Sort by profitability score (ignores voting power)
+python3 blackhole_pool_recommender.py --sort-by profitability
 
 # Combine filters
 python3 blackhole_pool_recommender.py --voting-power 15000 --min-rewards 500 --hide-vamm
@@ -180,7 +193,7 @@ python3 blackhole_pool_recommender.py --version
 
 ### 5. Pool Tracking Tool
 **Script:** `track_pool_changes.py`  
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 Tracks changes in recommended pools over time, helping you identify which pools receive the most late-breaking votes and which pools' rewards hold up best (least dilution) until the voting window closes.
 
@@ -189,6 +202,7 @@ Tracks changes in recommended pools over time, helping you identify which pools 
 - Uses shared cache for faster runs
 - Cache management options (`--no-cache`, `--cache-info`, `--clear-cache`)
 - Tracks profitability score changes
+- **Tracks stability metrics** (stability score, stability-adjusted score, vote density)
 - Identifies pools receiving late-breaking votes
 - Shows which pools' rewards hold up best (least dilution)
 - Displays trends with visual indicators (↑, ↓, →)

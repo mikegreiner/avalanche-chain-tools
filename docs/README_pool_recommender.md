@@ -86,6 +86,33 @@ python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage
 python3 blackhole_pool_recommender.py --voting-power 15000 --max-pool-percentage 0.5 --min-rewards 1000 --hide-vamm
 ```
 
+### Sort Options
+
+The pool recommender supports multiple sorting methods to help you find the best pools for your needs:
+
+```bash
+# Sort by stability (useful near epoch close when votes are pouring in)
+python3 blackhole_pool_recommender.py --voting-power 15000 --sort-by stability
+
+# Sort by profitability score (ignores voting power, focuses on pool characteristics)
+python3 blackhole_pool_recommender.py --sort-by profitability
+
+# Sort by estimated reward (default when voting power is provided)
+python3 blackhole_pool_recommender.py --voting-power 15000 --sort-by reward
+
+# Auto mode (default): uses reward if voting power provided, else profitability
+python3 blackhole_pool_recommender.py --voting-power 15000 --sort-by auto
+```
+
+**Sort Methods:**
+- **`auto`** (default): Automatically chooses the best method - uses `reward` if `--voting-power` is provided, otherwise uses `profitability`
+- **`reward`**: Sorts by estimated USD reward based on your voting power (requires `--voting-power`)
+- **`profitability`**: Sorts by profitability score (rewards per vote, pool size, etc.)
+- **`stability`**: Sorts by stability-adjusted score, which combines estimated rewards with stability metrics. Higher stability means the pool is less likely to see dramatic changes as votes pour in near epoch close.
+
+**Stability Scoring:**
+The stability score is based on vote density (votes per dollar of rewards). Pools with higher vote density are more "saturated" and less likely to see dramatic changes. The stability-adjusted score combines your estimated rewards (70%) with stability (30%), helping you maximize rewards while accounting for volatility.
+
 ### Caching
 
 The pool recommender automatically caches pool data to speed up subsequent runs. By default, cached data is used for 1 hour (60 minutes, configurable in `config.yaml`).

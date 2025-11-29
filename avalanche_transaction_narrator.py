@@ -38,7 +38,7 @@ except ImportError:
     logger.warning("web3 not available. NFT locked amount and voting power queries will be limited.")
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 class AvalancheTransactionNarrator(AvalancheTool):
     def __init__(self, snowtrace_api_base: Optional[str] = None, 
@@ -63,6 +63,12 @@ class AvalancheTransactionNarrator(AvalancheTool):
         
         # Cache for contract names we've looked up
         self._contract_name_cache = {}
+        
+        # Cache for receipts and transaction data to avoid duplicate API calls
+        self._receipt_cache: Dict[str, Optional[Dict]] = {}
+        self._tx_data_cache: Dict[str, Optional[Dict]] = {}
+        # Cache for classifications to avoid re-classifying transactions
+        self._classification_cache: Dict[str, Dict] = {}
         
         # Common function signatures for transaction classification
         self.function_signatures = {
@@ -184,21 +190,448 @@ class AvalancheTransactionNarrator(AvalancheTool):
         """Get token information (name, symbol, decimals)"""
         return get_token_info(token_address, headers=self.headers, known_contracts=self.known_contracts)
     
+    def get_transaction_data(self, tx_hash: str) -> Optional[Dict]:
+        """Get full transaction data including input, value, gas, etc."""
+        # Check cache first
+        if tx_hash in self._tx_data_cache:
+            return self._tx_data_cache[tx_hash]
+        
+        url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionByHash&txhash={tx_hash}&apikey={API_KEY_TOKEN}"
+
+        try:
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
+            response.raise_for_status()
+            data = response.json()
+
+            if 'error' in data:
+                self._tx_data_cache[tx_hash] = None
+                return None
+
+            result = data.get('result', {})
+            self._tx_data_cache[tx_hash] = result
+            return result
+        except Exception as e:
+            self._tx_data_cache[tx_hash] = None
+            return None
+    
     def get_transaction_receipt(self, tx_hash: str) -> Optional[Dict]:
         """Get transaction receipt with logs"""
+        # Check cache first
+        if tx_hash in self._receipt_cache:
+            return self._receipt_cache[tx_hash]
+        
         url = f"{self.snowtrace_api_base}?module=proxy&action=eth_getTransactionReceipt&txhash={tx_hash}&apikey={API_KEY_TOKEN}"
         
         try:
             response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
             response.raise_for_status()
             data = response.json()
-            
+
             if 'error' in data:
+                self._receipt_cache[tx_hash] = None
+                return None
+
+            result = data.get('result', {})
+            self._receipt_cache[tx_hash] = result
+            return result
+        except Exception as e:
+            self._receipt_cache[tx_hash] = None
+            return None
+    
+    def get_revert_reason(self, tx_hash: str) -> Optional[str]:
+        """
+        Get the actual revert reason for a failed transaction.
+        
+        Uses multiple methods to extract revert reason:
+        1. Direct RPC call to Avalanche node using eth_call
+        2. Debug trace call if available
+        3. Snowtrace proxy API as fallback
+        
+        Args:
+            tx_hash: Transaction hash
+            
+        Returns:
+            Revert reason string, or None if unable to determine
+        """
+        try:
+            # Get transaction data
+            tx_data = self.get_transaction_data(tx_hash)
+            if not tx_data:
+                return None
+            
+            # Get transaction receipt to find block number
+            receipt = self.get_transaction_receipt(tx_hash)
+            if not receipt:
+                return None
+            
+            block_number_hex = receipt.get('blockNumber', '0x0')
+            if block_number_hex == '0x0':
+                return None
+            
+            # Convert block number to int and use block before transaction
+            block_number = int(block_number_hex, 16) if isinstance(block_number_hex, str) else block_number_hex
+            if block_number > 0:
+                block_before = hex(block_number - 1)
+            else:
+                block_before = 'latest'
+            
+            # Extract transaction parameters
+            to_address = tx_data.get('to', '')
+            input_data = tx_data.get('input', '0x')
+            value_hex = tx_data.get('value', '0x0')
+            from_address = tx_data.get('from', '')
+            gas_hex = tx_data.get('gas', '0x0')
+            gas_price_hex = tx_data.get('gasPrice', '0x0')
+            
+            if not to_address or to_address == '':
+                # Contract creation - can't easily simulate
+                return None
+            
+            # Method 1: Try to trace the actual transaction execution (most reliable)
+            reason = self._get_revert_reason_via_trace(tx_hash)
+            if reason:
+                return reason
+            
+            # Method 2: Try direct RPC call to Avalanche node (simulate at block before)
+            reason = self._get_revert_reason_via_rpc(
+                to_address, input_data, value_hex, from_address, 
+                gas_hex, gas_price_hex, block_before
+            )
+            if reason:
+                return reason
+            
+            # Method 2: Try Snowtrace proxy API (less reliable but sometimes works)
+            reason = self._get_revert_reason_via_snowtrace(
+                to_address, input_data, value_hex, block_before
+            )
+            if reason:
+                return reason
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error getting revert reason for {tx_hash}: {e}")
+            return None
+    
+    def _get_revert_reason_via_trace(self, tx_hash: str) -> Optional[str]:
+        """
+        Get revert reason by tracing the actual transaction execution.
+        This is the most reliable method as it uses the exact state when the tx executed.
+        """
+        try:
+            rpc_url = "https://api.avax.network/ext/bc/C/rpc"
+            
+            # Use debug_traceTransaction to trace the actual execution
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "debug_traceTransaction",
+                "params": [tx_hash, {"tracer": "callTracer", "tracerConfig": {"onlyTopCall": False}}],
+                "id": 1
+            }
+            
+            response = requests.post(
+                rpc_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=self.get_api_timeout()
+            )
+            
+            if response.status_code != 200:
                 return None
                 
-            return data.get('result', {})
-        except Exception as e:
+            data = response.json()
+            
+            if 'error' in data:
+                # If debug_traceTransaction is not available, try alternative tracer
+                # Some nodes use different tracer names or don't support it
+                return None
+            
+            result = data.get('result', {})
+            if not result:
+                return None
+            
+            # Look for error or revert in the trace
+            error = result.get('error')
+            if error:
+                error_str = str(error)
+                # Try to extract revert reason from error
+                if 'revert' in error_str.lower():
+                    # The error might contain the revert reason
+                    if 'execution reverted:' in error_str:
+                        reason = error_str.split('execution reverted:', 1)[1].strip()
+                        decoded = self._decode_revert_reason(reason)
+                        return decoded if decoded != reason else reason
+                    return error_str
+            
+            # Check output field - sometimes revert data is in the output
+            output = result.get('output', '')
+            if output and output != '0x' and len(output) > 2:
+                if output.startswith('0x08c379a0'):  # Error(string)
+                    decoded = self._decode_revert_reason(output)
+                    if decoded:
+                        return decoded
+                elif output.startswith('0x4e487b71'):  # Panic(uint256)
+                    decoded = self._decode_revert_reason(output)
+                    if decoded:
+                        return decoded
+            
             return None
+            
+        except Exception as e:
+            logger.debug(f"Error getting revert reason via trace: {e}")
+            return None
+    
+    def _get_revert_reason_via_rpc(self, to_address: str, input_data: str, 
+                                   value_hex: str, from_address: str,
+                                   gas_hex: str, gas_price_hex: str,
+                                   block_before: str) -> Optional[str]:
+        """
+        Get revert reason using direct RPC call to Avalanche node.
+        This is more reliable than the Snowtrace proxy API.
+        """
+        try:
+            # Use Avalanche public RPC endpoint
+            rpc_url = "https://api.avax.network/ext/bc/C/rpc"
+            
+            # Build the transaction object for eth_call
+            tx_obj = {
+                "to": to_address,
+                "data": input_data,
+                "value": value_hex,
+                "from": from_address
+            }
+            
+            # Add gas info if available (some RPCs need this)
+            if gas_hex and gas_hex != '0x0':
+                tx_obj["gas"] = gas_hex
+            if gas_price_hex and gas_price_hex != '0x0':
+                tx_obj["gasPrice"] = gas_price_hex
+            
+            # Make JSON-RPC call
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [tx_obj, block_before],
+                "id": 1
+            }
+            
+            response = requests.post(
+                rpc_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=self.get_api_timeout()
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check for error in response
+            if 'error' in data:
+                error = data['error']
+                error_msg = error.get('message', '') if isinstance(error, dict) else str(error)
+                
+                # Extract revert reason from error message
+                # RPC errors often contain the revert reason in the message
+                if 'revert' in error_msg.lower() or 'execution reverted' in error_msg.lower():
+                    # Try to extract the actual reason
+                    # Format can be: "execution reverted" or "execution reverted: <reason>" or "revert <reason>"
+                    if 'execution reverted:' in error_msg:
+                        reason = error_msg.split('execution reverted:', 1)[1].strip()
+                    elif 'revert' in error_msg:
+                        # Look for revert reason after "revert"
+                        parts = error_msg.split('revert', 1)
+                        if len(parts) > 1:
+                            reason = parts[1].strip()
+                        else:
+                            reason = error_msg
+                    else:
+                        reason = error_msg
+                    
+                    # Clean up the reason
+                    reason = reason.strip('"').strip("'").strip()
+                    
+                    # Check if it's hex-encoded data (starts with 0x and is long)
+                    if reason.startswith('0x') and len(reason) > 10:
+                        decoded = self._decode_revert_reason(reason)
+                        if decoded and decoded != reason:
+                            return decoded
+                    
+                    # If it's a short hex string, it might be a panic code
+                    if reason.startswith('0x') and len(reason) <= 10:
+                        try:
+                            panic_code = int(reason, 16)
+                            panic_msg = self._get_panic_message(panic_code)
+                            if panic_msg:
+                                return panic_msg
+                        except ValueError:
+                            pass
+                    
+                    # Return the reason if it looks meaningful (not just "execution reverted")
+                    if reason and reason.lower() not in ['execution reverted', 'revert', '']:
+                        # If it's a very short string (like "ed"), it's probably not meaningful
+                        if len(reason) <= 3 and not reason.startswith('0x'):
+                            return None  # Try other methods
+                        return reason
+                    
+                    # If we have a hex string, try to decode it
+                    if reason.startswith('0x'):
+                        decoded = self._decode_revert_reason(reason)
+                        if decoded and decoded != reason:
+                            return decoded
+                        # If it's a short hex string, it might be a custom error selector
+                        if len(reason) <= 10:
+                            return None  # Not enough info, try other methods
+                        return f"Revert data: {reason}"
+            
+            # Check result field - if it's '0x' or empty, the call failed
+            result = data.get('result', '')
+            if result and result != '0x' and len(result) > 2:
+                # Check if result contains encoded revert data
+                if result.startswith('0x08c379a0'):  # Error(string) selector
+                    decoded = self._decode_revert_reason(result)
+                    if decoded:
+                        return decoded
+                elif result.startswith('0x4e487b71'):  # Panic(uint256) selector
+                    decoded = self._decode_revert_reason(result)
+                    if decoded:
+                        return decoded
+                # If we get a result but the transaction failed, it might be a nested revert
+                # The transaction failed but eth_call succeeds - state may have changed
+                # or the revert happened in a nested call that we can't see
+                # Return None to try other methods
+            
+            # If we get here and there's no error, but the transaction failed,
+            # it means the state has changed or the revert was in a nested call
+            # Try to infer from gas usage or return None
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error getting revert reason via RPC: {e}")
+            return None
+    
+    def _get_revert_reason_via_snowtrace(self, to_address: str, input_data: str,
+                                        value_hex: str, block_before: str) -> Optional[str]:
+        """
+        Get revert reason using Snowtrace proxy API (fallback method).
+        """
+        try:
+            url = f"{self.snowtrace_api_base}?module=proxy&action=eth_call&to={to_address}&data={input_data}&tag={block_before}"
+            if value_hex and value_hex != '0x0' and value_hex != '0x':
+                url += f"&value={value_hex}"
+            url += f"&apikey={API_KEY_TOKEN}"
+            
+            response = requests.get(url, headers=self.headers, timeout=self.get_api_timeout())
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'error' in data:
+                error_data = data.get('error', {})
+                error_msg = error_data.get('message', '') if isinstance(error_data, dict) else str(error_data)
+                
+                if 'revert' in error_msg.lower():
+                    if 'execution reverted:' in error_msg:
+                        reason = error_msg.split('execution reverted:', 1)[1].strip()
+                    else:
+                        parts = error_msg.split('revert', 1)
+                        reason = parts[1].strip() if len(parts) > 1 else error_msg
+                    
+                    reason = reason.strip('"').strip("'")
+                    decoded = self._decode_revert_reason(reason)
+                    return decoded if decoded != reason else reason
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error getting revert reason via Snowtrace: {e}")
+            return None
+    
+    def _get_panic_message(self, panic_code: int) -> Optional[str]:
+        """Get human-readable message for Solidity panic codes."""
+        panic_messages = {
+            0x00: "Generic compiler inserted panic",
+            0x01: "Assertion failed",
+            0x11: "Arithmetic operation underflowed or overflowed",
+            0x12: "Division or modulo by zero",
+            0x21: "Converted value out of bounds or too large",
+            0x22: "Storage byte array accessed with incorrectly sized offset",
+            0x31: "Pop on empty array",
+            0x32: "Array index out of bounds",
+            0x41: "Too much memory allocated",
+            0x51: "Zero-initialized variable of internal function type"
+        }
+        return panic_messages.get(panic_code)
+    
+    def _decode_revert_reason(self, data: str) -> str:
+        """
+        Decode a hex-encoded revert reason.
+        
+        Solidity revert reasons are ABI-encoded. The format is:
+        - Error(string): selector 0x08c379a0 + offset (32 bytes) + length (32 bytes) + string data
+        
+        Args:
+            data: Hex string (with or without 0x prefix) or plain text
+            
+        Returns:
+            Decoded string, or original if not decodable
+        """
+        if not data or not isinstance(data, str):
+            return data
+        
+        # Remove 0x prefix if present
+        hex_data = data[2:] if data.startswith('0x') else data
+        
+        # Check if it looks like hex data
+        if not all(c in '0123456789abcdefABCDEF' for c in hex_data):
+            # Not hex, return as-is
+            return data
+        
+        # Check for Error(string) selector: 0x08c379a0
+        if hex_data.startswith('08c379a0'):
+            try:
+                # Skip selector (8 chars = 4 bytes)
+                # Next 64 chars = offset (32 bytes, should be 0x20 = 32)
+                # Next 64 chars = length of string (32 bytes)
+                # Rest = string data (padded to 32-byte boundaries)
+                
+                if len(hex_data) < 136:  # 8 (selector) + 64 (offset) + 64 (length) = 136
+                    return data
+                
+                # Get string length (bytes 32-64, as hex)
+                length_hex = hex_data[72:136]  # Skip selector + offset
+                string_length = int(length_hex, 16)
+                
+                # Get string data (starts at byte 64, length is string_length)
+                if len(hex_data) < 136 + (string_length * 2):
+                    return data
+                
+                string_hex = hex_data[136:136 + (string_length * 2)]
+                
+                # Convert hex to string
+                try:
+                    decoded = bytes.fromhex(string_hex).decode('utf-8', errors='ignore')
+                    return decoded
+                except (ValueError, UnicodeDecodeError):
+                    return data
+            except (ValueError, IndexError):
+                return data
+        
+        # Check for Panic(uint256) selector: 0x4e487b71
+        # This indicates a panic (like division by zero, array out of bounds, etc.)
+        if hex_data.startswith('4e487b71'):
+            try:
+                # Get panic code (bytes 4-36)
+                if len(hex_data) < 72:
+                    return data
+                panic_code_hex = hex_data[8:72]
+                panic_code = int(panic_code_hex, 16)
+                
+                message = self._get_panic_message(panic_code)
+                if message:
+                    return f"Panic: {message}"
+                return f"Panic code: {hex(panic_code)}"
+            except (ValueError, IndexError):
+                return data
+        
+        return data
     
     def format_amount(self, amount: int, decimals: int) -> str:
         """Format token amount with proper decimal places"""
@@ -243,9 +676,18 @@ class AvalancheTransactionNarrator(AvalancheTool):
             if receipt.get('gasUsed'):
                 gas_used_hex = receipt['gasUsed']
                 classification['gas_used'] = int(gas_used_hex, 16) if isinstance(gas_used_hex, str) else gas_used_hex
-            if receipt.get('gas'):
-                gas_limit_hex = receipt['gas']
-                classification['gas_limit'] = int(gas_limit_hex, 16) if isinstance(gas_limit_hex, str) else gas_limit_hex
+            # Gas limit is in the transaction, not the receipt
+            # Handle both hex (0x...) and decimal string formats
+            if tx.get('gas'):
+                gas_limit_val = tx['gas']
+                if isinstance(gas_limit_val, str):
+                    if gas_limit_val.startswith('0x'):
+                        classification['gas_limit'] = int(gas_limit_val, 16)
+                    else:
+                        # Decimal string from txlist API
+                        classification['gas_limit'] = int(gas_limit_val)
+                else:
+                    classification['gas_limit'] = gas_limit_val
         
         if not receipt:
             classification['type'] = 'simple_transfer'
@@ -1229,8 +1671,18 @@ class AvalancheTransactionNarrator(AvalancheTool):
         
         return activities
 
-    def generate_narrative(self, address: str, days: int = 1) -> str:
-        """Generate a human-friendly narrative of recent transactions"""
+    def generate_narrative(self, address: str, days: int = 1, status_filter: Optional[str] = None, 
+                          progressive: bool = False, output_file=None) -> str:
+        """
+        Generate a human-friendly narrative of recent transactions
+        
+        Args:
+            address: Avalanche C-Chain address to analyze
+            days: Number of days to analyze (default: 1)
+            status_filter: Optional filter for transaction status - 'success', 'failed', or None for all
+        """
+        # Initialize narrative early to avoid reference errors
+        narrative = ""
         try:
             # Calculate time range
             end_time = datetime.now()
@@ -1272,6 +1724,69 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     recent_transactions.append(tx)
             
             logger.info(f"Found {len(recent_transactions)} transactions in the last {days} day(s)")
+            
+            # OPTIMIZATION: Fetch all receipts and classifications upfront in a single pass
+            # This allows us to work entirely from cache afterwards
+            if progressive:
+                print(f"Fetching transaction details... ({len(recent_transactions)} transactions)", file=sys.stderr)
+            elif status_filter:
+                print(f"Fetching transaction details and filtering... ({len(recent_transactions)} transactions)", file=sys.stderr)
+            else:
+                print(f"Fetching transaction details... ({len(recent_transactions)} transactions)", file=sys.stderr)
+            
+            receipts_map = {}
+            classifications_map = {}
+            filtered_transactions = []
+            
+            # Single pass: fetch receipts, classify, and filter if needed
+            for i, tx in enumerate(recent_transactions):
+                tx_hash = tx['hash']
+                
+                # Show progress
+                if progressive and (i + 1) % 5 == 0:
+                    print(f"  Progress: {i + 1}/{len(recent_transactions)} transactions...", file=sys.stderr, end='\r')
+                elif not progressive and (i + 1) % 10 == 0:
+                    print(f"  Progress: {i + 1}/{len(recent_transactions)} transactions...", file=sys.stderr, end='\r')
+                
+                # Get receipt (uses cache if available)
+                if tx_hash not in self._receipt_cache:
+                    receipt = self.get_transaction_receipt(tx_hash)
+                    receipts_map[tx_hash] = receipt
+                else:
+                    receipt = self._receipt_cache[tx_hash]
+                    receipts_map[tx_hash] = receipt
+                
+                # Get classification (uses cache if available)
+                if tx_hash not in self._classification_cache:
+                    classification = self.classify_transaction(tx, receipt=receipt)
+                    self._classification_cache[tx_hash] = classification
+                    classifications_map[tx_hash] = classification
+                else:
+                    classification = self._classification_cache[tx_hash]
+                    classifications_map[tx_hash] = classification
+                
+                # Filter by status if requested (using cached classification)
+                if status_filter:
+                    if status_filter.lower() not in ['success', 'failed']:
+                        raise ValueError(f"status_filter must be 'success' or 'failed', got '{status_filter}'")
+                    
+                    tx_status = classification.get('status', 'unknown')
+                    if status_filter.lower() == 'success' and tx_status == 'success':
+                        filtered_transactions.append(tx)
+                    elif status_filter.lower() == 'failed' and tx_status == 'failed':
+                        filtered_transactions.append(tx)
+                else:
+                    # No filtering, include all transactions
+                    filtered_transactions.append(tx)
+            
+            if progressive or status_filter or not progressive:
+                print(" " * 60, file=sys.stderr, end='\r')  # Clear progress line
+                print(f"  Fetched {len(recent_transactions)} transaction details. Done!", file=sys.stderr)
+            
+            # Update recent_transactions to filtered list
+            recent_transactions = filtered_transactions
+            if status_filter:
+                logger.info(f"After filtering for '{status_filter}' status: {len(recent_transactions)} transactions")
             
             if not recent_transactions:
                 # If no transactions found in narrow range, try wider range to see if address has any recent activity
@@ -1319,28 +1834,40 @@ class AvalancheTransactionNarrator(AvalancheTool):
                         msg += f"Try increasing the days with `-d {days + 7}`.\n"
                     return msg
             
+            # Receipts and classifications are already fetched and cached above
+            # Filter the maps to only include filtered transactions (more memory efficient)
+            filtered_receipts_map = {tx['hash']: receipts_map.get(tx['hash']) for tx in recent_transactions}
+            filtered_classifications_map = {tx['hash']: classifications_map.get(tx['hash'], {}) for tx in recent_transactions}
+            receipts_map = filtered_receipts_map
+            classifications_map = filtered_classifications_map
+            
             # Group transactions into sequences (especially swap sequences)
             sequences = self.group_swap_sequences(recent_transactions)
             
-            # Classify all transactions to get status info before organizing
-            # This ensures status is available when generating descriptions
-            for sequence in sequences:
-                for tx in sequence['transactions']:
-                    # Pre-classify to ensure status is available
-                    _ = self.classify_transaction(tx)
+            # Classifications are already cached, no need to re-classify
             
             # Organize sequences into activity groups
             activities = self.organize_activities(sequences)
             
-            # Generate narrative
-            narrative = f"# Transaction Narrative - {address}\n\n"
+            # Generate narrative header
+            if progressive:
+                print(f"\n# Transaction Narrative - {address}\n", file=output_file if output_file else sys.stdout)
+                print(f"**Period:** {start_time.strftime('%B %d, %Y')} to {end_time.strftime('%B %d, %Y')}", file=output_file if output_file else sys.stdout)
+                print(f"**Total Transactions:** {len(recent_transactions)}\n", file=output_file if output_file else sys.stdout)
+            
+            # Build narrative (don't reassign, append to initialized variable)
+            narrative += f"# Transaction Narrative - {address}\n\n"
             narrative += f"**Period:** {start_time.strftime('%B %d, %Y')} to {end_time.strftime('%B %d, %Y')}\n"
             narrative += f"**Total Transactions:** {len(recent_transactions)}\n\n"
             
             # Add activity summary
-            narrative += "## Today's DeFi Activities\n\n"
-            
             total_activities = sum(len(items) for items in activities.values())
+            
+            if progressive:
+                print("## Today's DeFi Activities\n", file=output_file if output_file else sys.stdout)
+                print(f"**Total Activities:** {total_activities}\n", file=output_file if output_file else sys.stdout)
+            
+            narrative += "## Today's DeFi Activities\n\n"
             narrative += f"**Total Activities:** {total_activities}\n\n"
             
             # Tell the story in chronological order
@@ -1353,57 +1880,60 @@ class AvalancheTransactionNarrator(AvalancheTool):
             all_sequences.sort(key=lambda x: int(x[1]['transactions'][0]['timeStamp']))
             
             # Group by activity type for summary
-            if activities['supermassive_claims']:
-                narrative += f"### [NFT] Supermassive NFT Activities ({len(activities['supermassive_claims'])})\n"
-                for seq in activities['supermassive_claims']:
-                    tx = seq['transactions'][0]
-                    timestamp_str = self.format_timestamp(int(tx['timeStamp']))
-                    narrative += f"- **{timestamp_str}:** {seq['description']}\n"
-                narrative += "\n"
+            def print_activity_summary(activity_type, title, icon):
+                nonlocal narrative  # Declare narrative as nonlocal so we can modify it
+                if activities[activity_type]:
+                    summary = f"### {icon} {title} ({len(activities[activity_type])})\n"
+                    for seq in activities[activity_type]:
+                        tx = seq['transactions'][0]
+                        timestamp_str = self.format_timestamp(int(tx['timeStamp']))
+                        summary += f"- **{timestamp_str}:** {seq['description']}\n"
+                    summary += "\n"
+                    
+                    if progressive:
+                        print(summary, file=output_file if output_file else sys.stdout)
+                        if output_file:
+                            output_file.flush()
+                    else:
+                        narrative += summary
             
-            if activities['voting_rewards']:
-                narrative += f"### ??? Voting Rewards ({len(activities['voting_rewards'])})\n"
-                for seq in activities['voting_rewards']:
-                    tx = seq['transactions'][0]
-                    timestamp_str = self.format_timestamp(int(tx['timeStamp']))
-                    narrative += f"- **{timestamp_str}:** {seq['description']}\n"
-                narrative += "\n"
-            
-            if activities['swaps']:
-                narrative += f"### [SWAP] Token Swaps ({len(activities['swaps'])})\n"
-                for seq in activities['swaps']:
-                    tx = seq['transactions'][0]
-                    timestamp_str = self.format_timestamp(int(tx['timeStamp']))
-                    narrative += f"- **{timestamp_str}:** {seq['description']}\n"
-                narrative += "\n"
-            
-            if activities['other']:
-                narrative += f"### [TX] Other Activities ({len(activities['other'])})\n"
-                for seq in activities['other']:
-                    tx = seq['transactions'][0]
-                    timestamp_str = self.format_timestamp(int(tx['timeStamp']))
-                    narrative += f"- **{timestamp_str}:** {seq['description']}\n"
-                narrative += "\n"
+            print_activity_summary('supermassive_claims', 'Supermassive NFT Activities', '[NFT]')
+            print_activity_summary('voting_rewards', 'Voting Rewards', '[REWARD]')
+            print_activity_summary('swaps', 'Token Swaps', '[SWAP]')
+            print_activity_summary('other', 'Other Activities', '[TX]')
             
             # Add detailed transaction log
-            narrative += "## Detailed Transaction Log\n\n"
+            if progressive:
+                print("## Detailed Transaction Log\n", file=output_file if output_file else sys.stdout)
+            else:
+                narrative += "## Detailed Transaction Log\n\n"
             
-            for activity_type, sequence in all_sequences:
+            total_seqs = len(all_sequences)
+            for seq_idx, (activity_type, sequence) in enumerate(all_sequences):
+                if progressive:
+                    print(f"Processing transaction {seq_idx + 1}/{total_seqs}...", file=sys.stderr, end='\r')
                 if sequence['type'] == 'swap_sequence':
                     # Handle swap sequences
                     tx = sequence['transactions'][0]
                     timestamp_str = self.format_timestamp(int(tx['timeStamp']))
                     
-                    narrative += f"### {timestamp_str} - Blackhole DEX Swap\n\n"
-                    narrative += f"**Description:** {sequence['description']}\n"
-                    narrative += f"**Steps:** {len(sequence['transactions'])} transaction(s)\n"
+                    swap_narrative = f"### {timestamp_str} - Blackhole DEX Swap\n\n"
+                    swap_narrative += f"**Description:** {sequence['description']}\n"
+                    swap_narrative += f"**Steps:** {len(sequence['transactions'])} transaction(s)\n"
                     
                     for i, tx in enumerate(sequence['transactions']):
                         tx_link = f"[{tx['hash'][:10]}...](https://snowtrace.io/tx/{tx['hash']})"
                         step_name = "Approval" if i == 0 else f"Swap Step {i}"
-                        narrative += f"- **{step_name}:** {tx_link}\n"
+                        swap_narrative += f"- **{step_name}:** {tx_link}\n"
                     
-                    narrative += "\n"
+                    swap_narrative += "\n"
+                    
+                    if progressive:
+                        print(swap_narrative, file=output_file if output_file else sys.stdout)
+                        if output_file:
+                            output_file.flush()
+                    else:
+                        narrative += swap_narrative
                 else:
                     # Handle individual transactions
                     tx = sequence['transactions'][0]
@@ -1417,8 +1947,8 @@ class AvalancheTransactionNarrator(AvalancheTool):
                         'other': '[TX]'
                     }.get(activity_type, '[TX]')
                     
-                    # Get transaction status
-                    tx_classification = self.classify_transaction(tx)
+                    # Get transaction status (use cached classification)
+                    tx_classification = classifications_map.get(tx['hash'], {})
                     status = tx_classification.get('status', 'unknown')
                     status_indicator = ''
                     if status == 'failed':
@@ -1426,26 +1956,77 @@ class AvalancheTransactionNarrator(AvalancheTool):
                     elif status == 'success':
                         status_indicator = ' [SUCCESS]'
                     
-                    narrative += f"### {timestamp_str} - {activity_indicator} {sequence['type'].replace('_', ' ').title()}{status_indicator}\n\n"
-                    narrative += f"**Transaction:** {tx_link}\n"
-                    narrative += f"**Description:** {sequence['description']}\n"
+                    # Build transaction narrative
+                    tx_narrative = f"### {timestamp_str} - {activity_indicator} {sequence['type'].replace('_', ' ').title()}{status_indicator}\n\n"
+                    tx_narrative += f"**Transaction:** {tx_link}\n"
+                    tx_narrative += f"**Description:** {sequence['description']}\n"
                     
                     # Add gas information for failed transactions
                     if status == 'failed':
+                        if progressive:
+                            print(f"  Analyzing failed transaction {tx['hash'][:10]}...", file=sys.stderr, end='\r')
                         gas_used = tx_classification.get('gas_used')
                         gas_limit = tx_classification.get('gas_limit')
                         if gas_used:
-                            narrative += f"**Gas Used:** {gas_used:,}"
+                            tx_narrative += f"**Gas Used:** {gas_used:,}"
                             if gas_limit:
                                 pct = (gas_used / gas_limit * 100) if gas_limit > 0 else 0
-                                narrative += f" / {gas_limit:,} ({pct:.1f}%)\n"
+                                tx_narrative += f" / {gas_limit:,} ({pct:.1f}%)\n"
                             else:
-                                narrative += "\n"
-                        narrative += "**Reason:** Transaction reverted (likely insufficient gas limit)\n"
+                                tx_narrative += "\n"
+                        
+                        # Try to get the actual revert reason
+                        revert_reason = self.get_revert_reason(tx['hash'])
+                        if revert_reason:
+                            tx_narrative += f"**Reason:** {revert_reason}\n"
+                        else:
+                            # Fallback: analyze gas usage and transaction details to infer likely reason
+                            if gas_used and gas_limit:
+                                pct = (gas_used / gas_limit * 100) if gas_limit > 0 else 0
+                                
+                                # Get function info for context (use cached data)
+                                tx_data = self.get_transaction_data(tx['hash'])
+                                input_data = tx_data.get('input', '0x') if tx_data else '0x'
+                                func_sig = input_data[:10] if len(input_data) >= 10 else ''
+                                
+                                # Check if this looks like a swap (common failure reasons)
+                                swap_selectors = ['0x7ff36ab5', '0x18cbafe5', '0x38ed1739', '0x5c11d795', '0x204b5c0a']
+                                is_swap = func_sig.lower() in [s.lower() for s in swap_selectors]
+                                
+                                if pct >= 99.0:
+                                    tx_narrative += "**Reason:** Transaction reverted (insufficient gas limit - transaction ran out of gas before completion)\n"
+                                elif pct < 30.0:
+                                    if is_swap:
+                                        tx_narrative += "**Reason:** Transaction reverted (likely slippage tolerance exceeded or insufficient liquidity)\n"
+                                    else:
+                                        tx_narrative += "**Reason:** Transaction reverted (likely contract logic error - used <30% of gas)\n"
+                                elif pct < 50.0:
+                                    if is_swap:
+                                        tx_narrative += "**Reason:** Transaction reverted (likely slippage tolerance exceeded or insufficient balance)\n"
+                                    else:
+                                        tx_narrative += "**Reason:** Transaction reverted (likely contract logic error - used <50% of gas)\n"
+                                else:
+                                    tx_narrative += "**Reason:** Transaction reverted (reason unknown - may be a nested call revert)\n"
+                            else:
+                                tx_narrative += "**Reason:** Transaction reverted (reason unknown)\n"
+                        
+                        if progressive:
+                            print(" " * 50, file=sys.stderr, end='\r')  # Clear progress line
                     
-                    narrative += "\n"
+                    # Output transaction narrative (progressive or batch)
+                    if progressive:
+                        print(tx_narrative, file=output_file if output_file else sys.stdout)
+                        if output_file:
+                            output_file.flush()
+                    else:
+                        narrative += tx_narrative + "\n"
             
-            return narrative
+            if progressive:
+                print(" " * 50, file=sys.stderr, end='\r')  # Clear progress line
+                print("Done!", file=sys.stderr)
+                return ""  # Already printed to output
+            else:
+                return narrative
             
         except Exception as e:
             return f"Error generating narrative: {str(e)}"
@@ -1456,6 +2037,16 @@ def main():
     parser.add_argument('-d', '--days', type=int, default=1, help='Number of days to analyze (default: 1)')
     parser.add_argument('-o', '--output', help='Output file (optional)')
     parser.add_argument(
+        '--status',
+        choices=['success', 'failed'],
+        help='Filter transactions by status: "success" for successful transactions only, "failed" for failed transactions only'
+    )
+    parser.add_argument(
+        '--progressive',
+        action='store_true',
+        help='Output transactions as they are processed (shows progress and outputs immediately)'
+    )
+    parser.add_argument(
         '--version',
         action='version',
         version=f'%(prog)s {__version__}'
@@ -1464,14 +2055,39 @@ def main():
     args = parser.parse_args()
     
     narrator = AvalancheTransactionNarrator()
-    result = narrator.generate_narrative(args.address, args.days)
     
-    if args.output:
-        with open(args.output, 'w') as f:
-            f.write(result)
-        print(f"Narrative written to {args.output}")
+    if args.progressive:
+        # Progressive output mode
+        output_file = None
+        if args.output:
+            output_file = open(args.output, 'w')
+        
+        try:
+            result = narrator.generate_narrative(
+                args.address, 
+                args.days, 
+                status_filter=args.status,
+                progressive=True,
+                output_file=output_file
+            )
+            
+            if args.output:
+                output_file.close()
+                print(f"\nNarrative written to {args.output}", file=sys.stderr)
+        except Exception as e:
+            if output_file:
+                output_file.close()
+            raise
     else:
-        print(result)
+        # Batch output mode (original behavior)
+        result = narrator.generate_narrative(args.address, args.days, status_filter=args.status)
+        
+        if args.output:
+            with open(args.output, 'w') as f:
+                f.write(result)
+            print(f"Narrative written to {args.output}")
+        else:
+            print(result)
 
 if __name__ == "__main__":
     main()

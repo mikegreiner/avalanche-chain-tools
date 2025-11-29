@@ -1,0 +1,13 @@
+# Development Guidelines
+
+## Testing and Documentation
+- Always update tests and documentation when making feature changes or modifying behavior
+- Tests should cover new functionality, edge cases, and validation logic
+- Documentation should reflect user-facing changes, new features, and updated output formats
+- When adding new methods or changing existing behavior, ensure both tests and docs are updated
+
+## Code Quality
+- Follow existing code style and patterns
+- Add appropriate error handling and validation
+- Include helpful comments for complex logic
+- Maintain consistency with existing codebase structure

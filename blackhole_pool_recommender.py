@@ -60,7 +60,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -136,6 +136,94 @@ class Pool:
         estimated_reward = user_share * self.total_rewards
         
         return estimated_reward
+    
+    def stability_score(self) -> float:
+        """
+        Calculate stability score based on vote density and pool characteristics.
+        
+        Based on analysis showing that vote density (votes per dollar of rewards)
+        is the best predictor of stability. Higher vote density = more stable.
+        
+        Returns:
+            Stability score (0-100, higher = more stable)
+        """
+        # Calculate vote density (votes per dollar of rewards)
+        # Higher density = more votes relative to rewards = more stable
+        if self.total_rewards is None or self.total_rewards <= 0:
+            return 0.0
+        
+        if self.current_votes is None or self.current_votes <= 0:
+            # No votes = very unstable (could see massive changes)
+            return 0.0
+        
+        vote_density = self.current_votes / self.total_rewards
+        
+        # Normalize vote density
+        # Analysis showed median density around 200-500 votes per dollar
+        # High density (stable): 500+ votes per dollar = 100 points
+        # Low density (volatile): <100 votes per dollar = 0 points
+        # Use square root for gentler curve
+        if vote_density > 0:
+            normalized_density = min(100, max(0, (vote_density / 500.0) ** 0.5 * 100))
+        else:
+            normalized_density = 0
+        
+        # Reward size factor (larger rewards = slightly more stable)
+        # But not as important as vote density
+        if self.total_rewards >= 50000:
+            reward_size_factor = 20  # Large rewards
+        elif self.total_rewards >= 20000:
+            reward_size_factor = 10  # Medium rewards
+        else:
+            reward_size_factor = 0   # Small rewards (more volatile)
+        
+        # Combine: vote density is primary (80%), reward size is secondary (20%)
+        stability = (normalized_density * 0.8) + (reward_size_factor * 0.2)
+        
+        return min(100, max(0, stability))
+    
+    def stability_adjusted_score(self, user_voting_power: Optional[float] = None) -> float:
+        """
+        Calculate stability-adjusted score optimized for your personal rewards.
+        
+        When user_voting_power is provided, uses estimated reward (what you'll actually get)
+        combined with stability (how likely it is to remain stable near epoch close).
+        
+        When user_voting_power is not provided, falls back to profitability + stability.
+        
+        This is especially useful near epoch close when votes are pouring in and
+        you want to maximize your rewards while accounting for stability.
+        
+        Args:
+            user_voting_power: Your voting power in veBLACK (optional)
+        
+        Returns:
+            Stability-adjusted score (higher = better for your rewards)
+        """
+        stability = self.stability_score()
+        
+        if user_voting_power is not None and user_voting_power > 0:
+            # Use estimated reward (what you'll actually get)
+            estimated_reward = self.estimate_user_rewards(user_voting_power)
+            
+            # Normalize estimated reward to 0-100 scale
+            # Assume max reward around $500 is excellent (adjust based on your typical rewards)
+            # Use square root for gentler curve
+            if estimated_reward > 0:
+                normalized_reward = min(100, max(0, (estimated_reward / 500.0) ** 0.5 * 100))
+            else:
+                normalized_reward = 0
+            
+            # Combine: 70% estimated reward, 30% stability
+            # This maximizes your personal rewards while accounting for stability
+            # Higher stability = less likely to drop as votes pour in near epoch close
+            adjusted_score = (normalized_reward * 0.7) + (stability * 0.3)
+        else:
+            # Fallback: use profitability score when no voting power provided
+            profitability = self.profitability_score()
+            adjusted_score = (profitability * 0.7) + (stability * 0.3)
+        
+        return adjusted_score
 
 
 class BlackholePoolRecommender:
@@ -2050,7 +2138,7 @@ class BlackholePoolRecommender:
         else:
             raise InvalidInputError("Selenium not available. Please install selenium: pip install selenium")
     
-    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, pool_name: Optional[str] = None, quiet: bool = False) -> List[Pool]:
+    def recommend_pools(self, top_n: int = 5, user_voting_power: Optional[float] = None, hide_vamm: bool = False, min_rewards: Optional[float] = None, max_pool_percentage: Optional[float] = None, pool_name: Optional[str] = None, sort_by: str = 'auto', quiet: bool = False) -> List[Pool]:
         """
         Fetch pools and recommend top N most profitable.
         
@@ -2064,6 +2152,7 @@ class BlackholePoolRecommender:
             min_rewards: Minimum total rewards in USD to include (filters out smaller pools)
             max_pool_percentage: Maximum percentage of pool voting power (e.g., 0.5 for 0.5%). Filters out pools where adding your full voting power would exceed this threshold.
             pool_name: Shell-style wildcard pattern to filter pools by name (case-insensitive). If no wildcards are provided, automatically wraps pattern with * (e.g., "btc.b" becomes "*btc.b*"). Examples: "WAVAX/*", "*BLACK*", "CL200-*", "btc.b"
+            sort_by: Sort method - 'auto' (default), 'reward', 'profitability', or 'stability'. 'auto' uses reward if voting_power provided, else profitability.
             quiet: If True, suppress progress messages (useful for JSON output)
             
         Returns:
@@ -2150,21 +2239,44 @@ class BlackholePoolRecommender:
         for pool in pools:
             pool_score = pool.profitability_score()
         
-        # Sort by estimated reward if voting power provided, otherwise by profitability score
-        if user_voting_power is not None:
+        # Determine sort method
+        if sort_by == 'auto':
+            # Default behavior: reward if voting power provided, else profitability
+            if user_voting_power is not None:
+                sort_method = 'reward'
+            else:
+                sort_method = 'profitability'
+        else:
+            sort_method = sort_by
+        
+        # Sort pools based on selected method
+        if sort_method == 'reward':
+            if user_voting_power is None:
+                raise ValueError("Cannot sort by 'reward' without --voting-power")
             sorted_pools = sorted(
                 pools, 
                 key=lambda p: p.estimate_user_rewards(user_voting_power), 
                 reverse=True
             )
-        else:
+            self._sort_method = 'estimated reward'
+        elif sort_method == 'profitability':
             sorted_pools = sorted(
                 pools, 
                 key=lambda p: p.profitability_score(), 
                 reverse=True
             )
+            self._sort_method = 'profitability score'
+        elif sort_method == 'stability':
+            sorted_pools = sorted(
+                pools, 
+                key=lambda p: p.stability_adjusted_score(user_voting_power), 
+                reverse=True
+            )
+            self._sort_method = 'stability-adjusted score'
+        else:
+            raise ValueError(f"Invalid sort_by value: {sort_by}. Must be 'auto', 'reward', 'profitability', or 'stability'")
         
-        # Store initial pool count in instance variable for error reporting
+        # Store initial pool count and sort method in instance variable for error reporting and display
         self._initial_pool_count = initial_pool_count
         
         return sorted_pools[:top_n]
@@ -2783,13 +2895,22 @@ window.BLACKHOLE_POOL_DATA = {{
             else:
                 output_lines.append(f"Epoch Close (UTC): {self.epoch_close_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
         
+        # Get sort method (stored during recommend_pools call)
+        sort_method = getattr(self, '_sort_method', None)
+        if sort_method is None:
+            # Fallback to default based on voting power
+            if user_voting_power:
+                sort_method = 'estimated reward'
+            else:
+                sort_method = 'profitability score'
+        
         if user_voting_power:
             output_lines.append(f"Estimated rewards based on voting power: {user_voting_power:,.0f} veBLACK")
             output_lines.append("Note: Estimates assume you vote ALL your voting power in each pool individually")
             output_lines.append("      In reality, votes dilute rewards as more people vote")
-            output_lines.append(f"\nTop {len(pools)} Pools (sorted by estimated reward):\n")
+            output_lines.append(f"\nTop {len(pools)} Pools (sorted by {sort_method}):\n")
         else:
-            output_lines.append(f"\nTop {len(pools)} Most Profitable Pools:\n")
+            output_lines.append(f"\nTop {len(pools)} Pools (sorted by {sort_method}):\n")
         
         # ANSI escape codes for bold text
         bold_start = "\033[1m"  # ANSI escape code for bold
@@ -2900,7 +3021,9 @@ window.BLACKHOLE_POOL_DATA = {{
                 "total_rewards": pool.total_rewards,
                 "vapr": pool.vapr,
                 "current_votes": pool.current_votes,
-                "profitability_score": pool.profitability_score()
+                "profitability_score": pool.profitability_score(),
+                "stability_score": pool.stability_score(),
+                "stability_adjusted_score": pool.stability_adjusted_score(user_voting_power)
             }
             
             # Calculate rewards per vote
@@ -3013,6 +3136,13 @@ def main():
         type=float,
         default=None,
         help='Your voting power in veBLACK (e.g., 15000) - will estimate USD rewards'
+    )
+    parser.add_argument(
+        '--sort-by',
+        type=str,
+        choices=['auto', 'reward', 'profitability', 'stability'],
+        default='auto',
+        help='Sort method: "auto" (default - reward if voting power provided, else profitability), "reward" (estimated reward), "profitability" (profitability score), or "stability" (stability-adjusted score)'
     )
     parser.add_argument(
         '--debug',
@@ -3140,7 +3270,7 @@ def main():
         # If --no-headless is set, force headless=False; otherwise use config default
         headless_param = False if args.no_headless else None
         recommender = BlackholePoolRecommender(headless=headless_param, no_cache=args.no_cache)
-        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, max_pool_percentage=args.max_pool_percentage, pool_name=args.pool_name, quiet=args.json or args.output)
+        recommendations = recommender.recommend_pools(top_n=args.top, user_voting_power=args.voting_power, hide_vamm=args.hide_vamm, min_rewards=args.min_rewards, max_pool_percentage=args.max_pool_percentage, pool_name=args.pool_name, sort_by=args.sort_by, quiet=args.json or args.output)
         
         if not recommendations:
             # Check if pools were fetched but filtered out

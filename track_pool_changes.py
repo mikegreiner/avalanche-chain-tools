@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from pathlib import Path
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 try:
     from blackhole_pool_recommender import BlackholePoolRecommender, Pool
@@ -120,6 +120,15 @@ def save_baseline(recommender: BlackholePoolRecommender, args: argparse.Namespac
         if args.voting_power:
             estimated_reward = pool.estimate_user_rewards(args.voting_power)
         
+        # Calculate stability metrics
+        stability_score = pool.stability_score()
+        stability_adjusted_score = pool.stability_adjusted_score(args.voting_power) if args.voting_power else None
+        
+        # Calculate vote density (votes per dollar of rewards) - key stability predictor
+        vote_density = None
+        if pool.total_rewards and pool.total_rewards > 0 and pool.current_votes:
+            vote_density = pool.current_votes / pool.total_rewards
+        
         pool_data = {
             "name": pool.name,
             "pool_id": pool.pool_id,
@@ -129,7 +138,10 @@ def save_baseline(recommender: BlackholePoolRecommender, args: argparse.Namespac
             "rewards_per_vote": rewards_per_vote,
             "vapr": pool.vapr,
             "profitability_score": pool.profitability_score(),
-            "estimated_reward": estimated_reward
+            "estimated_reward": estimated_reward,
+            "stability_score": stability_score,
+            "stability_adjusted_score": stability_adjusted_score,
+            "vote_density": vote_density
         }
         baseline_data["pools"].append(pool_data)
     
@@ -188,6 +200,7 @@ def save_snapshot(recommender: BlackholePoolRecommender, args: argparse.Namespac
     snapshot = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_voting_power": args.voting_power,  # Store voting power for estimated rewards tracking
+        "sort_by": getattr(args, 'sort_by', 'auto'),  # Track sort method used (if available)
         "pools": []
     }
     
@@ -200,6 +213,15 @@ def save_snapshot(recommender: BlackholePoolRecommender, args: argparse.Namespac
         if args.voting_power:
             estimated_reward = pool.estimate_user_rewards(args.voting_power)
         
+        # Calculate stability metrics
+        stability_score = pool.stability_score()
+        stability_adjusted_score = pool.stability_adjusted_score(args.voting_power) if args.voting_power else None
+        
+        # Calculate vote density (votes per dollar of rewards) - key stability predictor
+        vote_density = None
+        if pool.total_rewards and pool.total_rewards > 0 and pool.current_votes:
+            vote_density = pool.current_votes / pool.total_rewards
+        
         pool_data = {
             "name": pool.name,
             "pool_id": pool.pool_id,
@@ -209,7 +231,10 @@ def save_snapshot(recommender: BlackholePoolRecommender, args: argparse.Namespac
             "rewards_per_vote": rewards_per_vote,
             "vapr": pool.vapr,
             "profitability_score": pool.profitability_score(),
-            "estimated_reward": estimated_reward
+            "estimated_reward": estimated_reward,
+            "stability_score": stability_score,
+            "stability_adjusted_score": stability_adjusted_score,
+            "vote_density": vote_density
         }
         snapshot["pools"].append(pool_data)
     
