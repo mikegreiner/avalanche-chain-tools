@@ -232,6 +232,11 @@ pip install pyperclip
 
 If `pyperclip` is not installed, the script will still be saved to a file and you can manually copy it.
 
+**Troubleshooting Pool Selection:**
+- If pools are not being found or selected, check the browser console for diagnostic messages
+- The script searches for pools even if they're hidden and will attempt to make them visible
+- If you see errors about wallet injection (e.g., "Failed to inject getOfflineSigner from keplr"), see the [Wallet Extension Conflicts](#wallet-extension-conflicts) section below
+
 ### Skip Cache (Refresh Data)
 ```bash
 python3 blackhole_pool_recommender.py --no-cache
@@ -445,6 +450,56 @@ Install ChromeDriver. See Installation section above.
 - Try running with `--no-headless` to see what's happening
 - Check if the website requires authentication
 - Verify the URL is correct
+
+### Wallet Extension Conflicts {#wallet-extension-conflicts}
+
+Multiple wallet browser extensions can interfere with each other and with the Blackhole DEX website, causing issues such as:
+- Pools not appearing or disappearing after page refresh
+- Wallet connection problems
+- JavaScript errors in the console
+- Pool selection scripts not working correctly
+
+**Common Conflicts:**
+- **Keplr/ASI Wallet**: Keplr wallet and its forks (like ASI wallet) can conflict with MetaMask and other Ethereum-compatible wallets
+- **Multiple Ethereum Wallets**: Having multiple Ethereum wallet extensions (MetaMask, Coinbase Wallet, etc.) can cause injection conflicts
+- **Cosmos Wallets**: Cosmos ecosystem wallets (Keplr, Leap, etc.) may interfere with Ethereum-based DEX interactions
+
+**Symptoms:**
+- Console errors like: `Failed to inject getOfflineSigner from keplr. Probably, other wallet is trying to intercept Keplr`
+- Pools visible on first page load but disappear after refresh
+- Pool selection script runs but doesn't find all pools
+- Wallet connection issues or unexpected disconnections
+
+**Solutions:**
+1. **Disable Conflicting Extensions**: Temporarily disable wallet extensions you're not using:
+   - Go to `chrome://extensions/` (or `edge://extensions/` for Edge)
+   - Disable extensions you're not actively using
+   - Keep only the wallet extension you need for Blackhole DEX (typically MetaMask for Avalanche)
+
+2. **Use Separate Browser Profiles**: Create separate browser profiles for different wallet ecosystems:
+   - One profile for Ethereum/Avalanche (MetaMask)
+   - Another profile for Cosmos (Keplr)
+   - This prevents extension conflicts entirely
+
+3. **Check Console Errors**: Open browser DevTools (F12) and check the Console tab for wallet-related errors:
+   - Look for messages about wallet injection failures
+   - Note which extensions are mentioned in error messages
+   - Disable the conflicting extension(s)
+
+4. **Test Pool Selection**: After disabling conflicting extensions:
+   - Refresh the Blackhole DEX voting page
+   - Verify all pools are visible
+   - Run the pool selection script again
+   - Check that all recommended pools are found and selected
+
+**Example:**
+If you're using MetaMask for Avalanche but also have ASI wallet (Keplr fork) installed:
+1. Disable ASI wallet extension
+2. Refresh https://blackhole.xyz/vote
+3. Verify pools are visible and stable
+4. Run the pool selection script
+
+**Note:** You can re-enable extensions after voting - the conflict primarily affects the voting page interaction, not your wallet functionality.
 
 ## Next Steps
 

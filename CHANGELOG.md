@@ -4,6 +4,38 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed & Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.5.0
+- **Critical Bug Fix**: Fixed JavaScript syntax error in pool selection script
+  - Changed outer function from `(function()` to `(async function()` to support `await` calls
+  - Script now runs correctly when pasted into browser console
+  - Resolved issue where script would not execute (just returned newline)
+- **Enhanced Pool Discovery**: Significantly improved pool selection reliability
+  - Case-insensitive address matching (handles checksummed vs lowercase addresses)
+  - Searches all pools including hidden ones (handles dynamic filtering)
+  - Makes hidden pools visible before selecting them
+  - Waits for page/React to finish rendering before searching
+  - Multiple search strategies with fallbacks:
+    - Strategy 1: Address search in HTML/text (case-insensitive)
+    - Strategy 2: Enhanced data attribute search
+    - Strategy 3: Multiple name variations (with/without prefixes, token pairs)
+    - Strategy 4: Deep search through React props and data attributes
+- **Diagnostic Features**: Added comprehensive debugging output
+  - Logs pool visibility (visible vs hidden counts)
+  - Detects multiple pool sections/containers
+  - Checks for search/filter inputs that might hide pools
+  - Lists all pools found with their status and addresses
+  - Shows which target pools are present/missing
+- **Helper Functions**: Added utility functions for visibility handling
+  - `isElementVisible()` - checks if pools are actually visible
+  - `ensureElementVisible()` - makes hidden pools visible and scrolls into view
+  - `waitForPools()` - waits for pools to be available before searching
+- **Documentation**: Added wallet extension conflict troubleshooting
+  - New section explaining common wallet conflicts (Keplr/ASI, multiple Ethereum wallets)
+  - Symptoms and solutions for resolving extension conflicts
+  - Example scenarios and step-by-step resolution guide
+  - Reference in main README for easy discovery
+
 ### Enhanced - Transaction Narrator (`avalanche_transaction_narrator.py`)
 - **Version**: 1.3.0
 - **Supermassive NFT Claim Details**: Enhanced claim transaction descriptions to include comprehensive NFT information
