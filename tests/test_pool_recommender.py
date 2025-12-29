@@ -1079,3 +1079,130 @@ class TestVAPRExtraction:
         percentages2 = re.findall(vapr_pattern, text2)
         assert len(percentages2) == 1
         assert float(percentages2[0].replace(',', '')) == 2500.75
+
+
+class TestRewardExtractionWithSuffixes:
+    """Tests for reward extraction with k (thousands) and M (millions) suffixes"""
+    
+    def test_reward_extraction_with_k_suffix(self):
+        """Test that reward values with 'k' suffix are correctly parsed as thousands"""
+        # Test the regex pattern used in the code
+        reward_pattern = r'\$([\d,]+\.?\d*)\s*([kKmM])?'
+        
+        # Test cases: (input_text, expected_value)
+        test_cases = [
+            ("$26.49k", 26490.0),
+            ("$1.5k", 1500.0),
+            ("$100k", 100000.0),
+            ("$1,234.56k", 1234560.0),
+            ("$26.49K", 26490.0),  # Uppercase K
+            ("Fees + Incentives: $26.49k", 26490.0),
+            ("Total: $31.70", 31.70),  # No suffix
+            ("$5.21", 5.21),  # No suffix
+        ]
+        
+        for input_text, expected_value in test_cases:
+            matches = re.findall(reward_pattern, input_text)
+            assert len(matches) > 0, f"Pattern should match '{input_text}'"
+            
+            # Process the first match
+            match = matches[0]
+            num_str = match[0].replace(',', '')
+            val = float(num_str)
+            suffix = match[1] if len(match) > 1 and match[1] else ''
+            
+            # Apply multiplier
+            if suffix.lower() == 'k':
+                val *= 1000
+            elif suffix.lower() == 'm':
+                val *= 1000000
+            
+            assert abs(val - expected_value) < 0.01, \
+                f"Expected {expected_value} from '{input_text}', got {val}"
+    
+    def test_reward_extraction_with_m_suffix(self):
+        """Test that reward values with 'M' suffix are correctly parsed as millions"""
+        reward_pattern = r'\$([\d,]+\.?\d*)\s*([kKmM])?'
+        
+        test_cases = [
+            ("$1.5M", 1500000.0),
+            ("$2.5m", 2500000.0),
+            ("$10M", 10000000.0),
+            ("$1,234.56M", 1234560000.0),
+            ("Total Rewards: $5.2M", 5200000.0),
+        ]
+        
+        for input_text, expected_value in test_cases:
+            matches = re.findall(reward_pattern, input_text)
+            assert len(matches) > 0, f"Pattern should match '{input_text}'"
+            
+            match = matches[0]
+            num_str = match[0].replace(',', '')
+            val = float(num_str)
+            suffix = match[1] if len(match) > 1 and match[1] else ''
+            
+            if suffix.lower() == 'k':
+                val *= 1000
+            elif suffix.lower() == 'm':
+                val *= 1000000
+            
+            assert abs(val - expected_value) < 0.01, \
+                f"Expected {expected_value} from '{input_text}', got {val}"
+    
+    def test_reward_extraction_multiple_values(self):
+        """Test extraction when multiple dollar amounts are present (fees + incentives)"""
+        reward_pattern = r'\$([\d,]+\.?\d*)\s*([kKmM])?'
+        
+        # Test case: fees and incentives shown separately
+        text = "Fees: $5.21\nIncentives: $26.49k\nTotal: $31.70k"
+        matches = re.findall(reward_pattern, text)
+        
+        assert len(matches) >= 3, f"Should find at least 3 values in '{text}'"
+        
+        # Extract and process all values
+        values = []
+        for match in matches:
+            num_str = match[0].replace(',', '')
+            val = float(num_str)
+            suffix = match[1] if len(match) > 1 and match[1] else ''
+            
+            if suffix.lower() == 'k':
+                val *= 1000
+            elif suffix.lower() == 'm':
+                val *= 1000000
+            
+            values.append(val)
+        
+        # Should find $5.21, $26,490, and $31,700
+        assert 5.21 in values or abs(min(values, key=lambda x: abs(x - 5.21)) - 5.21) < 0.01
+        assert 26490.0 in values or abs(min(values, key=lambda x: abs(x - 26490.0)) - 26490.0) < 1.0
+        assert 31700.0 in values or abs(min(values, key=lambda x: abs(x - 31700.0)) - 31700.0) < 1.0
+    
+    def test_reward_extraction_total_pattern(self):
+        """Test extraction of 'Total' labeled values with suffixes"""
+        # Pattern matches the actual pattern used in code: "Total: $X", "Total $X", "= $X", etc.
+        total_pattern = r'(?:total\s*:?\s*|=\s*)\$?([\d,]+\.?\d*)\s*([kKmM])?'
+        
+        test_cases = [
+            ("Total: $31.70k", 31700.0),
+            ("Total = $26.49k", 26490.0),
+            ("Total $26.49k", 26490.0),  # Without colon or equals
+            ("total: $1.5M", 1500000.0),
+            ("= $100k", 100000.0),
+        ]
+        
+        for input_text, expected_value in test_cases:
+            match = re.search(total_pattern, input_text, re.IGNORECASE)
+            assert match is not None, f"Pattern should match '{input_text}'"
+            
+            num_str = match.group(1).replace(',', '')
+            val = float(num_str)
+            suffix = match.group(2) if match.lastindex >= 2 and match.group(2) else ''
+            
+            if suffix and suffix.lower() == 'k':
+                val *= 1000
+            elif suffix and suffix.lower() == 'm':
+                val *= 1000000
+            
+            assert abs(val - expected_value) < 0.01, \
+                f"Expected {expected_value} from '{input_text}', got {val}"

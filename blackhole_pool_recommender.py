@@ -60,7 +60,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -1236,8 +1236,11 @@ class BlackholePoolRecommender:
                     
                     # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
                     # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
+                    # Note: Fees and Incentives might be shown separately, so we need to sum them
                     total_rewards = 0.0
                     rewards_text_found = None  # Track the actual rewards text we found
+                    fees_value = None
+                    incentives_value = None
                     try:
                         # Use find_elements to avoid hanging on implicit wait
                         right_sections = element.find_elements(By.XPATH, ".//div[contains(@class, 'liquidity-pool-cell-right')]")
@@ -1245,6 +1248,46 @@ class BlackholePoolRecommender:
                             raise Exception("Right section not found")
                         right_section = right_sections[0]
                         slots = right_section.find_elements(By.XPATH, ".//div[contains(@class, 'voting-pool-cell-slot')]")
+                        
+                        # First, search all slots for separate "Fees" and "Incentives" values
+                        # This handles cases where they're shown separately
+                        for slot_idx, slot in enumerate(slots):
+                            slot_text = slot.text.strip()
+                            # Look for Fees column (typically in slots 2-3)
+                            if 'fee' in slot_text.lower() and 'incentive' not in slot_text.lower():
+                                fees_match = re.search(r'\$([\d,]+\.?\d*)\s*([kKmM])?', slot_text)
+                                if fees_match:
+                                    try:
+                                        num_str = fees_match.group(1).replace(',', '')
+                                        fees_value = float(num_str)
+                                        # Apply multiplier for k (thousands) or M (millions)
+                                        suffix = fees_match.group(2) if fees_match.lastindex >= 2 and fees_match.group(2) else ''
+                                        if suffix and suffix.lower() == 'k':
+                                            fees_value *= 1000
+                                        elif suffix and suffix.lower() == 'm':
+                                            fees_value *= 1000000
+                                    except:
+                                        pass
+                            # Look for Incentives column (typically in slot 4)
+                            elif 'incentive' in slot_text.lower() and 'fee' not in slot_text.lower():
+                                incentives_match = re.search(r'\$([\d,]+\.?\d*)\s*([kKmM])?', slot_text)
+                                if incentives_match:
+                                    try:
+                                        num_str = incentives_match.group(1).replace(',', '')
+                                        incentives_value = float(num_str)
+                                        # Apply multiplier for k (thousands) or M (millions)
+                                        suffix = incentives_match.group(2) if incentives_match.lastindex >= 2 and incentives_match.group(2) else ''
+                                        if suffix and suffix.lower() == 'k':
+                                            incentives_value *= 1000
+                                        elif suffix and suffix.lower() == 'm':
+                                            incentives_value *= 1000000
+                                    except:
+                                        pass
+                        
+                        # If we found both fees and incentives separately, sum them
+                        if fees_value is not None and incentives_value is not None:
+                            total_rewards = fees_value + incentives_value
+                            rewards_text_found = f"Fees: ${fees_value:.2f} + Incentives: ${incentives_value:.2f}"
                         
                         # Look for TOTAL REWARDS - it's in slot 6 or 7, contains "Fees + Incentives"
                         if len(slots) >= 7:
@@ -1259,9 +1302,63 @@ class BlackholePoolRecommender:
                                 elif any(zero_indicator in rewards_text for zero_indicator in ['$0', '$0.00', '$0,000', '--', '?', '?', 'no reward', 'n/a', 'n/a']):
                                     total_rewards = 0.0  # Explicitly set to 0 if we see indicators
                                 else:
-                                    rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
-                                    if rewards_match:
-                                        total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                                    # Find ALL dollar amounts in the text (may contain fees + incentives separately)
+                                    # Pattern matches: $123.45, $1,234.56, $26.49k, $1.2M, etc.
+                                    all_rewards_matches = re.findall(r'\$([\d,]+\.?\d*)\s*([kKmM])?', rewards_text)
+                                    if all_rewards_matches:
+                                        # Extract all values, handling k/M suffixes
+                                        reward_values = []
+                                        for match in all_rewards_matches:
+                                            try:
+                                                num_str = match[0].replace(',', '').replace('~', '')
+                                                val = float(num_str)
+                                                # Apply multiplier for k (thousands) or M (millions)
+                                                suffix = match[1] if len(match) > 1 and match[1] else ''
+                                                if suffix.lower() == 'k':
+                                                    val *= 1000
+                                                elif suffix.lower() == 'm':
+                                                    val *= 1000000
+                                                if val > 0:
+                                                    reward_values.append(val)
+                                            except:
+                                                pass
+                                        if reward_values:
+                                            # Check if any value is labeled as "Total" or follows "="
+                                            # Look for patterns like "Total: $X", "Total $X", or "$X" after "="
+                                            # Also handle k/M suffixes
+                                            total_match = re.search(r'(?:total\s*:?\s*|=\s*)\$?([\d,]+\.?\d*)\s*([kKmM])?', rewards_text, re.IGNORECASE)
+                                            if total_match:
+                                                try:
+                                                    num_str = total_match.group(1).replace(',', '')
+                                                    total_val = float(num_str)
+                                                    # Apply multiplier for k (thousands) or M (millions)
+                                                    suffix = total_match.group(2) if total_match.lastindex >= 2 and total_match.group(2) else ''
+                                                    if suffix and suffix.lower() == 'k':
+                                                        total_val *= 1000
+                                                    elif suffix and suffix.lower() == 'm':
+                                                        total_val *= 1000000
+                                                    if total_val > 0:
+                                                        total_rewards = total_val
+                                                    else:
+                                                        # Fallback: if multiple values, try summing (fees + incentives)
+                                                        if len(reward_values) > 1:
+                                                            total_rewards = sum(reward_values)
+                                                        else:
+                                                            total_rewards = max(reward_values)
+                                                except:
+                                                    # Fallback: if multiple values, try summing (fees + incentives)
+                                                    if len(reward_values) > 1:
+                                                        total_rewards = sum(reward_values)
+                                                    else:
+                                                        total_rewards = max(reward_values)
+                                            else:
+                                                # If multiple values found, they might be fees + incentives that need summing
+                                                # Otherwise, use the largest value (total rewards should be >= any component)
+                                                if len(reward_values) > 1:
+                                                    # Sum all values (fees + incentives = total)
+                                                    total_rewards = sum(reward_values)
+                                                else:
+                                                    total_rewards = max(reward_values)
                             
                             # If not found, try slot 7
                             if total_rewards == 0.0 and len(slots) >= 8:
@@ -1274,9 +1371,62 @@ class BlackholePoolRecommender:
                                     elif any(zero_indicator in rewards_text for zero_indicator in ['$0', '$0.00', '$0,000', '--', '?', '?', 'no reward', 'n/a', 'n/a']):
                                         total_rewards = 0.0  # Explicitly set to 0 if we see indicators
                                     else:
-                                        rewards_match = re.search(r'\$[\d,]+\.?\d*', rewards_text)
-                                        if rewards_match:
-                                            total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
+                                        # Find ALL dollar amounts in the text (may contain fees + incentives separately)
+                                        # Pattern matches: $123.45, $1,234.56, $26.49k, $1.2M, etc.
+                                        all_rewards_matches = re.findall(r'\$([\d,]+\.?\d*)\s*([kKmM])?', rewards_text)
+                                        if all_rewards_matches:
+                                            # Extract all values, handling k/M suffixes
+                                            reward_values = []
+                                            for match in all_rewards_matches:
+                                                try:
+                                                    num_str = match[0].replace(',', '').replace('~', '')
+                                                    val = float(num_str)
+                                                    # Apply multiplier for k (thousands) or M (millions)
+                                                    suffix = match[1] if len(match) > 1 and match[1] else ''
+                                                    if suffix.lower() == 'k':
+                                                        val *= 1000
+                                                    elif suffix.lower() == 'm':
+                                                        val *= 1000000
+                                                    if val > 0:
+                                                        reward_values.append(val)
+                                                except:
+                                                    pass
+                                            if reward_values:
+                                                # Check if any value is labeled as "Total" or follows "="
+                                                # Also handle k/M suffixes
+                                                total_match = re.search(r'(?:total\s*:?\s*|=\s*)\$?([\d,]+\.?\d*)\s*([kKmM])?', rewards_text, re.IGNORECASE)
+                                                if total_match:
+                                                    try:
+                                                        num_str = total_match.group(1).replace(',', '')
+                                                        total_val = float(num_str)
+                                                        # Apply multiplier for k (thousands) or M (millions)
+                                                        suffix = total_match.group(2) if total_match.lastindex >= 2 and total_match.group(2) else ''
+                                                        if suffix and suffix.lower() == 'k':
+                                                            total_val *= 1000
+                                                        elif suffix and suffix.lower() == 'm':
+                                                            total_val *= 1000000
+                                                        if total_val > 0:
+                                                            total_rewards = total_val
+                                                        else:
+                                                            # Fallback: if multiple values, try summing (fees + incentives)
+                                                            if len(reward_values) > 1:
+                                                                total_rewards = sum(reward_values)
+                                                            else:
+                                                                total_rewards = max(reward_values)
+                                                    except:
+                                                        # Fallback: if multiple values, try summing (fees + incentives)
+                                                        if len(reward_values) > 1:
+                                                            total_rewards = sum(reward_values)
+                                                        else:
+                                                            total_rewards = max(reward_values)
+                                                else:
+                                                    # If multiple values found, they might be fees + incentives that need summing
+                                                    # Otherwise, use the largest value (total rewards should be >= any component)
+                                                    if len(reward_values) > 1:
+                                                        # Sum all values (fees + incentives = total)
+                                                        total_rewards = sum(reward_values)
+                                                    else:
+                                                        total_rewards = max(reward_values)
                         
                         # Fallback: search all slots for "Fees + Incentives"
                         if total_rewards == 0.0 and rewards_text_found is None:
@@ -1291,23 +1441,83 @@ class BlackholePoolRecommender:
                                     elif any(zero_indicator in slot_text for zero_indicator in ['$0', '$0.00', '$0,000', '--', '?', '?', 'no reward', 'n/a', 'n/a']):
                                         total_rewards = 0.0  # Explicitly set to 0 if we see indicators
                                         break
-                                    rewards_match = re.search(r'\$[\d,]+\.?\d*', slot_text)
-                                    if rewards_match:
-                                        total_rewards = float(rewards_match.group(0).replace('$', '').replace(',', '').replace('~', ''))
-                                        break
+                                    # Find ALL dollar amounts in the text (may contain fees + incentives separately)
+                                    # Pattern matches: $123.45, $1,234.56, $26.49k, $1.2M, etc.
+                                    all_rewards_matches = re.findall(r'\$([\d,]+\.?\d*)\s*([kKmM])?', slot_text)
+                                    if all_rewards_matches:
+                                        # Extract all values, handling k/M suffixes
+                                        reward_values = []
+                                        for match in all_rewards_matches:
+                                            try:
+                                                num_str = match[0].replace(',', '').replace('~', '')
+                                                val = float(num_str)
+                                                # Apply multiplier for k (thousands) or M (millions)
+                                                suffix = match[1] if len(match) > 1 and match[1] else ''
+                                                if suffix.lower() == 'k':
+                                                    val *= 1000
+                                                elif suffix.lower() == 'm':
+                                                    val *= 1000000
+                                                if val > 0:
+                                                    reward_values.append(val)
+                                            except:
+                                                pass
+                                        if reward_values:
+                                            # Check if any value is labeled as "Total" or follows "="
+                                            # Also handle k/M suffixes
+                                            total_match = re.search(r'(?:total\s*:?\s*|=\s*)\$?([\d,]+\.?\d*)\s*([kKmM])?', slot_text, re.IGNORECASE)
+                                            if total_match:
+                                                try:
+                                                    num_str = total_match.group(1).replace(',', '')
+                                                    total_val = float(num_str)
+                                                    # Apply multiplier for k (thousands) or M (millions)
+                                                    suffix = total_match.group(2) if total_match.lastindex >= 2 and total_match.group(2) else ''
+                                                    if suffix and suffix.lower() == 'k':
+                                                        total_val *= 1000
+                                                    elif suffix and suffix.lower() == 'm':
+                                                        total_val *= 1000000
+                                                    if total_val > 0:
+                                                        total_rewards = total_val
+                                                    else:
+                                                        # Fallback: if multiple values, try summing (fees + incentives)
+                                                        if len(reward_values) > 1:
+                                                            total_rewards = sum(reward_values)
+                                                        else:
+                                                            total_rewards = max(reward_values)
+                                                except:
+                                                    # Fallback: if multiple values, try summing (fees + incentives)
+                                                    if len(reward_values) > 1:
+                                                        total_rewards = sum(reward_values)
+                                                    else:
+                                                        total_rewards = max(reward_values)
+                                            else:
+                                                # If multiple values found, they might be fees + incentives that need summing
+                                                # Otherwise, use the largest value (total rewards should be >= any component)
+                                                if len(reward_values) > 1:
+                                                    # Sum all values (fees + incentives = total)
+                                                    total_rewards = sum(reward_values)
+                                                else:
+                                                    total_rewards = max(reward_values)
+                                            break
                     except Exception as e:
                         pass
                     
                     # Fallback: if not found in column, search full text (but only if we didn't already find $0)
                     # Only use fallback if we haven't explicitly found a rewards field that says $0
                     if total_rewards == 0.0 and rewards_text_found is None:
-                        # Find all $ amounts
-                        rewards_matches = re.findall(r'\$[\d,]+\.?\d*', text)
+                        # Find all $ amounts (including k/M suffixes)
+                        rewards_matches = re.findall(r'\$([\d,]+\.?\d*)\s*([kKmM])?', text)
                         if rewards_matches:
                             reward_values = []
                             for match in rewards_matches:
                                 try:
-                                    val = float(match.replace('$', '').replace(',', '').replace('~', ''))
+                                    num_str = match[0].replace(',', '').replace('~', '')
+                                    val = float(num_str)
+                                    # Apply multiplier for k (thousands) or M (millions)
+                                    suffix = match[1] if len(match) > 1 and match[1] else ''
+                                    if suffix.lower() == 'k':
+                                        val *= 1000
+                                    elif suffix.lower() == 'm':
+                                        val *= 1000000
                                     # Skip explicit $0 values
                                     if val > 0:
                                         reward_values.append(val)

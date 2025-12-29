@@ -4,6 +4,22 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.1] - 2025-12-29
+
+### Fixed - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.5.1
+- **Critical Bug Fix**: Fixed reward extraction to handle "k" (thousands) and "M" (millions) suffixes
+  - Previously, "$26.49k" was incorrectly parsed as $26.49 instead of $26,490
+  - Updated all reward extraction regex patterns to capture and apply suffix multipliers
+  - Fixed estimated reward calculations that were showing incorrect values (e.g., $0.03 instead of $31.70)
+  - Now correctly handles formats like "$26.49k", "$1.5M", "$100k", etc.
+  - Applied fix to all extraction locations: fees, incentives, total rewards, and fallback searches
+- **Testing**: Added comprehensive test suite for k/M suffix parsing
+  - Tests for "k" suffix (thousands)
+  - Tests for "M" suffix (millions)
+  - Tests for multiple values (fees + incentives)
+  - Tests for "Total" pattern matching with suffixes
+
 ### Fixed & Enhanced - Pool Recommender (`blackhole_pool_recommender.py`)
 - **Version**: 1.5.0
 - **Critical Bug Fix**: Fixed JavaScript syntax error in pool selection script
