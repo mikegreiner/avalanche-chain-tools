@@ -4,6 +4,16 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-01-05
+
+### Fixed - Pool Recommender (`blackhole_pool_recommender.py`)
+- **Version**: 1.5.2
+- **Bug Fix**: Fixed vote count extraction to handle "K" (thousands) suffix
+  - Previously, "580.81K" was incorrectly parsed as 0 because the script only looked for "M" (millions) or raw numbers >= 1000
+  - Updated all vote extraction regex patterns to support both "K" and "M" multipliers
+  - Fixed share percentage and estimated reward calculations for pools with thousand-scale vote counts
+  - Applied fix to all extraction locations: forward slot check, reverse slot check, and fallback text search
+
 ## [1.5.1] - 2025-12-29
 
 ### Fixed - Pool Recommender (`blackhole_pool_recommender.py`)

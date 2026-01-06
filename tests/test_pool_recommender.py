@@ -622,7 +622,7 @@ class TestCaching:
                 def __init__(self):
                     self.st_size = 10000  # 10KB, well above minimum
             
-            def mock_stat(self):
+            def mock_stat(self, *args, **kwargs):
                 if self == recommender.cache_file:
                     return MockStatResult()
                 return original_stat(self)
@@ -647,12 +647,16 @@ class TestCaching:
             with patch.object(Path, 'exists', mock_exists):
                 with patch.object(Path, 'stat', mock_stat):
                     # Should use cache and return cached pools
-                    pools = recommender.fetch_pools(quiet=True)
-                    
-                    # Should have called _load_from_cache
-                    mock_load.assert_called_once()
-                    # Just check we got pools back, not exact match (since we modified them)
-                    assert len(pools) == len(test_pools_with_high_rewards)
+                    # Patch fetch_pools_selenium class method to be safe
+                    with patch('blackhole_pool_recommender.BlackholePoolRecommender.fetch_pools_selenium') as mock_selenium:
+                        mock_selenium.return_value = test_pools_with_high_rewards
+                        
+                        pools = recommender.fetch_pools(quiet=True)
+                        
+                        # Should have called _load_from_cache
+                        mock_load.assert_called_once()
+                        # Just check we got pools back, not exact match (since we modified them)
+                        assert len(pools) == len(test_pools_with_high_rewards)
     
     def test_fetch_pools_skips_incomplete_cache(self):
         """Test that fetch_pools skips cache if it has very few pools (< 50)"""
@@ -691,10 +695,20 @@ class TestCaching:
         """Test that _save_to_cache still works even when no_cache=True"""
         recommender = BlackholePoolRecommender(no_cache=True)
         
-        test_pools = [
-            Pool('Test Pool 1', 1000.0, 50.0, 10000.0),
-            Pool('Test Pool 2', 2000.0, 75.0, 5000.0)
-        ]
+        # Create valid pools (50+ pools to pass validation)
+        test_pools = []
+        for i in range(1, 51):
+            rewards = 1000.0 + i * 100
+            if i == 50:
+                rewards = 20000.0  # High reward pool
+            
+            test_pools.append(Pool(
+                name=f'Test Pool {i}',
+                total_rewards=rewards,
+                vapr=50.0 + i,
+                current_votes=10000.0 + i * 1000,
+                pool_id=f'0x{i:040d}'  # Mock pool_id
+            ))
         
         # Mock _ensure_cache_dir and file operations
         with patch.object(recommender, '_ensure_cache_dir') as mock_ensure:
@@ -801,7 +815,7 @@ class TestCaching:
                 return True
             return original_exists(self)
         
-        def mock_stat(self):
+        def mock_stat(self, *args, **kwargs):
             if self == recommender.cache_file:
                 # Mock file size (60 pools * 100 bytes = 6000 bytes minimum)
                 mock_stat_result = Mock()
@@ -923,7 +937,7 @@ class TestCaching:
                 return True
             return original_exists(self)
         
-        def mock_stat(self):
+        def mock_stat(self, *args, **kwargs):
             if self == recommender.cache_file:
                 mock_stat_result = Mock()
                 mock_stat_result.st_size = 5000  # Valid size
@@ -984,7 +998,7 @@ class TestCaching:
         from pathlib import Path
         original_stat = Path.stat
         
-        def mock_stat(self):
+        def mock_stat(self, *args, **kwargs):
             if self == recommender.cache_file:
                 mock_stat_result = Mock()
                 mock_stat_result.st_size = 10000  # Valid size
@@ -1206,3 +1220,110 @@ class TestRewardExtractionWithSuffixes:
             
             assert abs(val - expected_value) < 0.01, \
                 f"Expected {expected_value} from '{input_text}', got {val}"
+
+
+class TestVoteExtraction:
+    """Tests for vote count extraction with K/M suffixes"""
+    
+    def test_vote_extraction_k_suffix(self):
+        """Test parsing votes with K (thousands) suffix"""
+        # Simulate the regex used in code: re.search(r'([\d,]+\.?\d*)\s*([MmKk])', text)
+        vote_pattern = r'([\d,]+\.?\d*)\s*([MmKk])'
+        
+        test_cases = [
+            ("580.81K", 580810.0),
+            ("580.81k", 580810.0),
+            ("100K", 100000.0),
+            ("1.5K", 1500.0),
+            ("2,345.67K", 2345670.0),
+            ("Votes: 580.81K", 580810.0),
+        ]
+        
+        for text, expected in test_cases:
+            match = re.search(vote_pattern, text)
+            assert match is not None, f"Should match '{text}'"
+            
+            val_str = match.group(1).replace(',', '')
+            suffix = match.group(2).lower()
+            
+            multiplier = 1_000_000 if suffix == 'm' else 1_000
+            votes = float(val_str) * multiplier
+            
+            assert abs(votes - expected) < 0.01, f"Expected {expected}, got {votes}"
+
+    def test_vote_extraction_m_suffix(self):
+        """Test parsing votes with M (millions) suffix"""
+        vote_pattern = r'([\d,]+\.?\d*)\s*([MmKk])'
+        
+        test_cases = [
+            ("16.03M", 16030000.0),
+            ("16.03m", 16030000.0),
+            ("1M", 1000000.0),
+            ("1.5M", 1500000.0),
+            ("1,234.56M", 1234560000.0),
+        ]
+        
+        for text, expected in test_cases:
+            match = re.search(vote_pattern, text)
+            assert match is not None, f"Should match '{text}'"
+            
+            val_str = match.group(1).replace(',', '')
+            suffix = match.group(2).lower()
+            
+            multiplier = 1_000_000 if suffix == 'm' else 1_000
+            votes = float(val_str) * multiplier
+            
+            assert abs(votes - expected) < 0.01, f"Expected {expected}, got {votes}"
+            
+    def test_vote_extraction_fallback_regex(self):
+        """Test the fallback regex which requires word boundary"""
+        # Fallback pattern used in code: re.search(r'([\d,]+\.?\d*)\s*([MmKk])\b', text)
+        fallback_pattern = r'([\d,]+\.?\d*)\s*([MmKk])\b'
+        
+        test_cases = [
+            ("Total Votes: 580.81K", 580810.0),
+            ("Total Votes: 16.03M", 16030000.0),
+            ("580.81K votes", 580810.0),
+        ]
+        
+        for text, expected in test_cases:
+            match = re.search(fallback_pattern, text)
+            assert match is not None, f"Should match '{text}'"
+            
+            val_str = match.group(1).replace(',', '')
+            suffix = match.group(2).lower()
+            
+            multiplier = 1_000_000 if suffix == 'm' else 1_000
+            votes = float(val_str) * multiplier
+            
+            assert abs(votes - expected) < 0.01, f"Expected {expected}, got {votes}"
+            
+    def test_vote_extraction_no_suffix(self):
+        """Test parsing raw number votes (>= 1000)"""
+        # Logic matches: re.findall(r'\b([\d,]+)\b', first_line)
+        # Then checks if val >= 1000
+        
+        text = "6,967"
+        numbers = re.findall(r'\b([\d,]+)\b', text)
+        votes = None
+        for num_str in numbers:
+            val = float(num_str.replace(',', ''))
+            if val >= 1000:
+                votes = val
+                break
+                
+        assert votes == 6967.0
+        
+        # Should ignore small numbers
+        text_mixed = "123 items with 6,967 votes"
+        numbers = re.findall(r'\b([\d,]+)\b', text_mixed)
+        votes = None
+        for num_str in numbers:
+            val = float(num_str.replace(',', ''))
+            if val >= 1000:
+                votes = val
+                break # Takes first valid one
+        
+        assert votes == 6967.0
+
+

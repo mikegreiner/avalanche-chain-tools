@@ -60,7 +60,7 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # Version number (semantic versioning: MAJOR.MINOR.PATCH)
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 # Set precision for decimal calculations (from config)
 _precision = _config.get('decimal_precision', 50)
@@ -1234,6 +1234,10 @@ class BlackholePoolRecommender:
                             if name_match:
                                 name = name_match.group(1) or name_match.group(2)
                     
+
+                    
+
+                    
                     # Extract total rewards - it's in slots 6 or 7 (shows "Fees + Incentives")
                     # Columns order: 0-1=TVL, 2-3=FEES, 4=INCENTIVES, 5-6=TOTAL REWARDS, 7-8=VOTES/vAPR
                     # Note: Fees and Incentives might be shown separately, so we need to sum them
@@ -1589,10 +1593,13 @@ class BlackholePoolRecommender:
                                     first_line = lines[0].strip()
                                     
                                     # First check for M suffix (millions)
-                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
+                                    # Check for K/M suffix (thousands/millions)
+                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*([MmKk])', first_line)
                                     if votes_match:
                                         votes_str = votes_match.group(1).replace(',', '')
-                                        votes = float(votes_str) * 1_000_000
+                                        suffix = votes_match.group(2).lower()
+                                        multiplier = 1_000_000 if suffix == 'm' else 1_000
+                                        votes = float(votes_str) * multiplier
                                         break
                                     
                                     # Then check for numbers without M (like "544,767" or "6,967")
@@ -1616,10 +1623,13 @@ class BlackholePoolRecommender:
                                 lines = votes_text.split('\n')
                                 if lines:
                                     first_line = lines[0].strip()
-                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]', first_line)
+                                    # Check for K/M suffix (thousands/millions)
+                                    votes_match = re.search(r'([\d,]+\.?\d*)\s*([MmKk])', first_line)
                                     if votes_match:
                                         votes_str = votes_match.group(1).replace(',', '')
-                                        votes = float(votes_str) * 1_000_000
+                                        suffix = votes_match.group(2).lower()
+                                        multiplier = 1_000_000 if suffix == 'm' else 1_000
+                                        votes = float(votes_str) * multiplier
                                         break
                                     numbers = re.findall(r'\b([\d,]+)\b', first_line)
                                     if numbers:
@@ -1636,11 +1646,13 @@ class BlackholePoolRecommender:
                     
                     # Fallback: search full text for votes pattern (only if not found in slots)
                     if votes is None:
-                        # First try pattern with M suffix (millions)
-                        votes_match = re.search(r'([\d,]+\.?\d*)\s*[Mm]\b', text)
+                        # First try pattern with K/M suffix (thousands/millions)
+                        votes_match = re.search(r'([\d,]+\.?\d*)\s*([MmKk])\b', text)
                         if votes_match:
                             votes_str = votes_match.group(1).replace(',', '')
-                            votes = float(votes_str) * 1_000_000
+                            suffix = votes_match.group(2).lower()
+                            multiplier = 1_000_000 if suffix == 'm' else 1_000
+                            votes = float(votes_str) * multiplier
                         else:
                             # Look for standalone numbers that could be votes
                             # Extract numbers and find the largest one that's likely votes
