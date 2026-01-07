@@ -1,0 +1,397 @@
+/* Styles for content script overlay - Dark theme matching Blackhole DEX */
+
+/* Global page scrollbar styling - Dark theme with yellow/green accents */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 12px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: #0a0a0a;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: rgba(255, 215, 0, 0.2);
+  border-radius: 6px;
+  border: 2px solid #0a0a0a;
+  transition: background 0.2s;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 215, 0, 0.35);
+}
+
+html::-webkit-scrollbar-thumb:active,
+body::-webkit-scrollbar-thumb:active {
+  background: rgba(50, 205, 50, 0.4);
+}
+
+/* Firefox scrollbar styling */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 215, 0, 0.2) #0a0a0a;
+}
+
+#blackhole-tools-overlay {
+  position: fixed !important;
+  top: 20px !important;
+  right: 40px;
+  width: 460px;
+  max-width: calc(100vw - 80px);
+  max-height: 80vh;
+  background: #0a0a0a;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  z-index: 10000 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+  user-select: none;
+  overflow: hidden;
+}
+
+.blackhole-tools-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.blackhole-tools-header {
+  background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+  color: #ffd700;
+  padding: 12px 12px 12px 14px;
+  border-radius: 12px 12px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+  gap: 8px;
+  min-width: 0;
+  cursor: move;
+  overflow: hidden;
+}
+
+.blackhole-tools-header button {
+  cursor: pointer;
+}
+
+.blackhole-tools-header-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.blackhole-tools-select-all,
+.blackhole-tools-clear-all,
+.blackhole-tools-split-votes {
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  color: #ffd700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.blackhole-tools-select-all:hover {
+  background: rgba(255, 215, 0, 0.3);
+  border-color: rgba(255, 215, 0, 0.6);
+  transform: translateY(-1px);
+}
+
+.blackhole-tools-clear-all {
+  background: rgba(255, 69, 0, 0.2);
+  border: 1px solid rgba(255, 69, 0, 0.4);
+  color: #ff8c00;
+}
+
+.blackhole-tools-clear-all:hover {
+  background: rgba(255, 69, 0, 0.3);
+  border-color: rgba(255, 69, 0, 0.6);
+  transform: translateY(-1px);
+}
+
+.blackhole-tools-split-votes {
+  background: rgba(50, 205, 50, 0.2);
+  border: 1px solid rgba(50, 205, 50, 0.4);
+  color: #32cd32;
+}
+
+.blackhole-tools-split-votes:hover {
+  background: rgba(50, 205, 50, 0.3);
+  border-color: rgba(50, 205, 50, 0.6);
+  transform: translateY(-1px);
+}
+
+.blackhole-tools-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffd700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+  flex-shrink: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.blackhole-tools-close {
+  background: none;
+  border: none;
+  color: #ffd700;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  max-width: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+  opacity: 0.8;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.blackhole-tools-close:hover {
+  background: rgba(255, 215, 0, 0.2);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.blackhole-tools-content {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+  background: #0a0a0a;
+}
+
+.recommendations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recommendation-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #151515;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 215, 0, 0.15);
+  transition: all 0.2s;
+  position: relative;
+}
+
+.recommendation-item:hover {
+  background: #1a1a1a;
+  border-color: rgba(255, 215, 0, 0.3);
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.1);
+}
+
+.recommendation-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #ffd700 0%, #32cd32 100%);
+  border-radius: 8px 0 0 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.recommendation-item:hover::before {
+  opacity: 1;
+}
+
+/* Selected pool styling */
+.recommendation-item.pool-selected {
+  background: rgba(50, 205, 50, 0.15);
+  border-color: rgba(50, 205, 50, 0.4);
+  box-shadow: 0 0 8px rgba(50, 205, 50, 0.2);
+}
+
+.recommendation-item.pool-selected::before {
+  opacity: 1;
+  background: linear-gradient(180deg, #32cd32 0%, #228b22 100%);
+}
+
+.recommendation-item.pool-selected:hover {
+  background: rgba(50, 205, 50, 0.2);
+  border-color: rgba(50, 205, 50, 0.5);
+}
+
+.pool-rank {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffd700;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 6px rgba(255, 215, 0, 0.4);
+}
+
+.pool-info {
+  flex: 1;
+}
+
+.pool-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #ffffff;
+  margin-bottom: 6px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.pool-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: #cccccc;
+  margin-bottom: 6px;
+}
+
+.pool-metrics span {
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+}
+
+.pool-metrics span:first-child {
+  color: #32cd32;
+  border-color: rgba(50, 205, 50, 0.3);
+  background: rgba(50, 205, 50, 0.1);
+}
+
+.estimated-reward {
+  margin-top: 8px;
+  font-weight: 600;
+  color: #ffd700;
+  font-size: 13px;
+  padding: 6px 10px;
+  background: rgba(255, 215, 0, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  display: inline-block;
+  text-shadow: 0 0 4px rgba(255, 215, 0, 0.3);
+}
+
+.pool-scores {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #999;
+}
+
+.pool-scores span {
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #bbbbbb;
+}
+
+.select-pool-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  color: #ffd700;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.select-pool-btn:hover {
+  background: rgba(255, 215, 0, 0.3);
+  border-color: rgba(255, 215, 0, 0.6);
+  transform: translateY(-1px);
+}
+
+.select-pool-btn.selected {
+  background: rgba(50, 205, 50, 0.3);
+  border-color: rgba(50, 205, 50, 0.6);
+  color: #32cd32;
+}
+
+.select-pool-btn.selected:hover {
+  background: rgba(50, 205, 50, 0.4);
+  border-color: rgba(50, 205, 50, 0.7);
+}
+
+.pool-scores span:first-child {
+  color: #32cd32;
+  border-color: rgba(50, 205, 50, 0.3);
+  background: rgba(50, 205, 50, 0.1);
+}
+
+/* Scrollbar styling for dark theme */
+.blackhole-tools-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.blackhole-tools-content::-webkit-scrollbar-track {
+  background: #0a0a0a;
+  border-radius: 4px;
+}
+
+.blackhole-tools-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+}
+
+.blackhole-tools-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 215, 0, 0.5);
+}
+
+/* Toggle button */
+.blackhole-tools-toggle-btn {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #0a0a0a;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+  transition: all 0.2s;
+  z-index: 99999 !important;
+  position: fixed !important;
+  top: 20px !important;
+  left: 20px !important;
+}
+
+.blackhole-tools-toggle-btn:hover {
+  background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.blackhole-tools-toggle-btn:active {
+  transform: translateY(0);
+}

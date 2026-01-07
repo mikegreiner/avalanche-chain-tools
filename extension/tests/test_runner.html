@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extraction Comparison Tests</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #1a1a1a;
+      color: #00ff00;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 {
+      color: #ffff00;
+      border-bottom: 2px solid #ffff00;
+      padding-bottom: 10px;
+    }
+    #test-results {
+      background: #000;
+      border: 1px solid #333;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .pass {
+      color: #00ff00;
+    }
+    .fail {
+      color: #ff0000;
+    }
+    .error {
+      color: #ff8800;
+    }
+    button {
+      background: #ffff00;
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 3px;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #ffaa00;
+    }
+    .loading {
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 Extraction Comparison Tests</h1>
+  <p>This page tests JavaScript extraction against Python extraction results.</p>
+  <button onclick="runTests()">Run Tests</button>
+  <div id="test-results" class="loading">Loading test suite...</div>
+
+  <!-- Load content-bundle.js first -->
+  <script src="../content-bundle.js"></script>
+  
+  <!-- Then load test suite -->
+  <script src="test_extraction_comparison.js"></script>
+  
+  <script>
+    const resultsDiv = document.getElementById('test-results');
+    
+    function formatTestResults(summary) {
+      let output = '';
+      output += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+      output += `Summary: ${summary.passed} passed, ${summary.failed} failed out of ${summary.total} tests\n`;
+      output += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+      
+      for (const result of summary.results) {
+        if (result.passed) {
+          output += `✅ ${result.testCase}: PASSED\n`;
+        } else if (result.error) {
+          output += `❌ ${result.testCase}: ERROR - ${result.error}\n`;
+        } else {
+          output += `❌ ${result.testCase}: FAILED\n`;
+          output += '   Comparisons:\n';
+          for (const [field, comparison] of Object.entries(result.comparisons)) {
+            if (comparison && !comparison.passed) {
+              output += `     ${field}:\n`;
+              output += `       Expected: ${comparison.expected}\n`;
+              output += `       Actual:   ${comparison.actual}\n`;
+              output += `       Diff:     ${comparison.diff} (${comparison.percentDiff})\n`;
+              output += `       Tolerance: ${comparison.tolerance}\n`;
+            } else if (comparison && comparison.error) {
+              output += `     ${field}: ${comparison.error}\n`;
+            }
+          }
+        }
+        
+        output += `   Raw results:\n`;
+        output += `     Python:    total_rewards=${result.rawResults.python.total_rewards}, vapr=${result.rawResults.python.vapr}, votes=${result.rawResults.python.current_votes}\n`;
+        output += `     JavaScript: total_rewards=${result.rawResults.javascript.total_rewards}, vapr=${result.rawResults.javascript.vapr}, votes=${result.rawResults.javascript.current_votes}\n`;
+        output += '\n';
+      }
+      
+      return output;
+    }
+    
+    function runTests() {
+      resultsDiv.textContent = 'Running tests...\n';
+      resultsDiv.className = 'loading';
+      
+      try {
+        if (typeof runAllTests === 'undefined') {
+          resultsDiv.textContent = 'ERROR: runAllTests function not found. Make sure test_extraction_comparison.js is loaded.';
+          resultsDiv.className = 'error';
+          return;
+        }
+        
+        if (typeof extractPoolFromElement === 'undefined') {
+          resultsDiv.textContent = 'ERROR: extractPoolFromElement function not found. Make sure content-bundle.js is loaded.';
+          resultsDiv.className = 'error';
+          return;
+        }
+        
+        const summary = runAllTests();
+        resultsDiv.textContent = formatTestResults(summary);
+        resultsDiv.className = summary.failed === 0 ? 'pass' : 'fail';
+        
+      } catch (error) {
+        resultsDiv.textContent = `ERROR: ${error.message}\n\n${error.stack}`;
+        resultsDiv.className = 'error';
+      }
+    }
+    
+    // Auto-run on load if functions are available
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        if (typeof runAllTests !== 'undefined' && typeof extractPoolFromElement !== 'undefined') {
+          runTests();
+        } else {
+          resultsDiv.textContent = 'Waiting for test functions to load...\n\nClick "Run Tests" when ready.';
+        }
+      }, 500);
+    });
+  </script>
+</body>
+</html>

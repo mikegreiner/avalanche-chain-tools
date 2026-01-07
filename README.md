@@ -193,6 +193,32 @@ python3 blackhole_pool_recommender.py --version
 
 ---
 
+### 6. Blackhole DEX Tools Browser Extension
+**Location:** `extension/`  
+**Version:** 1.0.0
+
+A browser extension that brings pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections all without leaving the page.
+
+**Features:**
+- **Pool Recommendations**: Automatically extracts and analyzes pools from the voting page
+- **Personalized Estimates**: Shows estimated USD rewards based on your voting power
+- **Voting Tools**: Select pools, clear selections, and split votes evenly
+- **Draggable Panel**: Move the recommendations panel anywhere on the page
+- **Auto-Refresh**: Recommendations update automatically when filters change
+- **Dark Theme**: Matches Blackhole DEX styling with yellow/green accents
+
+**Quick Start:**
+1. Open `chrome://extensions` (or `brave://extensions`)
+2. Enable "Developer mode"
+3. Click "Load unpacked" and select the `extension/` folder
+4. Navigate to `https://blackhole.xyz/vote`
+5. Click the extension icon and configure your voting power
+6. View recommendations in the overlay panel
+
+**Documentation:** See [extension/README.md](extension/README.md) for detailed installation and usage instructions.
+
+---
+
 ### 5. Pool Tracking Tool
 **Script:** `track_pool_changes.py`  
 **Version:** 1.2.0
