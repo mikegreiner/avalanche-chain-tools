@@ -195,7 +195,7 @@ python3 blackhole_pool_recommender.py --version
 
 ### 6. Blackhole DEX Tools Browser Extension
 **Location:** `extension/`  
-**Version:** 1.0.0
+**Version:** 1.0.1
 
 A browser extension that brings pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections all without leaving the page.
 

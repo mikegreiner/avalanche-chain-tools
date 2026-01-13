@@ -805,24 +805,46 @@ let settings = {
   enableOverlay: true
 };
 
-chrome.storage.local.get(['blackholeSettings'], (result) => {
-  if (result.blackholeSettings) {
-    settings = { ...settings, ...result.blackholeSettings };
+// Load settings with error handling
+try {
+  if (chrome.runtime && chrome.runtime.id) {
+    chrome.storage.local.get(['blackholeSettings'], (result) => {
+      if (result && result.blackholeSettings) {
+        settings = { ...settings, ...result.blackholeSettings };
+      }
+      init();
+    });
+  } else {
+    console.warn('Extension context not available, using default settings');
+    init();
   }
+} catch (error) {
+  console.warn('Error loading settings:', error);
   init();
-});
+}
 
-chrome.storage.onChanged.addListener((changes) => {
-  if (changes.blackholeSettings) {
-    settings = { ...settings, ...changes.blackholeSettings.newValue };
-    updateOverlay();
+// Set up storage change listener with error handling
+try {
+  if (chrome.runtime && chrome.runtime.id) {
+    chrome.storage.onChanged.addListener((changes) => {
+      try {
+        if (changes.blackholeSettings) {
+          settings = { ...settings, ...changes.blackholeSettings.newValue };
+          updateOverlay();
+        }
+      } catch (error) {
+        console.warn('Error handling storage change:', error);
+      }
+    });
   }
-});
+} catch (error) {
+  console.warn('Error setting up storage listener:', error);
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SETTINGS_UPDATED') {
-    chrome.storage.local.get(['blackholeSettings'], (result) => {
-      if (result.blackholeSettings) {
+    safeStorageGet(['blackholeSettings']).then((result) => {
+      if (result && result.blackholeSettings) {
         settings = { ...settings, ...result.blackholeSettings };
         // Update overlay visibility based on enableOverlay setting
         let overlay = document.getElementById('blackhole-tools-overlay');
@@ -833,6 +855,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Always update overlay content (even if hidden) so it's ready when shown
         updateOverlay();
       }
+    }).catch((error) => {
+      console.warn('Error loading settings:', error);
     });
   } else if (message.type === 'REFRESH_POOL_DATA') {
     // Reset retry counter
@@ -847,9 +871,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     overlay.style.display = 'block';
     // Update enableOverlay setting to true
     settings.enableOverlay = true;
-    chrome.storage.local.set({ 
+    safeStorageSet({ 
       overlayVisible: true,
       blackholeSettings: settings
+    }).catch((error) => {
+      console.warn('Error saving settings:', error);
     });
     updateOverlay();
   } else if (message.type === 'TOGGLE_OVERLAY') {
@@ -861,9 +887,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const isVisible = overlay.style.display !== 'none' && overlay.offsetParent !== null;
     overlay.style.display = isVisible ? 'none' : 'block';
     settings.enableOverlay = !isVisible;
-    chrome.storage.local.set({ 
+    safeStorageSet({ 
       overlayVisible: !isVisible,
       blackholeSettings: settings
+    }).catch((error) => {
+      console.warn('Error saving settings:', error);
     });
     if (!isVisible) {
       updateOverlay();
@@ -1097,6 +1125,8 @@ function injectOverlay() {
   
   overlay = document.createElement('div');
   overlay.id = 'blackhole-tools-overlay';
+  // Set default visibility to block (will be adjusted by settings)
+  overlay.style.display = 'block';
   overlay.innerHTML = `
     <div class="blackhole-tools-panel">
       <div class="blackhole-tools-header">
@@ -1116,14 +1146,48 @@ function injectOverlay() {
   
   document.body.appendChild(overlay);
   console.log('Blackhole DEX Tools: Overlay injected');
+  console.log('Overlay element created:', overlay);
+  console.log('Overlay initial display:', overlay.style.display);
+  console.log('Overlay in DOM:', document.body.contains(overlay));
   
   // Load saved position or use default
-  chrome.storage.local.get(['blackholeOverlayPosition'], (result) => {
-    if (result.blackholeOverlayPosition && result.blackholeOverlayPosition.top && result.blackholeOverlayPosition.left) {
-      overlay.style.setProperty('top', result.blackholeOverlayPosition.top, 'important');
-      overlay.style.setProperty('left', result.blackholeOverlayPosition.left, 'important');
-      overlay.style.setProperty('right', 'auto', 'important');
+  safeStorageGet(['blackholeOverlayPosition']).then((result) => {
+    if (result && result.blackholeOverlayPosition && result.blackholeOverlayPosition.top && result.blackholeOverlayPosition.left) {
+      const savedTop = parseFloat(result.blackholeOverlayPosition.top);
+      const savedLeft = parseFloat(result.blackholeOverlayPosition.left);
+      
+      // Validate position is within viewport
+      const overlayWidth = 460; // Match CSS width
+      const overlayHeight = 400; // Approximate height
+      const maxLeft = window.innerWidth - overlayWidth;
+      const maxTop = window.innerHeight - overlayHeight;
+      
+      // Only use saved position if it's within reasonable bounds
+      if (savedLeft >= 0 && savedLeft <= maxLeft && savedTop >= 0 && savedTop <= maxTop) {
+        overlay.style.setProperty('top', result.blackholeOverlayPosition.top, 'important');
+        overlay.style.setProperty('left', result.blackholeOverlayPosition.left, 'important');
+        overlay.style.setProperty('right', 'auto', 'important');
+        console.log('Loaded saved overlay position:', savedLeft, savedTop);
+      } else {
+        console.warn('Saved overlay position is off-screen, using default:', { savedLeft, savedTop, maxLeft, maxTop, viewport: { width: window.innerWidth, height: window.innerHeight } });
+        // Use default position
+        overlay.style.setProperty('top', '20px', 'important');
+        overlay.style.setProperty('left', 'auto', 'important');
+        overlay.style.setProperty('right', '40px', 'important');
+      }
+    } else {
+      // No saved position, use default
+      overlay.style.setProperty('top', '20px', 'important');
+      overlay.style.setProperty('left', 'auto', 'important');
+      overlay.style.setProperty('right', '40px', 'important');
+      console.log('Using default overlay position');
     }
+  }).catch((error) => {
+    console.warn('Error loading overlay position:', error);
+    // Use default position on error
+    overlay.style.setProperty('top', '20px', 'important');
+    overlay.style.setProperty('left', 'auto', 'important');
+    overlay.style.setProperty('right', '40px', 'important');
   });
   
   // Make header draggable
@@ -1196,7 +1260,9 @@ function injectOverlay() {
         top: overlay.style.top,
         left: overlay.style.left
       };
-      chrome.storage.local.set({ blackholeOverlayPosition: position });
+      safeStorageSet({ blackholeOverlayPosition: position }).catch((error) => {
+        console.warn('Error saving overlay position:', error);
+      });
     }
   });
   
@@ -1205,9 +1271,11 @@ function injectOverlay() {
     e.stopPropagation();
     overlay.style.display = 'none';
     settings.enableOverlay = false;
-    chrome.storage.local.set({ 
+    safeStorageSet({ 
       overlayVisible: false,
       blackholeSettings: settings
+    }).catch((error) => {
+      console.warn('Error saving settings:', error);
     });
   });
   
@@ -1248,13 +1316,38 @@ function injectOverlay() {
   });
   
   // Load visibility state from enableOverlay setting
-  chrome.storage.local.get(['blackholeSettings'], (result) => {
-    const enableOverlay = result.blackholeSettings?.enableOverlay !== false; // Default to true
+  safeStorageGet(['blackholeSettings']).then((result) => {
+    const enableOverlay = result && result.blackholeSettings && result.blackholeSettings.enableOverlay !== false; // Default to true
+    console.log('Overlay visibility setting:', enableOverlay, 'from settings:', result?.blackholeSettings);
     overlay.style.display = enableOverlay ? 'block' : 'none';
+    console.log('Overlay display set to:', overlay.style.display);
     if (enableOverlay) {
       updateOverlay();
     }
+  }).catch((error) => {
+    console.warn('Error loading overlay visibility:', error);
+    // Default to showing overlay if we can't load settings
+    overlay.style.display = 'block';
+    console.log('Overlay display set to block (default due to error)');
+    updateOverlay();
   });
+  
+  // Also check computed style and position to debug
+  setTimeout(() => {
+    const computedStyle = window.getComputedStyle(overlay);
+    const rect = overlay.getBoundingClientRect();
+    console.log('Overlay computed display:', computedStyle.display, 'visibility:', computedStyle.visibility, 'opacity:', computedStyle.opacity);
+    console.log('Overlay position:', { 
+      top: computedStyle.top, 
+      left: computedStyle.left, 
+      right: computedStyle.right,
+      boundingRect: { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+      viewport: { width: window.innerWidth, height: window.innerHeight }
+    });
+    console.log('Overlay element:', overlay);
+    console.log('Overlay in DOM:', document.body.contains(overlay));
+    console.log('Overlay offsetParent:', overlay.offsetParent);
+  }, 500);
   
   return overlay;
 }
@@ -1264,16 +1357,18 @@ function injectOverlay() {
 // Select recommended pools for voting
 async function selectRecommendedPools() {
   return new Promise(async (resolve) => {
-    chrome.storage.local.get(['poolData', 'blackholeSettings'], async (result) => {
-    const poolData = result.poolData || [];
-    const settings = result.blackholeSettings || {};
+    try {
+      const result = await safeStorageGet(['poolData', 'blackholeSettings']);
+      const poolData = result.poolData || [];
+      const settings = result.blackholeSettings || {};
+      
+      if (poolData.length === 0) {
+        alert('No pool data available. Please refresh the page and wait for pools to load.');
+        resolve();
+        return;
+      }
     
-    if (poolData.length === 0) {
-      alert('No pool data available. Please refresh the page and wait for pools to load.');
-      return;
-    }
-    
-    const pools = poolData.map(data => new Pool(data));
+      const pools = poolData.map(data => new Pool(data));
     const userVotingPower = (settings.votingPower !== null && settings.votingPower !== undefined) 
       ? settings.votingPower 
       : null;
@@ -1364,16 +1459,60 @@ async function selectRecommendedPools() {
       }, 2000);
     }
     resolve();
-    });
+    } catch (error) {
+      console.warn('Error selecting pools:', error);
+      alert('Error loading pool data. Please reload the page.');
+      resolve();
+    }
   });
+}
+
+// Helper function to safely call chrome.storage
+async function safeStorageGet(keys) {
+  try {
+    // Check if extension context is still valid
+    if (!chrome.runtime || !chrome.runtime.id) {
+      throw new Error('Extension context invalidated');
+    }
+    return await chrome.storage.local.get(keys);
+  } catch (error) {
+    if (error.message.includes('Extension context invalidated') || 
+        error.message.includes('message port closed')) {
+      console.warn('Extension context invalidated. Please reload the page.');
+      throw error;
+    }
+    throw error;
+  }
+}
+
+async function safeStorageSet(data) {
+  try {
+    if (!chrome.runtime || !chrome.runtime.id) {
+      throw new Error('Extension context invalidated');
+    }
+    return await chrome.storage.local.set(data);
+  } catch (error) {
+    if (error.message.includes('Extension context invalidated') || 
+        error.message.includes('message port closed')) {
+      console.warn('Extension context invalidated. Please reload the page.');
+      throw error;
+    }
+    throw error;
+  }
 }
 
 async function updateOverlay() {
   const contentEl = document.getElementById('blackhole-tools-content');
   if (!contentEl) return;
   
-  const result = await chrome.storage.local.get(['poolData']);
-  const poolData = result.poolData || [];
+  let poolData = [];
+  try {
+    const result = await safeStorageGet(['poolData']);
+    poolData = result.poolData || [];
+  } catch (error) {
+    contentEl.innerHTML = '<p style="color: #ff8c00; text-align: center; padding: 20px;">⚠️ Extension context invalidated. Please reload the page.</p>';
+    return;
+  }
   
   if (poolData.length === 0) {
     contentEl.innerHTML = '<p>No pool data available. Click "Refresh Pool Data" in the extension popup.</p>';
@@ -1679,33 +1818,93 @@ function isPoolSelected(poolId) {
 // Clear all selected pools (including those not visible)
 async function clearAllSelectedPools() {
   // Find ALL pool cells, including those not in viewport
+  // Also check for pools in different containers or sections
   const allPoolCells = document.querySelectorAll('div.liquidity-pool-cell');
   let clearedCount = 0;
   const poolsToClear = [];
   
+  console.log(`Searching for selected pools in ${allPoolCells.length} total pool cells...`);
+  
   // First pass: identify all selected pools
+  // Check multiple ways to detect selected state
   for (let cell of allPoolCells) {
+    let isSelected = false;
+    
+    // Method 1: Check for .select-to-vote.completed
     const selectToVoteContainer = cell.querySelector('.select-to-vote-container');
     if (selectToVoteContainer) {
       const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
       if (completedText && completedText.textContent.includes('Selected to vote')) {
-        poolsToClear.push(cell);
+        isSelected = true;
       }
     }
+    
+    // Method 2: Check for "CLEAR" button/link (indicates selected)
+    if (!isSelected) {
+      const clearButton = Array.from(cell.querySelectorAll('*')).find(el => {
+        const text = el.textContent ? el.textContent.trim().toUpperCase() : '';
+        return text === 'CLEAR' && !text.includes('ADD') && !text.includes('INCENTIVE');
+      });
+      if (clearButton) {
+        isSelected = true;
+      }
+    }
+    
+    // Method 3: Check button state (SELECT button might be disabled/hidden when selected)
+    if (!isSelected) {
+      const selectButton = cell.querySelector('button.btn.yellow-btn');
+      if (selectButton) {
+        const buttonText = selectButton.textContent ? selectButton.textContent.trim().toUpperCase() : '';
+        // If button says something other than SELECT, or is disabled, might be selected
+        const hasClearText = cell.textContent.toUpperCase().includes('CLEAR');
+        const hasSelectedText = cell.textContent.toUpperCase().includes('SELECTED TO VOTE');
+        if (hasClearText || hasSelectedText) {
+          isSelected = true;
+        }
+      }
+    }
+    
+    if (isSelected) {
+      poolsToClear.push(cell);
+      // Extract pool name for logging
+      const poolName = cell.querySelector('[class*="name"], [class*="title"]')?.textContent || 'Unknown';
+      console.log(`Found selected pool: ${poolName}`);
+    }
+  }
+  
+  console.log(`Found ${poolsToClear.length} selected pools to clear`);
+  
+  if (poolsToClear.length === 0) {
+    console.warn('No selected pools found. Checking if pools might be on different pages or in different containers...');
+    // Try alternative selectors
+    const alternativeCells = document.querySelectorAll('[class*="pool"], [class*="liquidity"]');
+    console.log(`Found ${alternativeCells.length} alternative pool elements`);
   }
   
   // Second pass: clear them (scroll into view if needed)
   for (let cell of poolsToClear) {
-    // Check if cell is in viewport
+    // Check if cell is in viewport (with some tolerance)
     const rect = cell.getBoundingClientRect();
-    const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight && 
-                     rect.left >= 0 && rect.right <= window.innerWidth;
+    const isVisible = rect.top >= -50 && rect.bottom <= window.innerHeight + 50 && 
+                     rect.left >= -50 && rect.right <= window.innerWidth + 50;
     
     if (!isVisible) {
       // Scroll the cell into view
+      console.log('Scrolling pool into view for clearing...');
       cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Wait for scroll to complete
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Wait longer for smooth scroll to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Re-check visibility after scroll
+      const newRect = cell.getBoundingClientRect();
+      const nowVisible = newRect.top >= -50 && newRect.bottom <= window.innerHeight + 50 && 
+                        newRect.left >= -50 && newRect.right <= window.innerWidth + 50;
+      
+      if (!nowVisible) {
+        // Try instant scroll as fallback
+        cell.scrollIntoView({ behavior: 'auto', block: 'center' });
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     }
     
     // Find the "CLEAR" link/button to deselect it
@@ -1716,44 +1915,381 @@ async function clearAllSelectedPools() {
     
     if (selectContainer) {
       // Look for CLEAR link specifically in the select-to-vote-container
-      const allLinks = selectContainer.querySelectorAll('.voting-pool-add-incentives, div, button, a');
+      const allLinks = selectContainer.querySelectorAll('.voting-pool-add-incentives, div, button, a, span');
       for (const link of allLinks) {
         const text = link.textContent ? link.textContent.trim().toUpperCase() : '';
-        if (text === 'CLEAR') {
-          clearLink = link;
-          break;
+        if (text === 'CLEAR' || text.includes('CLEAR')) {
+          // Double-check it's not "Add Incentives" or similar
+          const parentText = link.parentElement ? link.parentElement.textContent.toUpperCase() : '';
+          if (!parentText.includes('ADD INCENTIVE') && !parentText.includes('ADD INCENTIVES')) {
+            clearLink = link;
+            break;
+          }
         }
       }
     }
     
     // Fallback: search entire cell for CLEAR (but not Add Incentives)
     if (!clearLink) {
-      const allClickables = cell.querySelectorAll('.voting-pool-add-incentives, div.clickable, button, a');
+      const allClickables = cell.querySelectorAll('.voting-pool-add-incentives, div.clickable, button, a, span');
       for (const link of allClickables) {
         const text = link.textContent ? link.textContent.trim().toUpperCase() : '';
         // Make sure it says CLEAR and NOT "Add Incentives"
-        if (text === 'CLEAR' && !text.includes('ADD') && !text.includes('INCENTIVE')) {
-          clearLink = link;
-          break;
+        if ((text === 'CLEAR' || text.includes('CLEAR')) && !text.includes('ADD') && !text.includes('INCENTIVE')) {
+          const parentText = link.parentElement ? link.parentElement.textContent.toUpperCase() : '';
+          if (!parentText.includes('ADD INCENTIVE') && !parentText.includes('ADD INCENTIVES')) {
+            clearLink = link;
+            break;
+          }
         }
       }
     }
     
     if (clearLink) {
       try {
-        clearLink.click();
+        // Ensure link is visible before clicking
+        const linkRect = clearLink.getBoundingClientRect();
+        if (linkRect.width === 0 || linkRect.height === 0) {
+          console.warn('CLEAR link has zero dimensions, trying parent');
+          const parent = clearLink.parentElement;
+          if (parent) {
+            parent.click();
+          } else {
+            clearLink.click();
+          }
+        } else {
+          clearLink.click();
+        }
         clearedCount++;
+        console.log(`✓ Cleared pool (${clearedCount}/${poolsToClear.length})`);
         // Small delay between clicks to allow page to update
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => setTimeout(resolve, 200));
       } catch (e) {
-        console.warn('Error clicking CLEAR for pool:', e);
+        console.warn('Error clicking CLEAR for pool:', e, cell);
       }
     } else {
-      console.warn('Could not find CLEAR button for selected pool');
+      console.warn('Could not find CLEAR button for selected pool. Cell HTML:', cell.innerHTML.substring(0, 200));
     }
   }
   
-  console.log(`Cleared ${clearedCount} selected pools`);
+  console.log(`Cleared ${clearedCount} selected pools on current page`);
+  
+  // Check for pagination and navigate through other pages
+  // Look for Blackhole DEX pagination structure: .pagination .item
+  const paginationContainer = document.querySelector('.pagination');
+  let pageItems = [];
+  let nextButton = null;
+  let prevButton = null;
+  
+  if (paginationContainer) {
+    // Find all page number items
+    pageItems = Array.from(paginationContainer.querySelectorAll('.item')).filter(item => {
+      const text = item.textContent ? item.textContent.trim() : '';
+      // Exclude extreme items (arrows) and selected item
+      return /^\d+$/.test(text) && !item.classList.contains('extreme') && !item.classList.contains('selected');
+    });
+    
+    // Find next button (right arrow)
+    const rightExtreme = paginationContainer.querySelector('.item.extreme.right');
+    if (rightExtreme) {
+      nextButton = rightExtreme;
+    }
+    
+    // Find prev button (left arrow) - though we probably don't need it
+    const leftExtreme = paginationContainer.querySelector('.item.extreme:not(.right)');
+    if (leftExtreme) {
+      prevButton = leftExtreme;
+    }
+    
+    // Also try to find the parent clickable div
+    if (nextButton && nextButton.parentElement) {
+      const parent = nextButton.parentElement;
+      if (parent.classList.contains('item') || parent.onclick) {
+        nextButton = parent;
+      }
+    }
+    
+    console.log('Pagination detected:', {
+      container: !!paginationContainer,
+      pageItems: pageItems.length,
+      pageNumbers: pageItems.map(p => p.textContent.trim()),
+      nextButton: !!nextButton,
+      prevButton: !!prevButton
+    });
+  }
+  
+  if (paginationContainer && (pageItems.length > 0 || nextButton)) {
+    console.log('Pagination detected. Checking other pages for selected pools...');
+    
+    // Try to navigate through pages (with safety limit)
+    const maxPagesToCheck = 5;
+    let pagesChecked = 1;
+    let hadMorePools = clearedCount > 0;
+    
+    // Start from page 2 if we found page number buttons
+    if (pageItems.length > 0) {
+      for (const pageItem of pageItems) {
+        const pageNum = parseInt(pageItem.textContent.trim());
+        if (pageNum > 1 && pagesChecked < maxPagesToCheck) {
+          console.log(`Navigating to page ${pageNum}...`);
+          
+          // Click the page item (might need to click parent div)
+          const clickable = pageItem.closest('.item') || pageItem.parentElement || pageItem;
+          clickable.click();
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to load
+          
+          // Clear pools on this page
+          const allPoolCells = document.querySelectorAll('div.liquidity-pool-cell');
+          const poolsToClear = [];
+          
+          for (let cell of allPoolCells) {
+            const selectToVoteContainer = cell.querySelector('.select-to-vote-container');
+            if (selectToVoteContainer) {
+              const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
+              if (completedText && completedText.textContent.includes('Selected to vote')) {
+                poolsToClear.push(cell);
+              }
+            }
+          }
+          
+          // Clear pools found on this page
+          for (let cell of poolsToClear) {
+            const selectContainer = cell.querySelector('.select-to-vote-container');
+            let clearLink = null;
+            
+            if (selectContainer) {
+              const allLinks = selectContainer.querySelectorAll('div, button, a, span');
+              for (const link of allLinks) {
+                const text = link.textContent ? link.textContent.trim().toUpperCase() : '';
+                if (text === 'CLEAR') {
+                  const parentText = link.parentElement ? link.parentElement.textContent.toUpperCase() : '';
+                  if (!parentText.includes('ADD INCENTIVE')) {
+                    clearLink = link;
+                    break;
+                  }
+                }
+              }
+            }
+            
+            if (clearLink) {
+              try {
+                clearLink.click();
+                clearedCount++;
+                console.log(`✓ Cleared pool on page ${pageNum}`);
+                await new Promise(resolve => setTimeout(resolve, 200));
+              } catch (e) {
+                console.warn('Error clearing pool on page', pageNum, e);
+              }
+            }
+          }
+          
+          pagesChecked++;
+          if (poolsToClear.length === 0 && !hadMorePools) {
+            break; // No more selected pools
+          }
+        }
+      }
+    } else if (nextButton) {
+      // Use next button (right arrow) to navigate
+      let currentNextBtn = nextButton;
+      while (currentNextBtn && currentNextBtn.offsetParent !== null && pagesChecked < maxPagesToCheck) {
+        console.log(`Clicking next button (page ${pagesChecked + 1})...`);
+        // Click the next button (might need to click parent)
+        const clickable = currentNextBtn.closest('.item') || currentNextBtn.parentElement || currentNextBtn;
+        clickable.click();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Clear pools on this page (same logic as above)
+        const allPoolCells = document.querySelectorAll('div.liquidity-pool-cell');
+        const poolsToClear = [];
+        
+        for (let cell of allPoolCells) {
+          const selectToVoteContainer = cell.querySelector('.select-to-vote-container');
+          if (selectToVoteContainer) {
+            const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
+            if (completedText && completedText.textContent.includes('Selected to vote')) {
+              poolsToClear.push(cell);
+            }
+          }
+        }
+        
+        for (let cell of poolsToClear) {
+          const selectContainer = cell.querySelector('.select-to-vote-container');
+          let clearLink = selectContainer?.querySelector('*');
+          
+          if (clearLink) {
+            const text = clearLink.textContent ? clearLink.textContent.trim().toUpperCase() : '';
+            if (text === 'CLEAR') {
+              try {
+                clearLink.click();
+                clearedCount++;
+                await new Promise(resolve => setTimeout(resolve, 200));
+              } catch (e) {
+                console.warn('Error clearing pool:', e);
+              }
+            }
+          }
+        }
+        
+        pagesChecked++;
+        // Find next button again (it might have changed after page load)
+        const newPagination = document.querySelector('.pagination');
+        if (newPagination) {
+          const newRightExtreme = newPagination.querySelector('.item.extreme.right');
+          if (newRightExtreme) {
+            currentNextBtn = newRightExtreme;
+          } else {
+            currentNextBtn = null; // No more pages
+          }
+        } else {
+          currentNextBtn = null; // Pagination disappeared
+        }
+        
+        if (poolsToClear.length === 0 && pagesChecked > 1) {
+          break; // No more selected pools and we've checked at least one additional page
+        }
+      }
+    }
+    
+    console.log(`Checked ${pagesChecked} pages total`);
+    
+    // Navigate back to page 1
+    const finalPagination = document.querySelector('.pagination');
+    if (finalPagination) {
+      // Wait a bit for page to settle
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Find all page number items
+      const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
+        const text = item.textContent ? item.textContent.trim() : '';
+        return /^\d+$/.test(text) && !item.classList.contains('extreme');
+      });
+      
+      // Check if we're already on page 1
+      const currentPageItem = finalPagination.querySelector('.item.selected');
+      const currentPageText = currentPageItem ? currentPageItem.textContent.trim() : '';
+      const isOnPage1 = currentPageText === '1';
+      
+      if (!isOnPage1) {
+        console.log('Not on page 1, navigating back...');
+        // Find page 1 item
+        const page1Item = allPageItems.find(item => item.textContent.trim() === '1');
+        
+        if (page1Item) {
+          console.log('Found page 1 button, clicking...');
+          // Try multiple click strategies
+          // Strategy 1: Click the item itself
+          try {
+            page1Item.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (e) {
+            console.warn('Direct click failed, trying parent:', e);
+          }
+          
+          // Strategy 2: Click parent div if it exists
+          const parentDiv = page1Item.parentElement;
+          if (parentDiv && parentDiv.classList.contains('item')) {
+            try {
+              parentDiv.click();
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (e) {
+              console.warn('Parent click failed:', e);
+            }
+          }
+          
+          // Strategy 3: Use mouse event
+          try {
+            const clickEvent = new MouseEvent('click', {
+              bubbles: true,
+              cancelable: true,
+              view: window
+            });
+            page1Item.dispatchEvent(clickEvent);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (e) {
+            console.warn('MouseEvent dispatch failed:', e);
+          }
+          
+          // Verify we're on page 1
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const newCurrentPage = finalPagination.querySelector('.item.selected');
+          const newPageText = newCurrentPage ? newCurrentPage.textContent.trim() : '';
+          if (newPageText === '1') {
+            console.log('✓ Successfully returned to page 1');
+          } else {
+            console.warn(`Still on page ${newPageText}, page 1 navigation may have failed`);
+          }
+        } else {
+          console.warn('Could not find page 1 button in pagination');
+        }
+      } else {
+        console.log('Already on page 1');
+      }
+    }
+  } else {
+    // No pagination detected - maybe it's infinite scroll or all pools are loaded
+    // Try scrolling to bottom to see if more pools load
+    console.log('No pagination controls found. Checking if all pools are loaded or if infinite scroll is used...');
+    const initialPoolCount = document.querySelectorAll('div.liquidity-pool-cell').length;
+    console.log(`Initial pool count: ${initialPoolCount}`);
+    
+    // Try scrolling to bottom to trigger lazy loading
+    window.scrollTo(0, document.body.scrollHeight);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const afterScrollCount = document.querySelectorAll('div.liquidity-pool-cell').length;
+    console.log(`After scroll pool count: ${afterScrollCount}`);
+    
+    if (afterScrollCount > initialPoolCount) {
+      console.log('More pools loaded after scrolling. Checking for selected pools...');
+      // Re-check for selected pools after scroll
+      const newPoolsToClear = [];
+      const allPoolCells = document.querySelectorAll('div.liquidity-pool-cell');
+      
+      for (let cell of allPoolCells) {
+        const selectToVoteContainer = cell.querySelector('.select-to-vote-container');
+        if (selectToVoteContainer) {
+          const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
+          if (completedText && completedText.textContent.includes('Selected to vote')) {
+            newPoolsToClear.push(cell);
+          }
+        }
+      }
+      
+      // Clear any newly found pools
+      for (let cell of newPoolsToClear) {
+        const selectContainer = cell.querySelector('.select-to-vote-container');
+        let clearLink = null;
+        
+        if (selectContainer) {
+          const allLinks = selectContainer.querySelectorAll('div, button, a, span');
+          for (const link of allLinks) {
+            const text = link.textContent ? link.textContent.trim().toUpperCase() : '';
+            if (text === 'CLEAR') {
+              const parentText = link.parentElement ? link.parentElement.textContent.toUpperCase() : '';
+              if (!parentText.includes('ADD INCENTIVE')) {
+                clearLink = link;
+                break;
+              }
+            }
+          }
+        }
+        
+        if (clearLink) {
+          try {
+            clearLink.click();
+            clearedCount++;
+            console.log(`✓ Cleared additional pool after scroll`);
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (e) {
+            console.warn('Error clearing pool after scroll:', e);
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`Cleared ${clearedCount} selected pools total`);
   return clearedCount;
 }
 

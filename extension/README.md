@@ -1,6 +1,6 @@
 # Blackhole DEX Tools Browser Extension
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 
 A browser extension that brings powerful pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections all without leaving the page.
 
@@ -150,7 +150,7 @@ A browser extension that brings powerful pool analysis and voting tools directly
 
 ```
 extension/
-├── manifest.json          # Extension configuration (v1.0.0)
+├── manifest.json          # Extension configuration (v1.0.1)
 ├── popup.html            # Extension popup UI
 ├── popup.css             # Popup styles
 ├── popup.js              # Popup logic and settings
@@ -177,7 +177,15 @@ See `tests/README.md` for information on running the test suite.
 
 ## 📝 Version History
 
-### 1.0.0 (Current)
+### 1.0.1 (Current)
+- 🐛 Fixed extension context invalidation errors (handles extension reloads gracefully)
+- 🐛 Fixed overlay visibility when saved position was off-screen
+- 🐛 Fixed "Clear All" to handle pools on multiple pagination pages
+- ✨ "Clear All" now automatically navigates through all pages and returns to page 1
+- 🐛 Improved percentage splitting for odd number of pools (1 decimal precision)
+- 🐛 Fixed close button positioning within panel
+
+### 1.0.0
 - ✅ Pool recommendations with accurate data extraction
 - ✅ Select/deselect pools with visual feedback
 - ✅ Clear all votes functionality
