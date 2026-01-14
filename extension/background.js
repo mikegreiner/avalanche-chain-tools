@@ -26,6 +26,10 @@ chrome.runtime.onInstalled.addListener((details) => {
       console.log('Existing settings preserved:', result.blackholeSettings);
     }
   });
+
+  // Enable side panel on blackhole.xyz
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => console.error(error));
 });
 
 // Periodic pool data refresh (every 5 minutes when on voting page)
