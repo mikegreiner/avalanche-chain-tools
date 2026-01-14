@@ -68,7 +68,35 @@ A browser extension that brings powerful pool analysis and voting tools directly
 - **Select All**: Select all currently visible recommendations
 - **Clear All**: Deselect all pools across all pages (auto-scrolls to top)
 - **Split Votes**: Automatically calculate and fill in even percentages
-- **Smart Vote Button**: Finds and clicks the vote button for you
+- **Smart Vote Button**: Finds and clicks the vote button for you### Action Buttons: Added "Vote", "Select All", "Clear All", and "Split Votes" buttons directly to the side panel
+  - **Vote Button**: Smart "Vote" button finds the main page button or modal confirmation button automatically
+
+## 🛠️ Development
+
+This extension uses a modular structure in `lib/`. For the content script to work reliably on the voting page, these modules are bundled into `content-bundle.js`.
+
+### Prerequisites
+- Node.js installed
+
+### Setup
+```bash
+cd extension
+npm install
+```
+
+### Running Tests
+```bash
+cd extension
+npm test
+```
+
+### Building the Bundle
+If you modify any files in `lib/`, you must rebuild the bundle:
+```bash
+cd extension
+npm run build
+```
+The build process includes an automatic validation step to ensure no ES module keywords (`import`/`export`) leak into the final bundle, preventing syntax errors in the browser.
 
 ## 🔧 Troubleshooting
 

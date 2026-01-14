@@ -24,37 +24,53 @@ function build() {
 
 `;
 
+    // Helper to strip module keywords line by line
+    const stripModules = (content) => {
+        const lines = content.split('\n');
+        const resultLines = lines.map(line => {
+            let processed = line;
+            
+            // Remove imports
+            if (processed.trim().startsWith('import ')) {
+                return null;
+            }
+            
+            // Remove export default
+            if (processed.trim().startsWith('export default ')) {
+                return null;
+            }
+            
+            // Remove export { ... }
+            if (processed.trim().startsWith('export {')) {
+                return null;
+            }
+            
+            // Replace export function -> function
+            processed = processed.replace('export function ', 'function ');
+            processed = processed.replace('export async function ', 'async function ');
+            
+            return processed;
+        }).filter(line => line !== null);
+        
+        return resultLines.join('\n');
+    };
+
     // 2. Include Pool class
     let poolJs = fs.readFileSync(path.join(LIB_DIR, 'pool.js'), 'utf8');
-    // Remove all export statements
-    poolJs = poolJs.replace(/export\s+default\s+\w+;?/g, '');
-    poolJs = poolJs.replace(/export\s+/g, '');
     bundle += `// --- From pool.js ---
-${poolJs}
+${stripModules(poolJs)}
 `;
 
     // 3. Include pool-recommender.js
     let recommenderJs = fs.readFileSync(path.join(LIB_DIR, 'pool-recommender.js'), 'utf8');
-    // Remove imports
-    recommenderJs = recommenderJs.replace(/import\s+.*from\s+['"].*['"]/g, '');
-    // Remove all export statements
-    recommenderJs = recommenderJs.replace(/export\s+function/g, 'function');
-    recommenderJs = recommenderJs.replace(/export\s+async\s+function/g, 'async function');
-    recommenderJs = recommenderJs.replace(/export\s+{[^}]+};?/g, '');
     bundle += `// --- From pool-recommender.js ---
-${recommenderJs}
+${stripModules(recommenderJs)}
 `;
 
     // 4. Include pool-extractor.js
     let extractorJs = fs.readFileSync(path.join(LIB_DIR, 'pool-extractor.js'), 'utf8');
-    // Remove imports
-    extractorJs = extractorJs.replace(/import\s+.*from\s+['"].*['"]/g, '');
-    // Remove all export statements
-    extractorJs = extractorJs.replace(/export\s+function/g, 'function');
-    extractorJs = extractorJs.replace(/export\s+async\s+function/g, 'async function');
-    extractorJs = extractorJs.replace(/export\s+{[^}]+};?/g, '');
     bundle += `// --- From pool-extractor.js ---
-${extractorJs}
+${stripModules(extractorJs)}
 `;
 
     // 5. Append main content logic
@@ -69,17 +85,35 @@ ${extractorJs}
         const fallbackMarker = "function init()";
         const fallbackIndex = existingBundle.indexOf(fallbackMarker);
         if (fallbackIndex !== -1) {
-            bundle += `
-// Now include the main content script logic
-${existingBundle.substring(fallbackIndex)}`;
+            bundle += `\n// Now include the main content script logic\n${existingBundle.substring(fallbackIndex)}`;
         } else {
             console.error("Could not find start of main content script logic in existing content-bundle.js");
-            return;
+            process.exit(1);
         }
     }
 
+    // 6. Validation - Check for remaining import/export keywords
+    const finalLines = bundle.split('\n');
+    let hasError = false;
+    
+    finalLines.forEach((line, index) => {
+        const trimmed = line.trim();
+        // Check if line starts with keyword (ignoring comments)
+        if (trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('/*')) {
+            if (trimmed.startsWith('import ') || (trimmed.startsWith('export ') && !trimmed.includes('export:'))) {
+                console.error(`ERROR: Found remaining module keyword on line ${index + 1}: "${trimmed}"`);
+                hasError = true;
+            }
+        }
+    });
+
+    if (hasError) {
+        console.error("Bundle validation failed. Fix build_bundle.js logic.");
+        process.exit(1);
+    }
+
     fs.writeFileSync(path.join(EXT_DIR, 'content-bundle.js'), bundle);
-    console.log('Successfully built content-bundle.js');
+    console.log('Successfully built and validated content-bundle.js');
 }
 
 build();
