@@ -363,3 +363,37 @@ small {
   font-size: 11px;
   color: #666;
 }
+
+/* Input with clear button wrapper */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-wrapper input {
+  padding-right: 24px !important; /* Make room for X button */
+}
+
+.clear-input-btn {
+  position: absolute;
+  right: 4px;
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  display: none; /* Hidden by default */
+  border-radius: 50%;
+}
+
+.clear-input-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.input-wrapper input:not(:placeholder-shown) + .clear-input-btn {
+  display: block; /* Show when input has text */
+}

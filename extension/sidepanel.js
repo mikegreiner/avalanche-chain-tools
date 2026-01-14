@@ -161,6 +161,20 @@ function setupListeners() {
   if (openBtn) {
     openBtn.addEventListener('click', openVotingPage);
   }
+
+  // Clear Input Buttons
+  document.querySelectorAll('.clear-input-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (input) {
+        input.value = '';
+        input.focus();
+        // Trigger input event to update state/auto-save
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+  });
 }
 
 // Helper to get currently displayed pool IDs

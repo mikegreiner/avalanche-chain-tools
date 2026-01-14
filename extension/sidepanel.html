@@ -36,7 +36,10 @@
         </div>
 
         <div class="form-group" style="margin-bottom: 8px;">
-          <input type="text" id="poolNameFilter" placeholder="Filter by pool name (e.g., BTC, USDC)" style="padding: 6px 8px; font-size: 13px;">
+          <div class="input-wrapper">
+            <input type="text" id="poolNameFilter" placeholder="Filter by pool name (e.g., BTC, USDC)" style="padding: 6px 8px; font-size: 13px;">
+            <button class="clear-input-btn" data-target="poolNameFilter" title="Clear filter">×</button>
+          </div>
         </div>
 
         <div class="button-group" style="margin-bottom: 12px; gap: 4px;">
@@ -89,7 +92,10 @@
 
           <div class="form-group">
             <label for="settingsPoolNameFilter">Pool Name Filter:</label>
-            <input type="text" id="settingsPoolNameFilter" placeholder="e.g., WAVAX (optional)" style="padding: 8px;">
+            <div class="input-wrapper">
+              <input type="text" id="settingsPoolNameFilter" placeholder="e.g., WAVAX (optional)" style="padding: 8px;">
+              <button class="clear-input-btn" data-target="settingsPoolNameFilter" title="Clear filter">×</button>
+            </div>
             <small>Only include pools matching this name (partial match supported)</small>
           </div>
 
