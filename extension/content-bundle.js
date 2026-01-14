@@ -214,14 +214,12 @@ class Pool {
 
 // Export for use in other modules
 
-
 // --- From pool-recommender.js ---
 /**
  * Pool recommender logic
  * Ported from blackhole_pool_recommender.py recommend_pools method
  */
 
-;
 
 /**
  * Simple wildcard matching (like fnmatch)
@@ -349,14 +347,12 @@ function recommendPools(pools, options = {}) {
   return sortedPools.slice(0, topN);
 }
 
-
 // --- From pool-extractor.js ---
 /**
  * Pool data extraction from DOM
  * Ported from blackhole_pool_recommender.py _extract_pools_from_elements
  */
 
-;
 
 /**
  * Extract pool data from DOM elements on the voting page
@@ -744,6 +740,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }).catch(() => {
       sendResponse({ success: false });
     });
+  } else if (message.type === 'GET_SELECTED_POOLS') {
+    const selectedPools = getSelectedPools();
+    sendResponse({ success: true, selectedPools: selectedPools.map(p => ({ poolId: p.poolId })) });
+    return true; // Keep channel open for async response if needed, though sendResponse is called synchronously here
   } else if (message.type === 'SHOW_OVERLAY') {
     // Show overlay if hidden
     let overlay = document.getElementById('blackhole-tools-overlay');

@@ -293,6 +293,30 @@ small {
   background: #202020;
 }
 
+/* Selected pool styling */
+.recommendation-item.pool-selected {
+  background: rgba(50, 205, 50, 0.15);
+  border-color: rgba(50, 205, 50, 0.4);
+  box-shadow: 0 0 8px rgba(50, 205, 50, 0.2);
+}
+
+.recommendation-item.pool-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #32cd32 0%, #228b22 100%);
+  border-radius: 6px 0 0 6px;
+  opacity: 1;
+}
+
+.recommendation-item.pool-selected:hover {
+  background: rgba(50, 205, 50, 0.2);
+  border-color: rgba(50, 205, 50, 0.5);
+}
+
 .pool-rank {
   font-size: 16px;
   font-weight: 700;

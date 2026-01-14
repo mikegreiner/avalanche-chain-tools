@@ -159,6 +159,18 @@ function populateForm(settings) {
   if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
 }
 
+async function sendMessageToContentScript(message) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
+      return await chrome.tabs.sendMessage(tab.id, message);
+    }
+  } catch (error) {
+    console.warn('Error sending message to content script:', error);
+    return null;
+  }
+}
+
 async function loadAndRenderRecommendations() {
   const container = document.getElementById('recommendations-list');
   const lastUpdatedEl = document.getElementById('lastUpdated');
@@ -204,6 +216,17 @@ async function loadAndRenderRecommendations() {
         </div>`;
       return;
     }
+
+    // Get current selection status from content script
+    let selectedIds = [];
+    try {
+      const response = await sendMessageToContentScript({ type: 'GET_SELECTED_POOLS' });
+      if (response && response.selectedPools) {
+        selectedIds = response.selectedPools.map(p => p.poolId);
+      }
+    } catch (e) {
+      console.warn('Could not get selected pools from page:', e);
+    }
     
     // Render list
     let html = `
@@ -219,13 +242,20 @@ async function loadAndRenderRecommendations() {
       const poolShare = settings.votingPower ? pool.calculateShare(settings.votingPower) : null;
       const profitabilityScore = pool.profitabilityScore();
       const stabilityScore = pool.stabilityScore();
-      const rewardsPerVote = pool.rewardsPerVote();
+      
+      const isSelected = selectedIds.includes(pool.pool_id);
+      const selectedClass = isSelected ? 'pool-selected' : '';
+      const buttonText = isSelected ? 'Deselect' : 'Select';
+      const buttonClass = isSelected ? 'btn-primary' : 'btn-secondary';
       
       html += `
-        <div class="recommendation-item">
+        <div class="recommendation-item ${selectedClass}" data-pool-id="${pool.pool_id}">
           <div class="pool-rank">#${index + 1}</div>
           <div class="pool-info">
-            <div class="pool-name" title="${pool.name}">${pool.name}</div>
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div class="pool-name" title="${pool.name}">${pool.name}</div>
+              <button class="btn ${buttonClass} btn-sm select-pool-btn" data-id="${pool.pool_id}" style="padding: 2px 6px; font-size: 10px; min-height: 20px; flex: 0 0 auto;">${buttonText}</button>
+            </div>
             <div class="pool-metrics">
               <span>Rewards: $${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               <span>${pool.vapr.toFixed(0)}% VAPR</span>
@@ -255,6 +285,28 @@ async function loadAndRenderRecommendations() {
     
     // Re-attach listener for the new button
     document.getElementById('goToVotePageBtn').addEventListener('click', openVotingPage);
+
+    // Attach listeners to "Select" buttons
+    document.querySelectorAll('.select-pool-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const poolId = e.target.dataset.id;
+        const isSelected = e.target.textContent === 'Deselect';
+        
+        e.target.textContent = isSelected ? 'Clearing...' : 'Selecting...';
+        e.target.disabled = true;
+        
+        try {
+          await sendMessageToContentScript({ type: 'SELECT_POOL', poolId: poolId });
+          // Wait slightly for the page to update
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await loadAndRenderRecommendations();
+        } catch (err) {
+          console.error('Error selecting pool:', err);
+          e.target.disabled = false;
+          e.target.textContent = isSelected ? 'Deselect' : 'Select';
+        }
+      });
+    });
     
   } catch (error) {
     console.error('Error rendering:', error);
