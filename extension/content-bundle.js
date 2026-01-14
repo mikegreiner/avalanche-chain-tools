@@ -2285,11 +2285,46 @@ function getSelectedPools() {
 // Split votes evenly across selected pools
 async function splitVotesEvenly() {
   // Get all selected pools
-  const selectedPools = getSelectedPools();
+  let selectedPools = getSelectedPools();
   
   if (selectedPools.length === 0) {
     alert('No pools are currently selected. Please select pools first.');
     return;
+  }
+
+  // SORTING LOGIC: Sort selected pools by profitability/rewards so the best ones get rounding remainder
+  try {
+    const result = await safeStorageGet(['poolData', 'blackholeSettings']);
+    const poolData = result.poolData || [];
+    const settings = result.blackholeSettings || {};
+    const userVotingPower = settings.votingPower || null;
+
+    if (poolData.length > 0) {
+      // Create a map for quick lookup
+      const poolMap = new Map();
+      poolData.forEach(data => {
+        poolMap.set(data.pool_id?.toLowerCase(), new Pool(data));
+      });
+
+      // Sort selectedPools based on metrics
+      selectedPools.sort((a, b) => {
+        const poolA = poolMap.get(a.poolId?.toLowerCase());
+        const poolB = poolMap.get(b.poolId?.toLowerCase());
+        
+        if (!poolA) return 1;
+        if (!poolB) return -1;
+
+        // Use profitability score or estimated rewards for sorting
+        if (userVotingPower) {
+          return poolB.estimateUserRewards(userVotingPower) - poolA.estimateUserRewards(userVotingPower);
+        } else {
+          return poolB.profitabilityScore() - poolA.profitabilityScore();
+        }
+      });
+      console.log('Sorted selected pools by metrics for vote distribution');
+    }
+  } catch (err) {
+    console.warn('Could not sort pools by metrics, using default order:', err);
   }
   
   // Calculate even percentage split (100% / number of pools)
@@ -2367,14 +2402,15 @@ async function splitVotesEvenly() {
   const totalIfAllBase = baseRounded * selectedPools.length;
   const remainder = Math.round((100 - totalIfAllBase) * 10) / 10;
   
-  // Distribute the remainder: add 0.1 to the first N pools where N = remainder * 10
-  const poolsToAddExtra = Math.round(remainder * 10);
+  // Distribute the remainder: adjust by 0.1 for first |remainder * 10| pools
+  const poolsToAdjust = Math.round(Math.abs(remainder) * 10);
+  const adjustment = remainder > 0 ? 0.1 : -0.1;
   
   for (let i = 0; i < selectedPools.length; i++) {
     let pct = baseRounded;
-    // Add 0.1 to first pools to account for rounding remainder
-    if (i < poolsToAddExtra) {
-      pct += 0.1;
+    // Apply adjustment to first pools to account for rounding remainder
+    if (i < poolsToAdjust) {
+      pct += adjustment;
     }
     percentages.push(Math.round(pct * 10) / 10);
   }

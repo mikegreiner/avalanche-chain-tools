@@ -103,6 +103,39 @@ async function runTests() {
     }
   });
 
+  // --- Vote Distribution Logic Tests ---
+  console.log('\n--- Testing Vote Distribution Logic ---');
+  
+  const testDistribution = (numPools) => {
+    const basePercentage = 100 / numPools;
+    const baseRounded = Math.round(basePercentage * 10) / 10;
+    const totalIfAllBase = baseRounded * numPools;
+    const remainder = Math.round((100 - totalIfAllBase) * 10) / 10;
+    const poolsToAdjust = Math.round(Math.abs(remainder) * 10);
+    const adjustment = remainder > 0 ? 0.1 : -0.1;
+    
+    const percentages = [];
+    for (let i = 0; i < numPools; i++) {
+      let pct = baseRounded;
+      if (i < poolsToAdjust) pct += adjustment;
+      percentages.push(Math.round(pct * 10) / 10);
+    }
+    
+    const sum = percentages.reduce((a, b) => a + b, 0);
+    assertEquals(Math.round(sum * 10) / 10, 100, `Sum for ${numPools} pools is 100%`);
+    return percentages;
+  };
+
+  testDistribution(3); // 33.4, 33.3, 33.3
+  const p3 = testDistribution(3);
+  assertEquals(p3[0], 33.4, "First pool gets the extra 0.1% for 3 pools");
+  
+  testDistribution(6); // 16.6, 16.6, 16.7, 16.7, 16.7, 16.7
+  const p6 = testDistribution(6);
+  // Base is 16.7, Remainder is -0.2, so first 2 pools get -0.1 adjustment = 16.6
+  assertEquals(p6[0], 16.6, "First pool gets 16.6% for 6 pools (base 16.7 - 0.1 adjustment)");
+  assertEquals(p6[5], 16.7, "Last pool gets 16.7% for 6 pools (no adjustment)");
+
   console.log(`\n✨ Test Summary: ${passed} passed, ${failed} failed`);
   
   if (failed > 0) {
