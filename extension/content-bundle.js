@@ -855,13 +855,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Always update overlay content (even if hidden) so it's ready when shown
         updateOverlay();
       }
+      sendResponse({ success: true });
     }).catch((error) => {
       console.warn('Error loading settings:', error);
+      sendResponse({ success: false, error: error.message });
     });
   } else if (message.type === 'REFRESH_POOL_DATA') {
     // Reset retry counter
     window._poolExtractionRetries = 0;
-    fetchPoolData(true);
+    fetchPoolData(true).then(() => {
+      sendResponse({ success: true });
+    }).catch(() => {
+      sendResponse({ success: false });
+    });
   } else if (message.type === 'SHOW_OVERLAY') {
     // Show overlay if hidden
     let overlay = document.getElementById('blackhole-tools-overlay');
@@ -878,6 +884,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.warn('Error saving settings:', error);
     });
     updateOverlay();
+    sendResponse({ success: true });
   } else if (message.type === 'TOGGLE_OVERLAY') {
     // Toggle overlay visibility
     let overlay = document.getElementById('blackhole-tools-overlay');
@@ -896,8 +903,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!isVisible) {
       updateOverlay();
     }
+    sendResponse({ success: true });
   } else if (message.type === 'SELECT_POOL') {
-    selectSinglePool(message.poolId);
+    selectSinglePool(message.poolId).then(() => {
+      sendResponse({ success: true });
+    });
   } else if (message.type === 'SELECT_POOLS') {
     const poolIds = message.poolIds || [];
     // Process sequentially to avoid UI conflicts
@@ -906,11 +916,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await selectSinglePool(id);
         await new Promise(r => setTimeout(r, 100));
       }
+      sendResponse({ success: true });
     })();
   } else if (message.type === 'CLEAR_ALL_VOTES') {
-    clearAllSelectedPools();
+    clearAllSelectedPools().then((count) => {
+      sendResponse({ success: true, count });
+    });
   } else if (message.type === 'SPLIT_VOTES') {
-    splitVotesEvenly();
+    splitVotesEvenly().then(() => {
+      sendResponse({ success: true });
+    });
   }
   return true;
 });
