@@ -2253,17 +2253,26 @@ async function clearAllSelectedPools() {
           if (newPageText === '1') {
             console.log('✓ Successfully returned to page 1');
             
-            // Force scroll to top immediately (no smooth scroll)
-            window.scrollTo(0, 0);
-            document.documentElement.scrollTop = 0;
-            document.body.scrollTop = 0;
+            // Nuclear Scroll: Find ANY element that is scrolled and reset it
+            const scrollAll = () => {
+              window.scrollTo(0, 0);
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
+              
+              const allElements = document.querySelectorAll('*');
+              for (const el of allElements) {
+                if (el.scrollTop > 0) {
+                  el.scrollTop = 0;
+                }
+              }
+            };
             
-            const poolList = document.querySelector('[data-pool-list]') || document.querySelector('.pool-list');
-            if (poolList) poolList.scrollTop = 0;
+            scrollAll();
             
-            // Retry scrolling after page settles
-            setTimeout(() => window.scrollTo(0, 0), 100);
-            setTimeout(() => window.scrollTo(0, 0), 400);
+            // Retry a few times to handle dynamic loading/rendering
+            setTimeout(scrollAll, 100);
+            setTimeout(scrollAll, 500);
+            setTimeout(scrollAll, 1000);
           } else {
             console.warn(`Still on page ${newPageText}, page 1 navigation may have failed`);
           }
@@ -2272,14 +2281,22 @@ async function clearAllSelectedPools() {
         }
       } else {
         console.log('Already on page 1');
-        window.scrollTo(0, 0);
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
         
-        const poolList = document.querySelector('[data-pool-list]') || document.querySelector('.pool-list');
-        if (poolList) poolList.scrollTop = 0;
+        const scrollAll = () => {
+          window.scrollTo(0, 0);
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+          
+          const allElements = document.querySelectorAll('*');
+          for (const el of allElements) {
+            if (el.scrollTop > 0) {
+              el.scrollTop = 0;
+            }
+          }
+        };
         
-        setTimeout(() => window.scrollTo(0, 0), 100);
+        scrollAll();
+        setTimeout(scrollAll, 100);
       }
     }
   } else {
