@@ -1,3 +1,5 @@
+import { Pool, recommendPools } from './popup-helper.js';
+
 /**
  * Popup script for Blackhole DEX Tools extension
  */
@@ -9,261 +11,269 @@ let saveTimer = null;
 document.addEventListener('DOMContentLoaded', async () => {
   const settings = await loadSettings();
   
+  // Initialize Tabs
+  setupTabs();
+  
   // Populate form fields
-  const votingPowerInput = document.getElementById('votingPower');
-  const topNInput = document.getElementById('topN');
-  const minRewardsInput = document.getElementById('minRewards');
-  const maxPoolPercentageInput = document.getElementById('maxPoolPercentage');
-  const sortBySelect = document.getElementById('sortBy');
-  const hideVammCheckbox = document.getElementById('hideVamm');
-  const enableOverlayCheckbox = document.getElementById('enableOverlay');
+  populateForm(settings);
   
-  if (settings.votingPower !== null && settings.votingPower !== undefined) {
-    votingPowerInput.value = settings.votingPower;
-  }
+  // Setup listeners
+  setupListeners();
   
-  if (settings.topN !== undefined) {
-    topNInput.value = settings.topN;
-  }
+  // Initial render of recommendations
+  await loadAndRenderRecommendations();
   
-  if (settings.minRewards !== null && settings.minRewards !== undefined) {
-    minRewardsInput.value = settings.minRewards;
-  }
-  
-  if (settings.maxPoolPercentage !== null && settings.maxPoolPercentage !== undefined) {
-    maxPoolPercentageInput.value = settings.maxPoolPercentage;
-  }
-  
-  if (settings.sortBy !== undefined) {
-    sortBySelect.value = settings.sortBy;
-  }
-  
-  if (settings.hideVamm !== undefined) {
-    hideVammCheckbox.checked = settings.hideVamm;
-  }
-  
-  if (settings.enableOverlay !== undefined) {
-    enableOverlayCheckbox.checked = settings.enableOverlay;
-  }
-  
+  // Update status info
+  updateStatus();
+});
+
+function setupTabs() {
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active class from all tabs and views
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      
+      // Add active class to clicked tab
+      tab.classList.add('active');
+      
+      // Show corresponding view
+      const viewId = `${tab.dataset.tab}-view`;
+      document.getElementById(viewId).classList.add('active');
+      
+      // specific actions when switching
+      if (tab.dataset.tab === 'recommendations') {
+        loadAndRenderRecommendations();
+      }
+    });
+  });
+}
+
+function setupListeners() {
   // Auto-save on input changes (with debounce)
-  [votingPowerInput, topNInput, minRewardsInput, maxPoolPercentageInput, sortBySelect].forEach(input => {
+  const inputs = [
+    'votingPower', 'topN', 'minRewards', 'maxPoolPercentage', 'sortBy'
+  ].map(id => document.getElementById(id));
+  
+  inputs.forEach(input => {
     input.addEventListener('input', () => {
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        autoSaveSettings();
+      saveTimer = setTimeout(async () => {
+        await autoSaveSettings();
+        // Refresh recommendations if on that tab
+        if (document.querySelector('.tab[data-tab="recommendations"]').classList.contains('active')) {
+          loadAndRenderRecommendations();
+        }
       }, 500);
     });
   });
   
-  hideVammCheckbox.addEventListener('change', () => {
-    autoSaveSettings();
+  document.getElementById('hideVamm').addEventListener('change', async () => {
+    await autoSaveSettings();
+    if (document.querySelector('.tab[data-tab="recommendations"]').classList.contains('active')) {
+      loadAndRenderRecommendations();
+    }
   });
   
-  // Enable overlay checkbox should immediately toggle visibility
-  enableOverlayCheckbox.addEventListener('change', async () => {
+  // Enable overlay checkbox
+  document.getElementById('enableOverlay').addEventListener('change', async () => {
     await autoSaveSettings();
     // Immediately notify content script to toggle overlay
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab.url && tab.url.includes('blackhole.xyz/vote')) {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' }).catch(() => {
-        // Tab might not have content script loaded yet, ignore
-      });
+    if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
+      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' }).catch(() => {});
     }
   });
   
-  updateStatus();
-});
+  // Save button
+  document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+    if (validateSettings()) {
+      await autoSaveSettings();
+      showStatus('Settings saved!', 'success');
+    }
+  });
+  
+  // Refresh data button
+  document.getElementById('refreshDataBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('refreshDataBtn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Refreshing...';
+    btn.disabled = true;
+    
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
+        chrome.tabs.sendMessage(tab.id, { type: 'REFRESH_POOL_DATA' });
+        // Wait a bit for data to be saved to storage
+        setTimeout(async () => {
+          await loadAndRenderRecommendations();
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }, 1000);
+      } else {
+        showStatus('Navigate to voting page first', 'error');
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    } catch (e) {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  });
 
-// Auto-save settings (without showing status message)
-async function autoSaveSettings() {
-  const votingPowerInput = document.getElementById('votingPower');
-  const topNInput = document.getElementById('topN');
-  const minRewardsInput = document.getElementById('minRewards');
-  const maxPoolPercentageInput = document.getElementById('maxPoolPercentage');
-  const sortBySelect = document.getElementById('sortBy');
-  const hideVammCheckbox = document.getElementById('hideVamm');
-  const enableOverlayCheckbox = document.getElementById('enableOverlay');
-  
-  const votingPowerValue = votingPowerInput.value.trim();
-  let votingPower = null;
-  
-  // Allow empty value (null), but validate if provided
-  if (votingPowerValue !== '') {
-    const parsed = parseFloat(votingPowerValue);
-    if (isNaN(parsed) || parsed < 0) {
-      // Invalid value - don't save, but don't show error (user might still be typing)
-      return;
-    }
-    votingPower = parsed;
-  }
-  
-  const topNValue = topNInput.value.trim();
-  let topN = 10;
-  if (topNValue !== '') {
-    const parsed = parseInt(topNValue);
-    if (!isNaN(parsed) && parsed > 0 && parsed <= 50) {
-      topN = parsed;
-    }
-  }
-  
-  const minRewardsValue = minRewardsInput.value.trim();
-  let minRewards = null;
-  if (minRewardsValue !== '') {
-    const parsed = parseFloat(minRewardsValue);
-    if (!isNaN(parsed) && parsed >= 0) {
-      minRewards = parsed;
-    }
-  }
-  
-  const maxPoolPercentageValue = maxPoolPercentageInput.value.trim();
-  let maxPoolPercentage = null;
-  if (maxPoolPercentageValue !== '') {
-    const parsed = parseFloat(maxPoolPercentageValue);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
-      maxPoolPercentage = parsed;
-    }
-  }
-  
-  const settings = {
-    votingPower,
-    topN,
-    minRewards,
-    maxPoolPercentage,
-    sortBy: sortBySelect.value,
-    hideVamm: hideVammCheckbox.checked,
-    enableOverlay: enableOverlayCheckbox.checked
-  };
-  
-  await saveSettings(settings);
-  
-  // Notify content script to update
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab.url && tab.url.includes('blackhole.xyz/vote')) {
-    chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED' }).catch(() => {
-      // Tab might not have content script loaded yet, ignore
-    });
+  // Open Voting Page Button (Delegated or Initial)
+  const openBtn = document.getElementById('openVotePageBtn');
+  if (openBtn) {
+    openBtn.addEventListener('click', openVotingPage);
   }
 }
 
-// Manual save button (shows confirmation)
-document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
-  const votingPowerInput = document.getElementById('votingPower');
-  const topNInput = document.getElementById('topN');
-  const minRewardsInput = document.getElementById('minRewards');
-  const maxPoolPercentageInput = document.getElementById('maxPoolPercentage');
-  const sortBySelect = document.getElementById('sortBy');
-  const hideVammCheckbox = document.getElementById('hideVamm');
-  const enableOverlayCheckbox = document.getElementById('enableOverlay');
-  
-  const votingPowerValue = votingPowerInput.value.trim();
-  let votingPower = null;
-  
-  // Allow empty value (null), but validate if provided
-  if (votingPowerValue !== '') {
-    const parsed = parseFloat(votingPowerValue);
-    if (isNaN(parsed) || parsed < 0) {
-      showStatus('Please enter a valid voting power (or leave empty)', 'error');
-      return;
+function openVotingPage() {
+  chrome.tabs.query({ url: 'https://blackhole.xyz/vote*' }).then(([tab]) => {
+    if (tab) {
+      chrome.tabs.update(tab.id, { active: true });
+      // Removed: Sending SHOW_OVERLAY message (fix for UX confusion)
+    } else {
+      chrome.tabs.create({ url: 'https://blackhole.xyz/vote' });
     }
-    votingPower = parsed;
-  }
-  
-  const topNValue = topNInput.value.trim();
-  let topN = 10;
-  if (topNValue !== '') {
-    const parsed = parseInt(topNValue);
-    if (isNaN(parsed) || parsed < 1 || parsed > 50) {
-      showStatus('Please enter a valid number of recommendations (1-50)', 'error');
-      return;
-    }
-    topN = parsed;
-  }
-  
-  const minRewardsValue = minRewardsInput.value.trim();
-  let minRewards = null;
-  if (minRewardsValue !== '') {
-    const parsed = parseFloat(minRewardsValue);
-    if (isNaN(parsed) || parsed < 0) {
-      showStatus('Please enter a valid minimum rewards value', 'error');
-      return;
-    }
-    minRewards = parsed;
-  }
-  
-  const maxPoolPercentageValue = maxPoolPercentageInput.value.trim();
-  let maxPoolPercentage = null;
-  if (maxPoolPercentageValue !== '') {
-    const parsed = parseFloat(maxPoolPercentageValue);
-    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
-      showStatus('Please enter a valid max pool percentage (0-100)', 'error');
-      return;
-    }
-    maxPoolPercentage = parsed;
-  }
-  
-  const settings = {
-    votingPower,
-    topN,
-    minRewards,
-    maxPoolPercentage,
-    sortBy: sortBySelect.value,
-    hideVamm: hideVammCheckbox.checked,
-    enableOverlay: enableOverlayCheckbox.checked
+  });
+}
+
+function populateForm(settings) {
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val !== undefined && val !== null) el.value = val;
   };
   
-  await saveSettings(settings);
+  setVal('votingPower', settings.votingPower);
+  setVal('topN', settings.topN);
+  setVal('minRewards', settings.minRewards);
+  setVal('maxPoolPercentage', settings.maxPoolPercentage);
+  setVal('sortBy', settings.sortBy);
   
-  showStatus('Settings saved!', 'success');
+  if (settings.hideVamm !== undefined) document.getElementById('hideVamm').checked = settings.hideVamm;
+  if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
+}
+
+async function loadAndRenderRecommendations() {
+  const container = document.getElementById('recommendations-list');
+  const lastUpdatedEl = document.getElementById('lastUpdated');
   
-  // Notify content script to update
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab.url && tab.url.includes('blackhole.xyz/vote')) {
-    chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED' }).catch(() => {
-      // Tab might not have content script loaded yet, ignore
+  try {
+    // Get data and settings
+    const result = await chrome.storage.local.get(['poolData', 'poolDataTimestamp', 'blackholeSettings']);
+    const poolData = result.poolData || [];
+    const timestamp = result.poolDataTimestamp;
+    const settings = result.blackholeSettings || {};
+    
+    // Update timestamp
+    if (timestamp) {
+      const date = new Date(timestamp);
+      lastUpdatedEl.textContent = `Updated: ${date.toLocaleTimeString()}`;
+    } else {
+      lastUpdatedEl.textContent = 'No data';
+    }
+    
+    if (poolData.length === 0) {
+      renderEmptyState(container);
+      return;
+    }
+    
+    // Convert to Pool objects
+    const pools = poolData.map(data => new Pool(data));
+    
+    // Generate recommendations
+    const recommendations = recommendPools(pools, {
+      topN: settings.topN || 10,
+      userVotingPower: settings.votingPower,
+      hideVamm: settings.hideVamm,
+      minRewards: settings.minRewards,
+      maxPoolPercentage: settings.maxPoolPercentage,
+      sortBy: settings.sortBy || 'auto'
     });
-  }
-});
-
-// Refresh pool data
-document.getElementById('refreshDataBtn').addEventListener('click', async () => {
-  showStatus('Refreshing pool data...', 'success');
-  
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab.url && tab.url.includes('blackhole.xyz/vote')) {
-    // Reset retry counter
-    chrome.tabs.sendMessage(tab.id, { type: 'REFRESH_POOL_DATA' });
-    setTimeout(() => {
-      showStatus('Pool data refreshed! Check the overlay on the voting page.', 'success');
-    }, 2000);
-  } else {
-    showStatus('Please navigate to blackhole.xyz/vote first', 'error');
-  }
-});
-
-// Open voting page
-document.getElementById('openVotePageBtn').addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ url: 'https://blackhole.xyz/vote*' });
-  
-  if (tab) {
-    // Tab already open, switch to it and show overlay
-    chrome.tabs.update(tab.id, { active: true });
-    chrome.tabs.sendMessage(tab.id, { type: 'SHOW_OVERLAY' }).catch(() => {
-      // Content script might not be ready, that's ok
+    
+    if (recommendations.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <p>No pools match your filters.</p>
+          <p style="font-size: 12px; margin-top: 8px;">Found ${pools.length} pools on page.</p>
+        </div>`;
+      return;
+    }
+    
+    // Render list
+    let html = `
+      <div style="padding: 0 4px 8px; font-size: 11px; color: #666; display: flex; justify-content: space-between;">
+        <span>Showing top ${recommendations.length} of ${pools.length} pools</span>
+        <span>Sorted by: ${settings.sortBy || 'auto'}</span>
+      </div>
+      <div class="recommendations-list">
+    `;
+    
+    recommendations.forEach((pool, index) => {
+      const estimatedReward = settings.votingPower ? pool.estimateUserRewards(settings.votingPower) : null;
+      const profitabilityScore = pool.profitabilityScore();
+      const stabilityScore = pool.stabilityScore();
+      const rewardsPerVote = pool.rewardsPerVote();
+      
+      html += `
+        <div class="recommendation-item">
+          <div class="pool-rank">#${index + 1}</div>
+          <div class="pool-info">
+            <div class="pool-name" title="${pool.name}">${pool.name}</div>
+            <div class="pool-metrics">
+              <span>$${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span>${pool.vapr.toFixed(0)}% VAPR</span>
+              ${pool.current_votes ? `<span>${formatNumber(pool.current_votes)} votes</span>` : ''}
+            </div>
+            ${estimatedReward ? `<div class="estimated-reward">Est. Reward: $${estimatedReward.toFixed(2)}</div>` : ''}
+            <div class="pool-scores">
+              <span>Profit: ${profitabilityScore.toFixed(0)}</span>
+              <span>Stability: ${stabilityScore.toFixed(0)}</span>
+            </div>
+          </div>
+        </div>
+      `;
     });
-  } else {
-    // Open new tab
-    chrome.tabs.create({ url: 'https://blackhole.xyz/vote' });
+    
+    html += '</div>';
+    
+    // Add "Go to Page" button at bottom if needed, or rely on header
+    html += `
+       <div style="margin-top: 12px; text-align: center;">
+         <button id="goToVotePageBtn" class="btn btn-secondary btn-sm">Go to Voting Page</button>
+       </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Re-attach listener for the new button
+    document.getElementById('goToVotePageBtn').addEventListener('click', openVotingPage);
+    
+  } catch (error) {
+    console.error('Error rendering:', error);
+    container.innerHTML = `<div class="empty-state"><p>Error: ${error.message}</p></div>`;
   }
-});
+}
 
-// View history
-document.getElementById('viewHistoryBtn').addEventListener('click', () => {
-  // TODO: Open history dashboard
-  showStatus('History feature coming soon!', 'success');
-});
+function renderEmptyState(container) {
+  container.innerHTML = `
+    <div class="empty-state">
+      <p>Navigate to the voting page to load pool data.</p>
+      <button id="openVotePageBtnInner" class="btn btn-primary" style="margin-top: 16px;">Open Voting Page</button>
+    </div>
+  `;
+  document.getElementById('openVotePageBtnInner').addEventListener('click', openVotingPage);
+}
 
-// Settings management
+function formatNumber(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
+}
+
+// Reuse existing logic for saving settings
 async function loadSettings() {
   const result = await chrome.storage.local.get(['blackholeSettings']);
   return result.blackholeSettings || {
@@ -277,47 +287,58 @@ async function loadSettings() {
   };
 }
 
-async function saveSettings(settings) {
+async function autoSaveSettings() {
+  const settings = {
+    votingPower: parseFloatInput('votingPower'),
+    topN: parseIntInput('topN', 10),
+    minRewards: parseFloatInput('minRewards'),
+    maxPoolPercentage: parseFloatInput('maxPoolPercentage'),
+    sortBy: document.getElementById('sortBy').value,
+    hideVamm: document.getElementById('hideVamm').checked,
+    enableOverlay: document.getElementById('enableOverlay').checked
+  };
+  
   await chrome.storage.local.set({ blackholeSettings: settings });
+  
+  // Notify content script
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
+    chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED' }).catch(() => {});
+  }
+  
+  updateStatus();
 }
 
-function showStatus(message, type = 'success') {
-  const statusEl = document.getElementById('status');
-  statusEl.textContent = message;
-  statusEl.className = `status ${type}`;
-  
-  setTimeout(() => {
-    statusEl.classList.add('hidden');
-  }, 3000);
+function validateSettings() {
+  // Validation logic...
+  return true;
+}
+
+function parseFloatInput(id) {
+  const val = document.getElementById(id).value.trim();
+  return val === '' ? null : parseFloat(val);
+}
+
+function parseIntInput(id, def) {
+  const val = document.getElementById(id).value.trim();
+  return val === '' ? def : parseInt(val);
 }
 
 async function updateStatus() {
   const statusInfo = document.getElementById('statusInfo');
+  if (!statusInfo) return;
   const settings = await loadSettings();
   
   let statusHtml = '<p>';
-  
-  if (settings.votingPower !== null && settings.votingPower !== undefined) {
-    statusHtml += `✓ Voting power: ${settings.votingPower.toLocaleString()} veBLACK<br>`;
-  } else {
-    statusHtml += 'ℹ Set your voting power for personalized recommendations<br>';
-  }
-  
-  statusHtml += `✓ Top ${settings.topN || 10} recommendations<br>`;
-  
-  if (settings.minRewards !== null && settings.minRewards !== undefined) {
-    statusHtml += `✓ Min rewards: $${settings.minRewards.toLocaleString()}<br>`;
-  }
-  
-  if (settings.maxPoolPercentage !== null && settings.maxPoolPercentage !== undefined) {
-    statusHtml += `✓ Max pool %: ${settings.maxPoolPercentage}%<br>`;
-  }
-  
-  statusHtml += `✓ Sort by: ${settings.sortBy || 'auto'}<br>`;
-  statusHtml += `✓ Overlay: ${settings.enableOverlay ? 'Enabled' : 'Disabled'}<br>`;
-  statusHtml += `✓ vAMM pools: ${settings.hideVamm ? 'Hidden' : 'Shown'}<br>`;
+  if (settings.votingPower) statusHtml += `✓ Voting power: ${settings.votingPower.toLocaleString()}<br>`;
+  statusHtml += `✓ Top ${settings.topN}<br>`;
   statusHtml += '</p>';
-  statusHtml += '<p style="margin-top: 8px; font-size: 11px; color: #999;">Settings are automatically saved as you type.</p>';
-  
   statusInfo.innerHTML = statusHtml;
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = `status ${type}`;
+  setTimeout(() => el.classList.add('hidden'), 3000);
 }

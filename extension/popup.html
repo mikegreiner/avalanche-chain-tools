@@ -16,87 +16,107 @@
       </div>
     </header>
 
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-tab="recommendations">Recommendations</div>
+      <div class="tab" data-tab="settings">Settings</div>
+    </div>
+
     <!-- Status Messages -->
     <div id="status" class="status hidden"></div>
 
     <!-- Main Content -->
     <div class="content">
-      <div class="section">
-        <h2>Pool Recommendations</h2>
-        <p class="info">Configure your voting power to see personalized recommendations on the voting page.</p>
+      
+      <!-- Recommendations View -->
+      <div id="recommendations-view" class="view active">
+        <div class="refresh-bar">
+          <span class="last-updated" id="lastUpdated">No data</span>
+          <button id="refreshDataBtn" class="btn btn-secondary btn-sm" style="flex: 0 0 auto; width: auto;">Refresh</button>
+        </div>
         
-        <div class="form-group">
-          <label for="votingPower">Your Voting Power (veBLACK):</label>
-          <input type="number" id="votingPower" placeholder="e.g., 18290 (optional)" step="0.01" min="0">
-          <small style="display: block; margin-top: 4px; color: #999; font-size: 11px;">Leave empty if you don't want personalized estimates</small>
+        <div id="recommendations-list">
+          <div class="empty-state">
+            <p>Navigate to the voting page to load pool data.</p>
+            <button id="openVotePageBtn" class="btn btn-primary" style="margin-top: 16px;">Open Voting Page</button>
+          </div>
         </div>
-
-        <div class="form-group">
-          <label for="topN">Number of Recommendations:</label>
-          <input type="number" id="topN" placeholder="10" step="1" min="1" max="50" value="10">
-        </div>
-
-        <div class="form-group">
-          <label for="minRewards">Minimum Total Rewards (USD):</label>
-          <input type="number" id="minRewards" placeholder="e.g., 1000 (optional)" step="0.01" min="0">
-          <small style="display: block; margin-top: 4px; color: #999; font-size: 11px;">Filter out pools below this threshold</small>
-        </div>
-
-        <div class="form-group">
-          <label for="maxPoolPercentage">Max Pool Percentage (%):</label>
-          <input type="number" id="maxPoolPercentage" placeholder="Leave empty to disable (optional)" step="0.1" min="0" max="100">
-          <small style="display: block; margin-top: 4px; color: #999; font-size: 11px;">Max % of pool votes your power would represent. <strong>Warning:</strong> With high voting power, this can filter out all pools. Leave empty to disable.</small>
-        </div>
-
-        <div class="form-group">
-          <label for="sortBy">Sort By:</label>
-          <select id="sortBy">
-            <option value="auto">Auto (reward if voting power set, else profitability)</option>
-            <option value="reward">Estimated Reward</option>
-            <option value="profitability">Profitability Score</option>
-            <option value="stability">Stability-Adjusted Score</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>
-            <input type="checkbox" id="hideVamm">
-            Hide vAMM pools
-          </label>
-        </div>
-
-        <div class="form-group">
-          <label>
-            <input type="checkbox" id="enableOverlay" checked>
-            Show recommendations overlay on voting page
-          </label>
-          <small style="display: block; margin-top: 4px; color: #999; font-size: 11px;">Toggle this to show/hide the recommendations panel on the voting page</small>
-        </div>
-
-        <div class="button-group">
-          <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
-          <button id="refreshDataBtn" class="btn btn-secondary">Refresh Pool Data</button>
-        </div>
-        <p style="font-size: 11px; color: #999; margin-top: 8px; font-style: italic;">💡 Settings auto-save as you type. Changes automatically refresh recommendations on the voting page.</p>
-      </div>
-
-      <div class="section">
-        <h2>Quick Actions</h2>
-        <div class="button-group">
-          <button id="openVotePageBtn" class="btn btn-primary">Open Voting Page</button>
-          <button id="viewHistoryBtn" class="btn btn-secondary">View Pool History</button>
+        
+        <div style="padding: 12px; font-size: 11px; color: #666; text-align: center;">
+          <p>Tip: Click "Refresh" if data is outdated.</p>
         </div>
       </div>
 
-      <div class="section">
-        <h2>Status</h2>
-        <div id="statusInfo" class="status-info">
-          <p>Extension ready. Navigate to <a href="https://blackhole.xyz/vote" target="_blank">blackhole.xyz/vote</a> to see recommendations.</p>
+      <!-- Settings View -->
+      <div id="settings-view" class="view">
+        <div class="section">
+          <h2>Pool Recommendations</h2>
+          <p class="info">Configure your voting power to see personalized recommendations.</p>
+          
+          <div class="form-group">
+            <label for="votingPower">Your Voting Power (veBLACK):</label>
+            <input type="number" id="votingPower" placeholder="e.g., 18290 (optional)" step="0.01" min="0">
+            <small>Leave empty if you don't want personalized estimates</small>
+          </div>
+
+          <div class="form-group">
+            <label for="topN">Number of Recommendations:</label>
+            <input type="number" id="topN" placeholder="10" step="1" min="1" max="50" value="10">
+          </div>
+
+          <div class="form-group">
+            <label for="minRewards">Minimum Total Rewards (USD):</label>
+            <input type="number" id="minRewards" placeholder="e.g., 1000 (optional)" step="0.01" min="0">
+            <small>Filter out pools below this threshold</small>
+          </div>
+
+          <div class="form-group">
+            <label for="maxPoolPercentage">Max Pool Percentage (%):</label>
+            <input type="number" id="maxPoolPercentage" placeholder="Leave empty to disable (optional)" step="0.1" min="0" max="100">
+            <small>Max % of pool votes your power would represent. <strong>Warning:</strong> With high voting power, this can filter out all pools.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="sortBy">Sort By:</label>
+            <select id="sortBy">
+              <option value="auto">Auto (reward if voting power set, else profitability)</option>
+              <option value="reward">Estimated Reward</option>
+              <option value="profitability">Profitability Score</option>
+              <option value="stability">Stability-Adjusted Score</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="hideVamm">
+              Hide vAMM pools
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="enableOverlay" checked>
+              Show recommendations overlay on voting page
+            </label>
+            <small>Toggle this to show/hide the panel on the voting page</small>
+          </div>
+
+          <div class="button-group">
+            <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+          </div>
+          <p style="font-size: 11px; color: #999; margin-top: 8px; font-style: italic;">💡 Settings auto-save as you type.</p>
+        </div>
+
+        <div class="section">
+          <h2>Status</h2>
+          <div id="statusInfo" class="status-info">
+            <p>Extension ready.</p>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Blackhole DEX Tools",
-  "version": "1.0.1",
-  "description": "Enhanced tools for Blackhole DEX voting: pool recommendations, tracking, and analysis",
+  "version": "1.1.0",
+  "description": "Enhanced tools for Blackhole DEX voting: pool recommendations (sidebar/popup), tracking, and analysis",
   "permissions": [
     "storage",
     "activeTab",
