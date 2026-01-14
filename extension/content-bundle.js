@@ -805,12 +805,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       updateOverlay();
       sendResponse({ success: true });
     });
-  } else if (message.type === 'SUBMIT_VOTE') {
-    submitVote().then(() => {
-      sendResponse({ success: true });
+  } else if (message.type === 'TOGGLE_VOTE_PANEL') {
+    toggleVotePanel().then((isOpen) => {
+      sendResponse({ success: true, isOpen });
     }).catch((e) => {
       sendResponse({ success: false, error: e.message });
     });
+  } else if (message.type === 'CHECK_VOTE_PANEL') {
+    const modal = document.querySelector('.voting-modal, .sc-modal-overlay.show');
+    const isOpen = !!(modal && (modal.offsetParent !== null || window.getComputedStyle(modal).display !== 'none'));
+    sendResponse({ success: true, isOpen });
   }
   return true;
 });
@@ -2270,15 +2274,32 @@ function getSelectedPools() {
     if (selectToVoteContainer) {
       const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
       if (completedText && completedText.textContent.includes('Selected to vote')) {
-        // Extract pool ID from the cell
-        const innerHTML = cell.innerHTML || '';
-        const innerText = cell.innerText || '';
+        // Try to find pool address/ID using multiple strategies
+        let poolId = cell.getAttribute('data-pool-id') || 
+                     cell.getAttribute('data-pool-address') || 
+                     cell.getAttribute('data-id');
         
-        // Try to find pool address
-        const addressMatch = innerHTML.match(/0x[a-fA-F0-9]{40}/i);
-        if (addressMatch) {
+        if (!poolId) {
+          const idElem = cell.querySelector('[data-pool-id], [data-pool-address], [data-id]');
+          if (idElem) {
+            poolId = idElem.getAttribute('data-pool-id') || 
+                     idElem.getAttribute('data-pool-address') || 
+                     idElem.getAttribute('data-id');
+          }
+        }
+
+        if (!poolId) {
+          // Fallback to regex
+          const innerHTML = cell.innerHTML || '';
+          const addressMatch = innerHTML.match(/0x[a-fA-F0-9]{40}/i);
+          if (addressMatch) {
+            poolId = addressMatch[0];
+          }
+        }
+        
+        if (poolId) {
           selectedPools.push({
-            poolId: addressMatch[0],
+            poolId: poolId,
             cell: cell
           });
         }
@@ -2548,45 +2569,49 @@ async function splitVotesEvenly() {
   }
 }
 
-async function submitVote() {
-  // Try to find the main VOTE button on the page
+// Toggle the in-page voting modal (show/hide)
+async function toggleVotePanel() {
+  // Check if modal is already open and visible
+  const modal = document.querySelector('.voting-modal, .sc-modal-overlay.show');
+  const isVisible = !!(modal && (modal.offsetParent !== null || window.getComputedStyle(modal).display !== 'none'));
+  
+  if (isVisible) {
+    // Modal is open, try to close it
+    console.log('Closing vote window...');
+    // Try multiple close button selectors from the provided HTML
+    const closeBtn = modal.querySelector('.sc-modal-close') || 
+                     modal.querySelector('.modal-close.clickable') || 
+                     modal.querySelector('.modal-close') ||
+                     Array.from(modal.querySelectorAll('div, span, button')).find(el => 
+                       el.textContent === '×' || el.classList.contains('clickable') && el.textContent === '×'
+                     );
+    
+    if (closeBtn) {
+      closeBtn.click();
+      console.log('✓ Clicked close button');
+      return false; // Now closed
+    }
+    
+    // Fallback: click the overlay background to close
+    modal.click();
+    return false;
+  }
+
+  // Modal is closed, try to find and click the main VOTE button to open it
   const voteButton = document.querySelector('button.btn.yellow-btn.clickable.vote-btn') ||
                      document.querySelector('.vote-btn') ||
-                     Array.from(document.querySelectorAll('button')).find(btn => 
-                       btn.textContent && btn.textContent.trim().toUpperCase() === 'VOTE'
-                     );
+                     Array.from(document.querySelectorAll('button')).find(btn => {
+                       const text = btn.textContent ? btn.textContent.trim().toUpperCase() : '';
+                       return text === 'VOTE' || (text.includes('VOTE') && btn.classList.contains('yellow-btn'));
+                     });
 
   if (voteButton) {
     voteButton.click();
-    console.log('✓ Clicked VOTE button');
-    
-    // If this opens a modal, we might want to try to find the "Cast Vote" button inside it
-    // But usually user interaction is better at that point.
-    // We can try to look for it after a short delay just in case the user meant "Confirm"
-    setTimeout(() => {
-        const confirmButton = document.querySelector('.modal-confirm-btn') || 
-                              Array.from(document.querySelectorAll('button')).find(btn => 
-                                btn.textContent && (btn.textContent.includes('Cast Vote') || btn.textContent.includes('Confirm'))
-                              );
-        if (confirmButton && confirmButton.offsetParent !== null) { // visible
-            // We won't click it automatically for safety, just log it found
-            console.log('Found confirm button in modal');
-        }
-    }, 1000);
-    
+    console.log('✓ Opened vote window via VOTE button click');
+    return true; // Now open
   } else {
-    // Check if we are already in a modal/dialog
-    const confirmButton = document.querySelector('.modal-confirm-btn') || 
-                          Array.from(document.querySelectorAll('button')).find(btn => 
-                            btn.textContent && (btn.textContent.includes('Cast Vote') || btn.textContent.includes('Confirm'))
-                          );
-    
-    if (confirmButton && confirmButton.offsetParent !== null) {
-        confirmButton.click();
-        console.log('✓ Clicked Confirm/Cast Vote button in modal');
-    } else {
-        throw new Error('Vote button not found');
-    }
+    console.error('Vote button not found. Available buttons:', Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()));
+    throw new Error('Vote button not found on page');
   }
 }
 

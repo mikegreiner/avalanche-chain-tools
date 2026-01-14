@@ -179,9 +179,22 @@ function setupListeners() {
     showStatus('Splitting votes...', 'success');
   });
 
-  document.getElementById('voteBtn').addEventListener('click', () => {
-    sendMessageToContentScript({ type: 'SUBMIT_VOTE' });
-    showStatus('Clicking Vote button...', 'success');
+  document.getElementById('voteBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('voteBtn');
+    const isShowing = btn.textContent.includes('Hide');
+    
+    showStatus(isShowing ? 'Hiding vote window...' : 'Opening vote window...', 'success');
+    
+    try {
+      const response = await sendMessageToContentScript({ type: 'TOGGLE_VOTE_PANEL' });
+      if (response && response.success) {
+        btn.textContent = response.isOpen ? 'Hide Votes' : 'Show Votes';
+        btn.classList.toggle('btn-primary', !response.isOpen);
+        btn.classList.toggle('btn-secondary', response.isOpen);
+      }
+    } catch (e) {
+      console.error('Error toggling vote window:', e);
+    }
   });
 
   // Open Voting Page Button (Delegated)
@@ -311,13 +324,27 @@ async function loadAndRenderRecommendations() {
 
     // Get current selection status from content script
     let selectedIds = [];
+    let isVoteOpen = false;
     try {
       const response = await sendMessageToContentScript({ type: 'GET_SELECTED_POOLS' });
       if (response && response.selectedPools) {
         selectedIds = response.selectedPools.map(p => p.poolId);
       }
+      
+      const statusResponse = await sendMessageToContentScript({ type: 'CHECK_VOTE_PANEL' });
+      if (statusResponse) {
+        isVoteOpen = statusResponse.isOpen;
+      }
     } catch (e) {
-      console.warn('Could not get selected pools from page:', e);
+      console.warn('Could not get page status:', e);
+    }
+
+    // Update Vote Button
+    const voteBtn = document.getElementById('voteBtn');
+    if (voteBtn) {
+      voteBtn.textContent = isVoteOpen ? 'Hide Votes' : 'Show Votes';
+      voteBtn.classList.toggle('btn-primary', !isVoteOpen);
+      voteBtn.classList.toggle('btn-secondary', isVoteOpen);
     }
     
     // Render list

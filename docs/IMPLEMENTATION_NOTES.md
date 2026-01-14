@@ -104,3 +104,10 @@ pool_selectors = [
 - The script waits 10 seconds for React to render - adjust if needed
 - Multiple extraction methods are tried as fallbacks
 - The profitability score can be adjusted by changing weights in `Pool.profitability_score()`
+
+## Future Improvements & Known Issues
+
+### Browser Extension
+- **Vote Distribution Order**: Currently, the "Split Votes" feature allocates percentages to pools based on their visual order in the Blackhole DEX voting modal. While logic has been added to sort selected pools by profitability before distribution, the matching between sorted pools and modal input fields can still default to the page's original order.
+- **Cross-Page Selection**: Selection state tracking across paginated pool lists is partially implemented but could be made more robust by persisting selected IDs in local storage between page transitions.
+- **Auto-Vote Confirmation**: Add an option to automatically click the final "Confirm" button in the voting modal after percentages are split.

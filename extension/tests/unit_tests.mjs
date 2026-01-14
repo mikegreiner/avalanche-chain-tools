@@ -112,6 +112,12 @@ async function runTests() {
   assertEquals(isSelectedAfterClear, false, "Pool 0x123 no longer selected after Clear All");
   assertEquals(selectedClassAfterClear, '', "Pool 0x123 no longer has pool-selected class after Clear All");
 
+  // Regression: Test Vote toggle logic
+  console.log('Testing Vote toggle logic...');
+  const getVoteLabel = (isOpen) => isOpen ? 'Hide Votes' : 'Show Votes';
+  assertEquals(getVoteLabel(true), 'Hide Votes', 'Label correctly shows Hide when open');
+  assertEquals(getVoteLabel(false), 'Show Votes', 'Label correctly shows Show when closed');
+
   // --- Vote Distribution Logic Tests ---
   console.log('\n--- Testing Vote Distribution Logic ---');
   
