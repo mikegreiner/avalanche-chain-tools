@@ -85,14 +85,6 @@ function setupListeners() {
     }
   });
   
-  // Save button
-  document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
-    if (validateSettings()) {
-      await autoSaveSettings();
-      showStatus('Settings saved!', 'success');
-    }
-  });
-  
   // Refresh data button
   document.getElementById('refreshDataBtn').addEventListener('click', async () => {
     const btn = document.getElementById('refreshDataBtn');
