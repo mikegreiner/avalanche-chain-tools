@@ -2252,7 +2252,12 @@ async function clearAllSelectedPools() {
           const newPageText = newCurrentPage ? newCurrentPage.textContent.trim() : '';
           if (newPageText === '1') {
             console.log('✓ Successfully returned to page 1');
+            // Try multiple scrolling methods
             window.scrollTo({ top: 0, behavior: 'smooth' });
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+            const poolList = document.querySelector('[data-pool-list]') || document.querySelector('.pool-list');
+            if (poolList) poolList.scrollTo({ top: 0, behavior: 'smooth' });
           } else {
             console.warn(`Still on page ${newPageText}, page 1 navigation may have failed`);
           }
@@ -2262,6 +2267,10 @@ async function clearAllSelectedPools() {
       } else {
         console.log('Already on page 1');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        const poolList = document.querySelector('[data-pool-list]') || document.querySelector('.pool-list');
+        if (poolList) poolList.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
   } else {
