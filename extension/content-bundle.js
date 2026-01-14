@@ -926,6 +926,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     splitVotesEvenly().then(() => {
       sendResponse({ success: true });
     });
+  } else if (message.type === 'SUBMIT_VOTE') {
+    submitVote().then(() => {
+      sendResponse({ success: true });
+    }).catch((e) => {
+      sendResponse({ success: false, error: e.message });
+    });
   }
   return true;
 });
@@ -2572,6 +2578,48 @@ async function splitVotesEvenly() {
       contentEl.innerHTML = originalHTML;
       updateOverlay();
     }, 3000);
+  }
+}
+
+async function submitVote() {
+  // Try to find the main VOTE button on the page
+  const voteButton = document.querySelector('button.btn.yellow-btn.clickable.vote-btn') ||
+                     document.querySelector('.vote-btn') ||
+                     Array.from(document.querySelectorAll('button')).find(btn => 
+                       btn.textContent && btn.textContent.trim().toUpperCase() === 'VOTE'
+                     );
+
+  if (voteButton) {
+    voteButton.click();
+    console.log('✓ Clicked VOTE button');
+    
+    // If this opens a modal, we might want to try to find the "Cast Vote" button inside it
+    // But usually user interaction is better at that point.
+    // We can try to look for it after a short delay just in case the user meant "Confirm"
+    setTimeout(() => {
+        const confirmButton = document.querySelector('.modal-confirm-btn') || 
+                              Array.from(document.querySelectorAll('button')).find(btn => 
+                                btn.textContent && (btn.textContent.includes('Cast Vote') || btn.textContent.includes('Confirm'))
+                              );
+        if (confirmButton && confirmButton.offsetParent !== null) { // visible
+            // We won't click it automatically for safety, just log it found
+            console.log('Found confirm button in modal');
+        }
+    }, 1000);
+    
+  } else {
+    // Check if we are already in a modal/dialog
+    const confirmButton = document.querySelector('.modal-confirm-btn') || 
+                          Array.from(document.querySelectorAll('button')).find(btn => 
+                            btn.textContent && (btn.textContent.includes('Cast Vote') || btn.textContent.includes('Confirm'))
+                          );
+    
+    if (confirmButton && confirmButton.offsetParent !== null) {
+        confirmButton.click();
+        console.log('✓ Clicked Confirm/Cast Vote button in modal');
+    } else {
+        throw new Error('Vote button not found');
+    }
   }
 }
 

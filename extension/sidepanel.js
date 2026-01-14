@@ -1,4 +1,3 @@
-
 import { Pool, recommendPools } from './popup-helper.js';
 
 /**
@@ -139,7 +138,6 @@ function setupListeners() {
 
   document.getElementById('splitVotesBtn').addEventListener('click', async () => {
     const settings = await loadSettings();
-    // Use currently filtered pools for splitting
     const poolIds = getCurrentRecommendationIds();
     sendMessageToContentScript({ 
       type: 'SPLIT_VOTES', 
@@ -147,6 +145,11 @@ function setupListeners() {
       votingPower: settings.votingPower 
     });
     showStatus('Splitting votes...', 'success');
+  });
+
+  document.getElementById('voteBtn').addEventListener('click', () => {
+    sendMessageToContentScript({ type: 'SUBMIT_VOTE' });
+    showStatus('Clicking Vote button...', 'success');
   });
 
   // Open Voting Page Button (Delegated)
