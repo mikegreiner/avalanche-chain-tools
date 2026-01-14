@@ -217,10 +217,13 @@ body {
 }
 
 .status {
-  padding: 12px;
-  margin: 12px;
-  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0;
   font-size: 13px;
+  text-align: center;
+  border-top: 1px solid transparent;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
 }
 
 .status.hidden {
@@ -228,15 +231,15 @@ body {
 }
 
 .status.success {
-  background: rgba(50, 205, 50, 0.2);
+  background: rgba(50, 205, 50, 0.1);
   color: #32cd32;
-  border: 1px solid rgba(50, 205, 50, 0.3);
+  border-top-color: rgba(50, 205, 50, 0.2);
 }
 
 .status.error {
-  background: rgba(255, 69, 0, 0.2);
+  background: rgba(255, 69, 0, 0.1);
   color: #ff8c00;
-  border: 1px solid rgba(255, 69, 0, 0.3);
+  border-top-color: rgba(255, 69, 0, 0.2);
 }
 
 .status-info {
