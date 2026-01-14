@@ -13,8 +13,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -33,6 +33,9 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
+
+# Extension
+!extension/lib/
 
 # Output files (generated analysis reports, recommendations, etc.)
 output/

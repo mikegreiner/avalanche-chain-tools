@@ -1,52 +1,93 @@
 /**
  * Content script bundle - includes all pool analysis logic
- * This bundles the modules together to avoid ES module import issues
+ * AUTO-GENERATED from lib/*.js - DO NOT EDIT DIRECTLY
  */
 
-// Include Pool class
+// --- From pool.js ---
+/**
+ * Pool class - represents a liquidity pool with its metrics
+ * Ported from blackhole_pool_recommender.py
+ */
+
 class Pool {
   constructor(data) {
     this.name = data.name || 'Unknown';
-    this.total_rewards = data.total_rewards || 0;
-    this.vapr = data.vapr || 0;
+    this.total_rewards = data.total_rewards || 0; // USD value
+    this.vapr = data.vapr || 0; // VAPR percentage
     this.current_votes = data.current_votes ?? null;
     this.pool_id = data.pool_id || null;
-    this.pool_type = data.pool_type || null;
-    this.fee_percentage = data.fee_percentage || null;
+    this.pool_type = data.pool_type || null; // vAMM, CL200, CL1, etc.
+    this.fee_percentage = data.fee_percentage || null; // e.g., "0.7%", "0.05%"
   }
 
+  /**
+   * Calculate profitability score factoring in dilution.
+   * Considers:
+   * - Rewards per vote (accounts for dilution) - PRIMARY
+   * - Total rewards (absolute size) - SECONDARY  
+   * - VAPR (return percentage) - TERTIARY
+   */
   profitabilityScore() {
+    // Calculate rewards per vote if we have vote data
     let rewardsPerVote = null;
     if (this.current_votes !== null && this.current_votes > 0) {
       rewardsPerVote = this.total_rewards / this.current_votes;
     }
 
+    // Normalize rewards per vote (primary metric, accounts for dilution)
+    // Scale: assume max around $0.50 per vote is excellent, using square root for better distribution
     let rewardsPerVoteNormalized;
     if (rewardsPerVote !== null) {
       if (rewardsPerVote > 0) {
+        // Normalize: $0.50 per vote = 100 points, using square root for gentler curve
+        // This handles wide range: $0.001 to $0.50 per vote
         rewardsPerVoteNormalized = Math.min(100, Math.max(0, Math.pow(rewardsPerVote / 0.5, 0.5) * 100));
       } else {
         rewardsPerVoteNormalized = 0;
       }
     } else {
+      // Fallback: if no vote data, use total rewards (less accurate)
       rewardsPerVoteNormalized = Math.min(this.total_rewards / 10000.0, 1.0) * 100;
     }
 
+    // Normalize total rewards (secondary - absolute size matters too)
     const rewardsTotalNormalized = Math.min(this.total_rewards / 10000.0, 1.0) * 100;
-    const vaprNormalized = Math.min(this.vapr / 100.0, 10.0) * 10;
+
+    // Normalize VAPR (tertiary)
+    const vaprNormalized = Math.min(this.vapr / 100.0, 10.0) * 10; // Cap at 1000% for normalization
+
+    // Weighted combination:
+    // - Rewards per vote: 60% (most important - accounts for dilution)
+    // - Total rewards: 25% (absolute size still matters)
+    // - VAPR: 15% (return percentage)
     const score = (rewardsPerVoteNormalized * 0.6) + (rewardsTotalNormalized * 0.25) + (vaprNormalized * 0.15);
     return score;
   }
 
+  /**
+   * Estimate USD rewards for the user if they vote with their voting power.
+   * 
+   * Formula:
+   * - New total votes = current_votes + user_voting_power
+   * - User's share = user_voting_power / new_total_votes
+   * - Estimated reward = user_share * total_rewards
+   */
   estimateUserRewards(userVotingPower) {
     if (this.current_votes === null || this.current_votes === 0) {
+      // If no current votes, user would get 100% (unrealistic but for estimation)
       return this.total_rewards;
     }
+
     const newTotalVotes = this.current_votes + userVotingPower;
     const userShare = userVotingPower / newTotalVotes;
-    return userShare * this.total_rewards;
+    const estimatedReward = userShare * this.total_rewards;
+
+    return estimatedReward;
   }
 
+  /**
+   * Calculate the user's percentage share of the pool.
+   */
   calculateShare(userVotingPower) {
     if (!userVotingPower || userVotingPower <= 0) return 0;
     const currentVotes = this.current_votes || 0;
@@ -54,49 +95,115 @@ class Pool {
     return (userVotingPower / newTotalVotes) * 100;
   }
 
+  /**
+   * Calculate stability score based on vote density and pool characteristics.
+   * 
+   * Based on analysis showing that vote density (votes per dollar of rewards)
+   * is the best predictor of stability. Higher vote density = more stable.
+   * 
+   * Returns:
+   *   Stability score (0-100, higher = more stable)
+   */
   stabilityScore() {
+    // Calculate vote density (votes per dollar of rewards)
+    // Higher density = more votes relative to rewards = more stable
     if (this.total_rewards === null || this.total_rewards <= 0) {
       return 0.0;
     }
+
     if (this.current_votes === null || this.current_votes <= 0) {
+      // No votes = very unstable (could see massive changes)
       return 0.0;
     }
+
     const voteDensity = this.current_votes / this.total_rewards;
+
+    // Normalize vote density
+    // Analysis showed median density around 200-500 votes per dollar
+    // High density (stable): 500+ votes per dollar = 100 points
+    // Low density (volatile): <100 votes per dollar = 0 points
+    // Use square root for gentler curve
     let normalizedDensity;
     if (voteDensity > 0) {
       normalizedDensity = Math.min(100, Math.max(0, Math.pow(voteDensity / 500.0, 0.5) * 100));
     } else {
       normalizedDensity = 0;
     }
+
+    // Reward size factor (larger rewards = slightly more stable)
+    // But not as important as vote density
     let rewardSizeFactor;
     if (this.total_rewards >= 50000) {
-      rewardSizeFactor = 20;
+      rewardSizeFactor = 20; // Large rewards
     } else if (this.total_rewards >= 20000) {
-      rewardSizeFactor = 10;
+      rewardSizeFactor = 10; // Medium rewards
     } else {
-      rewardSizeFactor = 0;
+      rewardSizeFactor = 0; // Small rewards (more volatile)
     }
+
+    // Combine: vote density is primary (80%), reward size is secondary (20%)
     const stability = (normalizedDensity * 0.8) + (rewardSizeFactor * 0.2);
+
     return Math.min(100, Math.max(0, stability));
   }
 
+  /**
+   * Calculate stability-adjusted score optimized for your personal rewards.
+   * 
+   * When user_voting_power is provided, uses estimated reward (what you'll actually get)
+   * combined with stability (how likely it is to remain stable near epoch close).
+   * 
+   * When user_voting_power is not provided, falls back to profitability + stability.
+   * 
+   * This is especially useful near epoch close when votes are pouring in and
+   * you want to maximize your rewards while accounting for stability.
+   * 
+   * @param {number|null} userVotingPower - Your voting power in veBLACK (optional)
+   * @returns {number} Stability-adjusted score (higher = better for your rewards)
+   */
   stabilityAdjustedScore(userVotingPower = null) {
     const stability = this.stabilityScore();
+
     if (userVotingPower !== null && userVotingPower > 0) {
+      // Use estimated reward (what you'll actually get)
       const estimatedReward = this.estimateUserRewards(userVotingPower);
+
+      // Normalize estimated reward to 0-100 scale
+      // Assume max reward around $500 is excellent (adjust based on your typical rewards)
+      // Use square root for gentler curve
       let normalizedReward;
       if (estimatedReward > 0) {
         normalizedReward = Math.min(100, Math.max(0, Math.pow(estimatedReward / 500.0, 0.5) * 100));
       } else {
         normalizedReward = 0;
       }
-      return (normalizedReward * 0.7) + (stability * 0.3);
+
+      // Combine: 70% estimated reward, 30% stability
+      // This maximizes your personal rewards while accounting for stability
+      // Higher stability = less likely to drop as votes pour in near epoch close
+      const adjustedScore = (normalizedReward * 0.7) + (stability * 0.3);
+      return adjustedScore;
     } else {
+      // Fallback: use profitability score when no voting power provided
       const profitability = this.profitabilityScore();
-      return (profitability * 0.7) + (stability * 0.3);
+      const adjustedScore = (profitability * 0.7) + (stability * 0.3);
+      return adjustedScore;
     }
   }
 
+  /**
+   * Calculate vote density (votes per dollar of rewards) - key stability predictor
+   */
+  voteDensity() {
+    if (this.total_rewards && this.total_rewards > 0 && this.current_votes) {
+      return this.current_votes / this.total_rewards;
+    }
+    return null;
+  }
+
+  /**
+   * Calculate rewards per vote
+   */
   rewardsPerVote() {
     if (this.current_votes !== null && this.current_votes > 0) {
       return this.total_rewards / this.current_votes;
@@ -105,7 +212,155 @@ class Pool {
   }
 }
 
-// Pool extraction functions
+// Export for use in other modules
+
+
+// --- From pool-recommender.js ---
+/**
+ * Pool recommender logic
+ * Ported from blackhole_pool_recommender.py recommend_pools method
+ */
+
+;
+
+/**
+ * Simple wildcard matching (like fnmatch)
+ */
+function fnmatch(pattern, string) {
+  // Convert to regex
+  const regexPattern = pattern
+    .replace(/\./g, '\\.')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  const regex = new RegExp(`^${regexPattern}$`, 'i');
+  return regex.test(string);
+}
+
+/**
+ * Recommend top pools based on criteria
+ * 
+ * @param {Array<Pool>} pools - Array of Pool objects
+ * @param {Object} options - Recommendation options
+ * @param {number} options.topN - Number of top pools to return
+ * @param {number|null} options.userVotingPower - User's voting power in veBLACK
+ * @param {boolean} options.hideVamm - Filter out vAMM pools
+ * @param {number|null} options.minRewards - Minimum total rewards in USD
+ * @param {number|null} options.maxPoolPercentage - Maximum percentage of pool voting power
+ * @param {string|Array<string>|null} options.poolName - Shell-style wildcard pattern(s) to filter pools
+ * @param {string} options.sortBy - Sort method: 'auto', 'reward', 'profitability', or 'stability'
+ * @returns {Array<Pool>} Recommended pools
+ */
+function recommendPools(pools, options = {}) {
+  const {
+    topN = 5,
+    userVotingPower = null,
+    hideVamm = false,
+    minRewards = null,
+    maxPoolPercentage = null,
+    poolName = null,
+    sortBy = 'auto'
+  } = options;
+
+  if (!pools || pools.length === 0) {
+    return [];
+  }
+
+  let filteredPools = [...pools];
+
+  // Filter out vAMM pools if requested
+  if (hideVamm) {
+    filteredPools = filteredPools.filter(p => p.pool_type !== 'vAMM');
+  }
+
+  // Filter out pools below minimum rewards threshold
+  if (minRewards !== null) {
+    filteredPools = filteredPools.filter(p => p.total_rewards >= minRewards);
+  }
+
+  // Filter pools by name using shell-style wildcards (case-insensitive)
+  if (poolName !== null) {
+    const patterns = Array.isArray(poolName) ? poolName : [poolName];
+    
+    filteredPools = filteredPools.filter(pool => {
+      // Must match ALL patterns
+      return patterns.every(p => {
+        if (!p) return true;
+        let pattern = p;
+        if (!pattern.includes('*') && !pattern.includes('?')) {
+          pattern = `*${pattern}*`;
+        }
+        return fnmatch(pattern, pool.name);
+      });
+    });
+  }
+
+  // Filter out pools where user would exceed max pool percentage threshold
+  if (maxPoolPercentage !== null && userVotingPower !== null) {
+    filteredPools = filteredPools.filter(pool => {
+      // Skip pools without vote data (can't calculate percentage)
+      if (pool.current_votes === null || pool.current_votes === 0) {
+        // If pool has no votes, user would have 100% - include only if threshold allows
+        return maxPoolPercentage >= 100.0;
+      }
+
+      // Calculate new total votes after user votes
+      const newTotalVotes = pool.current_votes + userVotingPower;
+      // Calculate user's percentage of the pool
+      const userPercentage = (userVotingPower / newTotalVotes) * 100;
+
+      // Include pool only if user percentage is <= threshold
+      return userPercentage <= maxPoolPercentage;
+    });
+  }
+
+  // Determine sort method
+  let sortMethod;
+  if (sortBy === 'auto') {
+    // Default behavior: reward if voting power provided, else profitability
+    sortMethod = userVotingPower !== null ? 'reward' : 'profitability';
+  } else {
+    sortMethod = sortBy;
+  }
+
+  // Sort pools based on selected method
+  let sortedPools;
+  if (sortMethod === 'reward') {
+    if (userVotingPower === null) {
+      // Fallback if no voting power but reward sort requested
+      sortedPools = filteredPools.sort((a, b) => b.total_rewards - a.total_rewards);
+    } else {
+      sortedPools = filteredPools.sort((a, b) => {
+        return b.estimateUserRewards(userVotingPower) - a.estimateUserRewards(userVotingPower);
+      });
+    }
+  } else if (sortMethod === 'profitability') {
+    sortedPools = filteredPools.sort((a, b) => {
+      return b.profitabilityScore() - a.profitabilityScore();
+    });
+  } else if (sortMethod === 'stability') {
+    sortedPools = filteredPools.sort((a, b) => {
+      return b.stabilityAdjustedScore(userVotingPower) - a.stabilityAdjustedScore(userVotingPower);
+    });
+  } else {
+    // Default fallback
+    sortedPools = filteredPools.sort((a, b) => b.total_rewards - a.total_rewards);
+  }
+
+  return sortedPools.slice(0, topN);
+}
+
+
+// --- From pool-extractor.js ---
+/**
+ * Pool data extraction from DOM
+ * Ported from blackhole_pool_recommender.py _extract_pools_from_elements
+ */
+
+;
+
+/**
+ * Extract pool data from DOM elements on the voting page
+ */
 function extractPoolsFromDOM() {
   const pools = [];
   let poolElements = document.querySelectorAll('div.liquidity-pool-cell.even, div.liquidity-pool-cell.odd');
@@ -134,6 +389,9 @@ function extractPoolsFromDOM() {
   return pools;
 }
 
+/**
+ * Extract pool data from a single DOM element
+ */
 function extractPoolFromElement(element) {
   const text = element.textContent.trim();
   if (!text || text.length < 10) {
@@ -233,7 +491,6 @@ function extractPoolFromElement(element) {
     let rightSection = element.querySelector('div.liquidity-pool-cell-right');
     
     if (!rightSection) {
-      console.warn('Could not find right section for pool extraction');
       // Fallback: try other selectors
       const fallbackSelectors = [
         '[class*="cell-right"]',
@@ -248,458 +505,108 @@ function extractPoolFromElement(element) {
       }
     }
     
-    if (!rightSection) {
-      // Can't extract without right section
-      return new Pool({
-        name,
-        total_rewards: 0.0,
-        vapr: 0.0,
-        current_votes: null,
-        pool_id: poolId,
-        pool_type: poolType,
-        fee_percentage: feePercentage
-      });
-    }
-    
-    // Get all liquidity-pool-cell-data sections (each column)
-    const dataSections = rightSection.querySelectorAll('div.liquidity-pool-cell-data');
-    
-    // Find specific sections by their classes (matching actual HTML structure)
-    let totalRewardsSection = null;
-    let vaprSection = null;
-    let votesSection = null;
-    let feesSection = null;
-    let incentivesSection = null;
-    
-    for (const section of dataSections) {
-      const classes = section.className || '';
-      if (classes.includes('total-rewards')) {
-        totalRewardsSection = section;
-      } else if (classes.includes('last')) {
-        vaprSection = section; // VAPR is in "last" section
-      } else if (classes.includes('end')) {
-        votesSection = section; // Votes are in "end" section
-      } else if (classes.includes('incentives')) {
-        incentivesSection = section;
-      } else if (!classes.includes('incentives') && !classes.includes('total-rewards') && !classes.includes('last') && !classes.includes('end')) {
-        // Likely the fees section (first data section that's not special)
-        if (!feesSection) {
-          feesSection = section;
+    if (rightSection) {
+      // Get all liquidity-pool-cell-data sections (each column)
+      const dataSections = rightSection.querySelectorAll('div.liquidity-pool-cell-data');
+      
+      // Find specific sections by their classes
+      let totalRewardsSection = null;
+      let vaprSection = null;
+      let votesSection = null;
+      
+      for (const section of dataSections) {
+        const classes = section.className || '';
+        if (classes.includes('total-rewards')) {
+          totalRewardsSection = section;
+        } else if (classes.includes('last')) {
+          vaprSection = section;
+        } else if (classes.includes('end')) {
+          votesSection = section;
         }
       }
-    }
-    
-    // Extract VAPR from vapr section (has class "voting-pool-cell-vapr-info")
-    // Structure: <div class="liquidity-pool-cell-data last"><div class="voting-pool-cell-vapr-info"><div class="first">216.5%</div>
-    if (vaprSection) {
-      const vaprInfo = vaprSection.querySelector('div.voting-pool-cell-vapr-info');
-      if (vaprInfo) {
-        const firstDiv = vaprInfo.querySelector('div.first');
+      
+      // Extract VAPR
+      if (vaprSection) {
+        const firstDiv = vaprSection.querySelector('div.voting-pool-cell-vapr-info div.first');
         if (firstDiv) {
-          const vaprText = firstDiv.textContent.trim();
-          // Pattern: "216.5%" - extract just the number and %
-          const vaprMatch = vaprText.match(/([\d,]+\.?\d*)\s*%/);
+          const vaprMatch = firstDiv.textContent.match(/([\d,]+\.?\d*)\s*%/);
           if (vaprMatch) {
-            try {
-              const vaprVal = parseFloat(vaprMatch[1].replace(/,/g, '').replace('~', ''));
-              // VAPR can be any positive value >= 1% (to exclude fee percentages which are < 1%)
-              // Some pools have VAPR in the 30-50% range, others are 100-300%+
-              if (vaprVal >= 1 && vaprVal < 10000) {
-                vapr = vaprVal;
-              }
-            } catch (e) {
-              console.warn('Error parsing VAPR:', vaprText, e);
+            vapr = parseFloat(vaprMatch[1].replace(/,/g, ''));
+          }
+        }
+      }
+      
+      // Extract total rewards
+      if (totalRewardsSection) {
+        const totalData = totalRewardsSection.querySelector('div.voting-pool-data.total');
+        if (totalData) {
+          const rewardsMatch = totalData.textContent.match(/~?\$([\d,]+\.?\d*)\s*([kKmMbB])?/);
+          if (rewardsMatch) {
+            let val = parseFloat(rewardsMatch[1].replace(/,/g, ''));
+            const suffix = rewardsMatch[2];
+            if (suffix) {
+              const suffixLower = suffix.toLowerCase();
+              if (suffixLower === 'k') val *= 1000;
+              else if (suffixLower === 'm' || suffixLower === 'b') val *= 1000000;
             }
+            totalRewards = val;
+          }
+        }
+      }
+      
+      // Extract votes
+      if (votesSection) {
+        const votesData = votesSection.querySelector('div.voting-pool-data.total');
+        if (votesData) {
+          const votesMatch = votesData.textContent.match(/([\d,]+\.?\d*)\s*([MmKk])\b/);
+          if (votesMatch) {
+            let votes = parseFloat(votesMatch[1].replace(/,/g, ''));
+            const suffix = votesMatch[2].toLowerCase();
+            if (suffix === 'm') votes *= 1000000;
+            else if (suffix === 'k') votes *= 1000;
+            currentVotes = votes;
           }
         }
       }
     }
     
-    // Note: Removed debug warning to reduce console spam - VAPR extraction will fall back to text-based search if section-based fails
-    
-    // Extract total rewards from total-rewards section
-    // Structure: <div class="liquidity-pool-cell-data total-rewards"><div class="voting-pool-cell-slot"><div class="voting-pool-cell-slot-container"><div class="voting-pool-data total">~$23.77K</div>
-    if (totalRewardsSection) {
-      const slot = totalRewardsSection.querySelector('div.voting-pool-cell-slot');
-      if (slot) {
-        const slotContainer = slot.querySelector('div.voting-pool-cell-slot-container');
-        if (slotContainer) {
-          // Try exact selector first: div.voting-pool-data.total (element with both classes)
-          let totalData = slotContainer.querySelector('div.voting-pool-data.total');
-          // Fallback: try any div.voting-pool-data and check if it has class "total"
-          if (!totalData) {
-            const allData = slotContainer.querySelectorAll('div.voting-pool-data');
-            for (const data of allData) {
-              if (data.classList.contains('total')) {
-                totalData = data;
-                break;
-              }
-            }
-          }
-          // Final fallback: get any div.voting-pool-data that contains a $ sign
-          if (!totalData) {
-            const allData = slotContainer.querySelectorAll('div.voting-pool-data');
-            for (const data of allData) {
-              if (data.textContent.includes('$')) {
-                totalData = data;
-                break;
-              }
-            }
-          }
-          
-          if (totalData) {
-            const rewardsText = totalData.textContent.trim();
-            // Pattern: "~$23.77K" or "~$39.34K" or "$23.77K" (with or without ~)
-            const rewardsMatch = rewardsText.match(/~?\$([\d,]+\.?\d*)\s*([kKmMbB])?/);
-            if (rewardsMatch) {
-              try {
-                let numStr = rewardsMatch[1].replace(/,/g, '').replace('~', '');
-                let val = parseFloat(numStr);
-                const suffix = rewardsMatch[2];
-                if (suffix) {
-                  const suffixLower = suffix.toLowerCase();
-                  if (suffixLower === 'k') {
-                    val *= 1000;
-                  } else if (suffixLower === 'm' || suffixLower === 'b') {
-                    val *= 1000000;
-                  }
-                }
-                if (val > 0) {
-                  totalRewards = val;
-                }
-              } catch (e) {
-                console.warn('Error parsing total rewards:', rewardsText, e);
-              }
-            }
-          } else {
-            // Fallback: try searching all div.voting-pool-data for one with "Fees + Incentives" label
-            const allData = slotContainer.querySelectorAll('div.voting-pool-data');
-            for (const data of allData) {
-              const text = data.textContent.trim();
-              if (text.includes('$') && (text.includes('Fees + Incentives') || text.includes('total'))) {
-                const rewardsMatch = text.match(/~?\$([\d,]+\.?\d*)\s*([kKmMbB])?/);
-                if (rewardsMatch) {
-                  try {
-                    let numStr = rewardsMatch[1].replace(/,/g, '').replace('~', '');
-                    let val = parseFloat(numStr);
-                    const suffix = rewardsMatch[2];
-                    if (suffix) {
-                      const suffixLower = suffix.toLowerCase();
-                      if (suffixLower === 'k') {
-                        val *= 1000;
-                      } else if (suffixLower === 'm' || suffixLower === 'b') {
-                        val *= 1000000;
-                      }
-                    }
-                    if (val > 0) {
-                      totalRewards = val;
-                      break;
-                    }
-                  } catch (e) {}
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // Debug: log if total rewards weren't found
-    if (totalRewards === 0.0 && totalRewardsSection) {
-      console.warn('Total rewards extraction failed. Section found but no value extracted. Section HTML:', totalRewardsSection.innerHTML.substring(0, 200));
-    }
-    
-    // Extract votes from end section
-    // Structure: <div class="liquidity-pool-cell-data end"><div class="voting-pool-cell-slot"><div class="voting-pool-cell-slot-container"><div class="voting-pool-data total">11.09M</div>
-    if (votesSection) {
-      const slot = votesSection.querySelector('div.voting-pool-cell-slot');
-      if (slot) {
-        const slotContainer = slot.querySelector('div.voting-pool-cell-slot-container');
-        if (slotContainer) {
-          // Try exact selector first: div.voting-pool-data.total (element with both classes)
-          let votesData = slotContainer.querySelector('div.voting-pool-data.total');
-          // Fallback: try any div.voting-pool-data and check if it has class "total"
-          if (!votesData) {
-            const allData = slotContainer.querySelectorAll('div.voting-pool-data');
-            for (const data of allData) {
-              if (data.classList.contains('total')) {
-                votesData = data;
-                break;
-              }
-            }
-          }
-          // Final fallback: just get the first div.voting-pool-data (votes are usually first)
-          if (!votesData) {
-            votesData = slotContainer.querySelector('div.voting-pool-data');
-          }
-          
-          if (votesData) {
-            const votesText = votesData.textContent.trim();
-            // Pattern: "11.09M" or "583.21K" or "16.19M" (no $ sign, just number with M/K)
-            // The text should be just the number and suffix, not mixed with other text
-            // First try to match the full text as a number with suffix
-            const votesMatch = votesText.match(/^([\d,]+\.?\d*)\s*([MmKk])\b/);
-            if (votesMatch) {
-              try {
-                let numStr = votesMatch[1].replace(/,/g, '').replace('~', '');
-                let votes = parseFloat(numStr);
-                const suffix = votesMatch[2].toLowerCase();
-                if (suffix === 'm') {
-                  votes *= 1000000;
-                } else if (suffix === 'k') {
-                  votes *= 1000;
-                }
-                if (votes > 0 && votes < 1000000000) {
-                  currentVotes = votes;
-                }
-              } catch (e) {
-                console.warn('Error parsing votes:', votesText, e);
-              }
-            } else {
-              // Try matching anywhere in the text (fallback for cases where there's extra whitespace)
-              const votesMatchAnywhere = votesText.match(/([\d,]+\.?\d*)\s*([MmKk])\b/);
-              if (votesMatchAnywhere) {
-                try {
-                  let numStr = votesMatchAnywhere[1].replace(/,/g, '').replace('~', '');
-                  let votes = parseFloat(numStr);
-                  const suffix = votesMatchAnywhere[2].toLowerCase();
-                  if (suffix === 'm') {
-                    votes *= 1000000;
-                  } else if (suffix === 'k') {
-                    votes *= 1000;
-                  }
-                  // Only accept if it's a reasonable vote count (>= 1000)
-                  // And prefer M suffix over K (votes are usually in millions, not thousands)
-                  if (votes >= 1000 && votes < 1000000000) {
-                    currentVotes = votes;
-                  }
-                } catch (e) {}
-              } else {
-                // Try parsing as plain number (no suffix) - could be in thousands format like "634.51" (meaning 634,510)
-                // Or could be a plain number like "634510"
-                const plainMatch = votesText.match(/^([\d,]+\.?\d*)$/);
-                if (plainMatch) {
-                  try {
-                    let votes = parseFloat(plainMatch[1].replace(/,/g, ''));
-                    // If the number has a decimal point and is relatively small (< 10000), it might be in thousands
-                    // e.g., "634.51" might mean 634,510 votes
-                    if (plainMatch[1].includes('.') && votes < 10000 && votes >= 1) {
-                      votes *= 1000; // Convert thousands to actual number
-                    }
-                    // Only accept if it's a reasonable vote count (>= 1000)
-                    if (votes >= 1000 && votes < 1000000000) {
-                      currentVotes = votes;
-                    }
-                  } catch (e) {}
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // Note: Removed debug warning to reduce console spam - votes extraction will fall back to text-based search if section-based fails
-    
-    // Fallback: Extract all text and try to find numbers if section-based extraction failed
+    // Fallback: Text-based extraction if section-based failed
     const allText = element.textContent || '';
-    
-    // If we still don't have values, try text-based extraction
     if (totalRewards === 0.0) {
-      // Try to find total rewards - look for $ amounts with k/K/m/M suffixes
-      // Pattern: "~$57.56k" or "$1.2M" or "$57,560" (note: page uses ~$ prefix)
       const dollarAmounts = allText.matchAll(/~?\$([\d,]+\.?\d*)\s*([kKmMbB])?/g);
-      const rewardValues = [];
+      let maxVal = 0;
       for (const match of dollarAmounts) {
-      try {
-        let numStr = match[1].replace(/,/g, '').replace('~', '');
-        let val = parseFloat(numStr);
+        let val = parseFloat(match[1].replace(/,/g, ''));
         const suffix = match[2];
         if (suffix) {
           const suffixLower = suffix.toLowerCase();
-          if (suffixLower === 'k') {
-            val *= 1000;
-          } else if (suffixLower === 'm' || suffixLower === 'b') {
-            val *= 1000000;
-          }
+          if (suffixLower === 'k') val *= 1000;
+          else if (suffixLower === 'm' || suffixLower === 'b') val *= 1000000;
         }
-        if (val > 0 && val < 1000000000) { // Reasonable range (up to $1B)
-          rewardValues.push(val);
-        }
-      } catch (e) {}
-    }
-    
-    // Use the largest dollar amount as total rewards (likely the total)
-    // But also check for "Total" or "=" patterns
-    if (rewardValues.length > 0) {
-      // Look for "Total: ~$X" or "= ~$X" pattern (page uses ~$ prefix)
-      const totalMatch = allText.match(/(?:total|=\s*)\s*~?\$?([\d,]+\.?\d*)\s*([kKmMbB])?/i);
-      if (totalMatch) {
-        try {
-          let numStr = totalMatch[1].replace(/,/g, '').replace('~', '');
-          let totalVal = parseFloat(numStr);
-          const suffix = totalMatch[2];
-          if (suffix) {
-            const suffixLower = suffix.toLowerCase();
-            if (suffixLower === 'k') {
-              totalVal *= 1000;
-            } else if (suffixLower === 'm' || suffixLower === 'b') {
-              totalVal *= 1000000;
-            }
-          }
-          if (totalVal > 0) {
-            totalRewards = totalVal;
-          } else {
-            // Fallback: use max or sum
-            if (rewardValues.length > 1) {
-              totalRewards = rewardValues.reduce((a, b) => a + b, 0);
-            } else {
-              totalRewards = Math.max(...rewardValues);
-            }
-          }
-        } catch (e) {
-          // Fallback to max
-          totalRewards = Math.max(...rewardValues);
-        }
-      } else {
-        // No "Total" pattern found, use max or sum
-        if (rewardValues.length > 1) {
-          // If multiple values, might be fees + incentives, so sum them
-          totalRewards = rewardValues.reduce((a, b) => a + b, 0);
-        } else {
-          totalRewards = Math.max(...rewardValues);
-        }
+        maxVal = Math.max(maxVal, val);
       }
+      totalRewards = maxVal;
     }
-    } // Close if (totalRewards === 0.0)
     
-    // Try to find VAPR - look for percentage (fallback only if section-based extraction failed)
-    // Only use this if we didn't find VAPR from the section-based approach
     if (vapr === 0.0) {
       const percentages = allText.match(/([\d,]+\.?\d*)\s*%/g);
       if (percentages) {
-        // Filter out small percentages (fee percentages) and find the largest
-        // VAPR is typically the largest percentage (> 1%)
-        const vaprValues = percentages.map(p => {
-          try {
-            return parseFloat(p.replace(/,/g, '').replace('%', '').replace('~', ''));
-          } catch (e) {
-            return 0;
-          }
-        }).filter(v => v >= 1 && v < 10000); // Filter out fee percentages (< 1%)
-        
-        if (vaprValues.length > 0) {
-          // Use the largest percentage as VAPR
-          vapr = Math.max(...vaprValues);
-        }
+        const vaprValues = percentages.map(p => parseFloat(p.replace(/,/g, '').replace('%', '')))
+          .filter(v => v >= 1 && v < 10000);
+        if (vaprValues.length > 0) vapr = Math.max(...vaprValues);
       }
     }
     
-    // Try to find votes - look for numbers with optional k/K/m/M suffixes
-    // Python: First try pattern with K/M suffix (thousands/millions)
-    // Python pattern: r'([\d,]+\.?\d*)\s*([MmKk])\b'
-    // IMPORTANT: Only use fallback if section-based extraction failed
-    // And prefer M suffix over K (votes are usually in millions, not token amounts in thousands)
     if (!currentVotes) {
-      // Find all matches with M/K suffix
-      const allVoteMatches = [...allText.matchAll(/([\d,]+\.?\d*)\s*([MmKk])\b/g)];
-      if (allVoteMatches.length > 0) {
-        // Prefer matches with 'M' suffix (millions) over 'K' (thousands)
-        // Token amounts are usually in K, votes are usually in M
-        const mMatches = allVoteMatches.filter(m => m[2].toLowerCase() === 'm');
-        const matchesToUse = mMatches.length > 0 ? mMatches : allVoteMatches;
-        
-        // Use the largest value (most likely to be votes)
-        let maxVotes = 0;
-        for (const match of matchesToUse) {
-          try {
-            let numStr = match[1].replace(/,/g, '').replace('~', '');
-            let votes = parseFloat(numStr);
-            const suffix = match[2].toLowerCase();
-            if (suffix === 'm') {
-              votes *= 1000000;
-            } else if (suffix === 'k') {
-              votes *= 1000;
-            }
-            // Only consider reasonable vote counts
-            // And prefer M suffix values (votes) over K suffix (might be token amounts)
-            if (votes >= 1000 && votes < 1000000000) {
-              if (suffix === 'm' || maxVotes === 0) {
-                maxVotes = Math.max(maxVotes, votes);
-              }
-            }
-          } catch (e) {}
-        }
-        if (maxVotes > 0) {
-          currentVotes = maxVotes;
-        }
+      const votesMatch = allText.match(/([\d,]+\.?\d*)\s*([MmKk])\b/);
+      if (votesMatch) {
+        let votes = parseFloat(votesMatch[1].replace(/,/g, ''));
+        const suffix = votesMatch[2].toLowerCase();
+        if (suffix === 'm') votes *= 1000000;
+        else if (suffix === 'k') votes *= 1000;
+        currentVotes = votes;
       }
     }
-    
-    // Fallback: look for numbers followed by "vote" or veBLACK
-    if (!currentVotes) {
-      const votesPatterns = [
-        /([\d,]+\.?\d*)\s*([kKmM])?\s*(?:votes?|veBLACK)/i,
-        /(?:votes?|veBLACK)[\s:]*([\d,]+\.?\d*)\s*([kKmM])?/i
-      ];
-      
-      for (const pattern of votesPatterns) {
-        const votesMatch = allText.match(pattern);
-        if (votesMatch) {
-          try {
-            let numStr = votesMatch[1].replace(/,/g, '').replace('~', '');
-            let votes = parseFloat(numStr);
-            const suffix = votesMatch[2];
-            if (suffix) {
-              const suffixLower = suffix.toLowerCase();
-              if (suffixLower === 'k') {
-                votes *= 1000;
-              } else if (suffixLower === 'm') {
-                votes *= 1000000;
-              }
-            }
-            if (votes > 0 && votes < 1000000000) {
-              currentVotes = votes;
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-    }
-    
-    // Final fallback: look for large numbers that might be votes
-    // Python: Look for standalone numbers that could be votes
-    // Python: votes are typically between 1,000 and 999,999 (without M)
-    if (!currentVotes) {
-      const numbers = allText.match(/\b([\d,]+)\b/g);
-      if (numbers) {
-        const voteCandidates = [];
-        for (const numStr of numbers) {
-          try {
-            const numVal = parseFloat(numStr.replace(/,/g, ''));
-            // Python: if 1000 <= num_val < 1000000:
-            if (numVal >= 1000 && numVal < 1000000) {
-              // Python: Check context to avoid percentages and dollar amounts
-              const numPos = allText.indexOf(numStr);
-              if (numPos >= 0) {
-                const context = allText.substring(Math.max(0, numPos - 10), Math.min(allText.length, numPos + numStr.length + 10));
-                // Python: if '$' not in context and '%' not in context:
-                if (!context.includes('$') && !context.includes('%')) {
-                  voteCandidates.push(numVal);
-                }
-              }
-            }
-          } catch (e) {}
-        }
-        // Python: If multiple candidates, take the largest (most likely to be votes)
-        if (voteCandidates.length > 0) {
-          currentVotes = Math.max(...voteCandidates);
-        }
-      }
-    }
-    
-    // Note: Old slot-based extraction removed - using section-based approach above
-    // The section-based approach is more reliable as it uses semantic class names
   } catch (error) {
     console.warn('Error extracting pool metrics:', error);
   }
@@ -715,90 +622,52 @@ function extractPoolFromElement(element) {
   });
 }
 
-// Recommender function
-function fnmatch(pattern, string) {
-  const regexPattern = pattern
-    .replace(/\./g, '\\.')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
-  const regex = new RegExp(`^${regexPattern}$`, 'i');
-  return regex.test(string);
-}
+/**
+ * Try to extract pools from API response (if available)
+ */
+async function extractPoolsFromAPI() {
+  try {
+    const response = await fetch('https://resources.blackhole.xyz/cl-pools-list/cl-pools.json', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+      }
+    });
 
-function recommendPools(pools, options = {}) {
-  const {
-    topN = 5,
-    userVotingPower = null,
-    hideVamm = false,
-    minRewards = null,
-    maxPoolPercentage = null,
-    poolName = null,
-    sortBy = 'auto'
-  } = options;
+    if (!response.ok) return [];
 
-  if (!pools || pools.length === 0) {
+    const data = await response.json();
+    const pools = [];
+    const poolsData = data.pools || data.data?.pools || (Array.isArray(data) ? data : []);
+
+    for (const poolData of poolsData) {
+      try {
+        if (poolData.token0 && poolData.token1) {
+          const poolName = `${poolData.token0.symbol}/${poolData.token1.symbol}`;
+          const fee = parseInt(poolData.fee || '0');
+          let poolType = 'CL200';
+          let feePct = `${fee / 10000}%`;
+          if (fee === 100) { poolType = 'CL1'; feePct = '0.01%'; } 
+          else if (fee === 500) { poolType = 'CL200'; feePct = '0.05%'; } 
+
+          pools.push(new Pool({
+            name: poolName,
+            total_rewards: parseFloat(poolData.feesUSD || poolData.untrackedFeesUSD || 0),
+            vapr: 0.0,
+            current_votes: null,
+            pool_id: poolData.id,
+            pool_type: poolType,
+            fee_percentage: feePct
+          }));
+        }
+      } catch (e) {}
+    }
+    return pools;
+  } catch (error) {
+    console.warn('Error fetching pools from API:', error);
     return [];
   }
-
-  let filteredPools = [...pools];
-
-  if (hideVamm) {
-    filteredPools = filteredPools.filter(p => p.pool_type !== 'vAMM');
-  }
-
-  if (minRewards !== null) {
-    filteredPools = filteredPools.filter(p => p.total_rewards >= minRewards);
-  }
-
-  if (poolName !== null) {
-    let pattern = poolName;
-    if (!pattern.includes('*') && !pattern.includes('?')) {
-      pattern = `*${pattern}*`;
-    }
-    filteredPools = filteredPools.filter(pool => fnmatch(pattern, pool.name));
-  }
-
-  if (maxPoolPercentage !== null && userVotingPower !== null) {
-    filteredPools = filteredPools.filter(pool => {
-      if (pool.current_votes === null || pool.current_votes === 0) {
-        return maxPoolPercentage >= 100.0;
-      }
-      const newTotalVotes = pool.current_votes + userVotingPower;
-      const userPercentage = (userVotingPower / newTotalVotes) * 100;
-      return userPercentage <= maxPoolPercentage;
-    });
-  }
-
-  let sortMethod;
-  if (sortBy === 'auto') {
-    sortMethod = userVotingPower !== null ? 'reward' : 'profitability';
-  } else {
-    sortMethod = sortBy;
-  }
-
-  let sortedPools;
-  if (sortMethod === 'reward') {
-    if (userVotingPower === null) {
-      throw new Error("Cannot sort by 'reward' without userVotingPower");
-    }
-    sortedPools = filteredPools.sort((a, b) => {
-      return b.estimateUserRewards(userVotingPower) - a.estimateUserRewards(userVotingPower);
-    });
-  } else if (sortMethod === 'profitability') {
-    sortedPools = filteredPools.sort((a, b) => {
-      return b.profitabilityScore() - a.profitabilityScore();
-    });
-  } else if (sortMethod === 'stability') {
-    sortedPools = filteredPools.sort((a, b) => {
-      return b.stabilityAdjustedScore(userVotingPower) - a.stabilityAdjustedScore(userVotingPower);
-    });
-  } else {
-    throw new Error(`Invalid sortBy value: ${sortBy}`);
-  }
-
-  return sortedPools.slice(0, topN);
 }
-
 // Now include the main content script logic
 console.log('Blackhole DEX Tools: Content script loaded');
 

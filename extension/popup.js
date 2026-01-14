@@ -1,4 +1,5 @@
-import { Pool, recommendPools } from './popup-helper.js';
+import Pool from './lib/pool.js';
+import { recommendPools } from './lib/pool-recommender.js';
 
 /**
  * Popup script for Blackhole DEX Tools extension
@@ -104,13 +105,15 @@ function setupListeners() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
-        chrome.tabs.sendMessage(tab.id, { type: 'REFRESH_POOL_DATA' });
-        // Wait a bit for data to be saved to storage
-        setTimeout(async () => {
-          await loadAndRenderRecommendations();
-          btn.textContent = originalText;
-          btn.disabled = false;
-        }, 1000);
+        try {
+          await chrome.tabs.sendMessage(tab.id, { type: 'REFRESH_POOL_DATA' });
+        } catch (msgErr) {
+          console.warn('Error sending refresh message:', msgErr);
+        }
+        
+        await loadAndRenderRecommendations();
+        btn.textContent = originalText;
+        btn.disabled = false;
       } else {
         showStatus('Navigate to voting page first', 'error');
         btn.textContent = originalText;
