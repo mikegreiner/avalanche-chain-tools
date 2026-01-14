@@ -383,6 +383,7 @@ async function autoSaveSettings() {
   }
   
   updateStatus();
+  showStatus('Settings saved', 'success');
 }
 
 function validateSettings() {
