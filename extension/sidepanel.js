@@ -42,12 +42,29 @@ function setupTabs() {
       const viewId = `${tab.dataset.tab}-view`;
       document.getElementById(viewId).classList.add('active');
       
+      // Toggle settings summary visibility (only on recommendations tab)
+      const summaryEl = document.getElementById('active-settings-summary');
+      if (summaryEl) {
+        if (tab.dataset.tab === 'recommendations') {
+          summaryEl.classList.add('visible');
+        } else {
+          summaryEl.classList.remove('visible');
+        }
+      }
+      
       // specific actions when switching
       if (tab.dataset.tab === 'recommendations') {
         loadAndRenderRecommendations();
       }
     });
   });
+  
+  // Initialize visibility state
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab && activeTab.dataset.tab === 'recommendations') {
+    const summaryEl = document.getElementById('active-settings-summary');
+    if (summaryEl) summaryEl.classList.add('visible');
+  }
 }
 
 function setupListeners() {
@@ -415,15 +432,50 @@ function parseIntInput(id, def) {
 }
 
 async function updateStatus() {
-  const statusInfo = document.getElementById('statusInfo');
-  if (!statusInfo) return;
+  const summaryEl = document.getElementById('active-settings-summary');
+  if (!summaryEl) return;
   const settings = await loadSettings();
   
-  let statusHtml = '<p>';
-  if (settings.votingPower) statusHtml += `✓ Voting power: ${settings.votingPower.toLocaleString()}<br>`;
-  statusHtml += `✓ Top ${settings.topN}<br>`;
-  statusHtml += '</p>';
-  statusInfo.innerHTML = statusHtml;
+  let html = '<p>';
+  
+  // Voting Power
+  if (settings.votingPower) {
+    html += `<span>Power: ${settings.votingPower.toLocaleString()}</span>`;
+  } else {
+    html += `<span>Power: Not set</span>`;
+  }
+  
+  // Top N
+  html += `<span>Top: ${settings.topN || 10}</span>`;
+  
+  // Min Rewards
+  if (settings.minRewards) {
+    html += `<span>Min Rewards: $${settings.minRewards.toLocaleString()}</span>`;
+  }
+  
+  // Max Pool %
+  if (settings.maxPoolPercentage) {
+    html += `<span>Max Share: ${settings.maxPoolPercentage}%</span>`;
+  }
+  
+  // Sort By
+  html += `<span>Sort: ${settings.sortBy || 'auto'}</span>`;
+  
+  // vAMM
+  if (settings.hideVamm) {
+    html += `<span>No vAMM</span>`;
+  }
+  
+  // Pool Name Filter
+  if (settings.poolNameFilter) {
+    html += `<span>Filter: "${settings.poolNameFilter}"</span>`;
+  }
+  
+  // Overlay
+  html += `<span>Overlay: ${settings.enableOverlay ? 'On' : 'Off'}</span>`;
+  
+  html += '</p>';
+  summaryEl.innerHTML = html;
 }
 
 function showStatus(msg, type) {

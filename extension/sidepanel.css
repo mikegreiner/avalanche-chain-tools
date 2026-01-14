@@ -400,3 +400,45 @@ small {
 .input-wrapper input:not(:placeholder-shown) + .clear-input-btn {
   display: block; /* Show when input has text */
 }
+
+/* Active Settings Summary Footer */
+.settings-summary {
+  background: #151515;
+  border-top: 1px solid rgba(255, 215, 0, 0.1);
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #888;
+  flex-shrink: 0;
+  max-height: 80px;
+  overflow-y: auto;
+  display: none; /* Hidden by default (shown via JS on Recommendations tab) */
+}
+
+.settings-summary p {
+  margin: 0;
+  line-height: 1.6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-summary span {
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #ccc;
+}
+
+.settings-summary.visible {
+  display: block;
+}
+
+/* Scrollbar for summary if needed */
+.settings-summary::-webkit-scrollbar {
+  width: 4px;
+}
+.settings-summary::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
