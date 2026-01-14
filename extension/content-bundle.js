@@ -2252,6 +2252,7 @@ async function clearAllSelectedPools() {
           const newPageText = newCurrentPage ? newCurrentPage.textContent.trim() : '';
           if (newPageText === '1') {
             console.log('✓ Successfully returned to page 1');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
           } else {
             console.warn(`Still on page ${newPageText}, page 1 navigation may have failed`);
           }
@@ -2260,6 +2261,7 @@ async function clearAllSelectedPools() {
         }
       } else {
         console.log('Already on page 1');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
   } else {
