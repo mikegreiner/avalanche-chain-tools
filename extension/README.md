@@ -1,6 +1,6 @@
 # Blackhole DEX Tools Browser Extension
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 
 A browser extension that brings powerful pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections using a convenient side panel.
 
@@ -87,7 +87,7 @@ A browser extension that brings powerful pool analysis and voting tools directly
 
 ```
 extension/
-├── manifest.json          # Extension configuration (v1.1.0)
+├── manifest.json          # Extension configuration (v1.1.1)
 ├── sidepanel.html        # Side panel UI
 ├── sidepanel.css         # Side panel styles
 ├── sidepanel.js          # Side panel logic

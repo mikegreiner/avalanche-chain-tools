@@ -213,6 +213,7 @@ async function loadAndRenderRecommendations() {
     
     recommendations.forEach((pool, index) => {
       const estimatedReward = settings.votingPower ? pool.estimateUserRewards(settings.votingPower) : null;
+      const poolShare = settings.votingPower ? pool.calculateShare(settings.votingPower) : null;
       const profitabilityScore = pool.profitabilityScore();
       const stabilityScore = pool.stabilityScore();
       const rewardsPerVote = pool.rewardsPerVote();
@@ -223,9 +224,10 @@ async function loadAndRenderRecommendations() {
           <div class="pool-info">
             <div class="pool-name" title="${pool.name}">${pool.name}</div>
             <div class="pool-metrics">
-              <span>$${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span>Rewards: $${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               <span>${pool.vapr.toFixed(0)}% VAPR</span>
               ${pool.current_votes ? `<span>${formatNumber(pool.current_votes)} votes</span>` : ''}
+              ${poolShare ? `<span>${poolShare.toFixed(1)}% share</span>` : ''}
             </div>
             ${estimatedReward ? `<div class="estimated-reward">Est. Reward: $${estimatedReward.toFixed(2)}</div>` : ''}
             <div class="pool-scores">

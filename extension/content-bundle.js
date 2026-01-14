@@ -47,6 +47,13 @@ class Pool {
     return userShare * this.total_rewards;
   }
 
+  calculateShare(userVotingPower) {
+    if (!userVotingPower || userVotingPower <= 0) return 0;
+    const currentVotes = this.current_votes || 0;
+    const newTotalVotes = currentVotes + userVotingPower;
+    return (userVotingPower / newTotalVotes) * 100;
+  }
+
   stabilityScore() {
     if (this.total_rewards === null || this.total_rewards <= 0) {
       return 0.0;
@@ -1761,16 +1768,10 @@ async function updateOverlay() {
     
     recommendations.forEach((pool, index) => {
       const estimatedReward = userVotingPower ? pool.estimateUserRewards(userVotingPower) : null;
+      const poolShare = userVotingPower ? pool.calculateShare(userVotingPower) : null;
       const profitabilityScore = pool.profitabilityScore();
       const stabilityScore = pool.stabilityScore();
       const rewardsPerVote = pool.rewardsPerVote();
-      
-      // Calculate share percentage if we have voting power and votes
-      let sharePercentage = null;
-      if (userVotingPower && pool.current_votes) {
-        const newTotalVotes = pool.current_votes + userVotingPower;
-        sharePercentage = (userVotingPower / newTotalVotes) * 100;
-      }
       
       // Add click handler to select this pool
       const poolIdAttr = pool.pool_id ? `data-pool-id="${pool.pool_id}"` : '';
@@ -1786,15 +1787,15 @@ async function updateOverlay() {
           <div class="pool-info">
             <div class="pool-name">${pool.name || 'Unknown Pool'}</div>
             <div class="pool-metrics">
-              <span>Rewards: $${pool.total_rewards > 0 ? pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</span>
-              <span>VAPR: ${pool.vapr > 0 ? pool.vapr.toFixed(2) : '0.00'}%</span>
-              ${pool.current_votes ? `<span>Votes: ${pool.current_votes.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>` : ''}
-              ${rewardsPerVote ? `<span>$/vote: $${rewardsPerVote.toFixed(6)}</span>` : ''}
+              <span>Rewards: $${pool.total_rewards > 0 ? pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'}</span>
+              <span>VAPR: ${pool.vapr > 0 ? pool.vapr.toFixed(0) : '0'}%</span>
+              ${pool.current_votes ? `<span>Votes: ${formatNumber(pool.current_votes)}</span>` : ''}
+              ${poolShare ? `<span>Share: ${poolShare.toFixed(1)}%</span>` : ''}
             </div>
-            ${estimatedReward ? `<div class="estimated-reward">Est. Reward: $${estimatedReward.toFixed(2)}${sharePercentage ? ` (${sharePercentage.toFixed(2)}% share)` : ''}</div>` : ''}
+            ${estimatedReward ? `<div class="estimated-reward">Est. Reward: $${estimatedReward.toFixed(2)}</div>` : ''}
             <div class="pool-scores">
-              <span>Profitability: ${profitabilityScore.toFixed(1)}</span>
-              <span>Stability: ${stabilityScore.toFixed(1)}</span>
+              <span>Profit: ${profitabilityScore.toFixed(0)}</span>
+              <span>Stability: ${stabilityScore.toFixed(0)}</span>
             </div>
             ${pool.pool_id ? `<button class="select-pool-btn ${isSelected ? 'selected' : ''}" data-pool-id="${pool.pool_id}">${buttonText}</button>` : ''}
           </div>
@@ -1821,6 +1822,13 @@ async function updateOverlay() {
   } finally {
     isUpdatingOverlay = false;
   }
+}
+
+function formatNumber(num) {
+  if (num === null || num === undefined) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 // Check if a pool is currently selected

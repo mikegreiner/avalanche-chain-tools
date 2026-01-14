@@ -281,6 +281,7 @@ async function updateOverlay() {
     
     recommendations.forEach((pool, index) => {
       const estimatedReward = settings.votingPower ? pool.estimateUserRewards(settings.votingPower) : null;
+      const poolShare = settings.votingPower ? pool.calculateShare(settings.votingPower) : null;
       const profitabilityScore = pool.profitabilityScore();
       const stabilityScore = pool.stabilityScore();
       const rewardsPerVote = pool.rewardsPerVote();
@@ -291,15 +292,15 @@ async function updateOverlay() {
           <div class="pool-info">
             <div class="pool-name">${pool.name || 'Unknown Pool'}</div>
             <div class="pool-metrics">
-              <span>Rewards: $${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-              <span>VAPR: ${pool.vapr.toFixed(2)}%</span>
-              ${pool.current_votes ? `<span>Votes: ${pool.current_votes.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>` : ''}
-              ${rewardsPerVote ? `<span>$/vote: $${rewardsPerVote.toFixed(6)}</span>` : ''}
+              <span>Rewards: $${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span>VAPR: ${pool.vapr.toFixed(0)}%</span>
+              ${pool.current_votes ? `<span>Votes: ${formatNumber(pool.current_votes)}</span>` : ''}
+              ${poolShare ? `<span>Share: ${poolShare.toFixed(1)}%</span>` : ''}
             </div>
             ${estimatedReward ? `<div class="estimated-reward">Est. Reward: $${estimatedReward.toFixed(2)}</div>` : ''}
             <div class="pool-scores">
-              <span>Profitability: ${profitabilityScore.toFixed(1)}</span>
-              <span>Stability: ${stabilityScore.toFixed(1)}</span>
+              <span>Profit: ${profitabilityScore.toFixed(0)}</span>
+              <span>Stability: ${stabilityScore.toFixed(0)}</span>
             </div>
           </div>
         </div>
@@ -312,4 +313,10 @@ async function updateOverlay() {
     console.error('Error generating recommendations:', error);
     contentEl.innerHTML = `<p>Error generating recommendations: ${error.message}</p>`;
   }
+}
+
+function formatNumber(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
 }

@@ -42,6 +42,13 @@ export class Pool {
     return userShare * this.total_rewards;
   }
 
+  calculateShare(userVotingPower) {
+    if (!userVotingPower || userVotingPower <= 0) return 0;
+    const currentVotes = this.current_votes || 0;
+    const newTotalVotes = currentVotes + userVotingPower;
+    return (userVotingPower / newTotalVotes) * 100;
+  }
+
   stabilityScore() {
     if (this.total_rewards === null || this.total_rewards <= 0) {
       return 0.0;

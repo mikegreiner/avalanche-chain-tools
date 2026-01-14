@@ -4,6 +4,14 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-01-14
+
+### Fixed - Browser Extension
+- **Version**: 1.1.1
+- **Restored Pool Share Display**: Fixed issue where the user's percentage share of a pool (based on their voting power) was no longer showing in recommendation tiles.
+- **Improved Labels**: Added missing "Rewards:" label to pool recommendation tiles for better clarity.
+- **Consistent Data**: Unified pool analysis logic and UI rendering across side panel, popup, and content script.
+
 ## [1.1.0] - 2026-01-13
 
 ### Enhanced - Browser Extension
