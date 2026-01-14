@@ -121,6 +121,18 @@ function setupListeners() {
     }
   });
 
+  // Filter input
+  const filterInput = document.getElementById('poolNameFilter');
+  if (filterInput) {
+    filterInput.addEventListener('input', () => {
+      // Small debounce for filter
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        loadAndRenderRecommendations();
+      }, 300);
+    });
+  }
+
   // Action Buttons
   document.getElementById('selectAllBtn').addEventListener('click', async () => {
     // Get current recommendations to select them all
@@ -229,6 +241,10 @@ async function loadAndRenderRecommendations() {
     // Convert to Pool objects
     const pools = poolData.map(data => new Pool(data));
     
+    // Get filter value
+    const filterInput = document.getElementById('poolNameFilter');
+    const poolNameFilter = filterInput ? filterInput.value.trim() : null;
+    
     // Generate recommendations
     const recommendations = recommendPools(pools, {
       topN: settings.topN || 10,
@@ -236,6 +252,7 @@ async function loadAndRenderRecommendations() {
       hideVamm: settings.hideVamm,
       minRewards: settings.minRewards,
       maxPoolPercentage: settings.maxPoolPercentage,
+      poolName: poolNameFilter || null,
       sortBy: settings.sortBy || 'auto'
     });
     
