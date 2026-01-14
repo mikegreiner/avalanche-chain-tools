@@ -4,6 +4,22 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-01-14
+
+### Fixed - Browser Extension
+- **Version**: 1.1.3
+- **Pagination Bug Fix**: Fixed issue where pool extraction and selection only considered pools visible on the current page
+  - When page size was set to 10 but user requested 50 recommendations, only 10 pools were extracted and considered
+  - Now extracts pools from all pages by temporarily increasing page size to 100 during extraction
+  - Automatically restores original page size and page number after extraction
+  - Handles custom dropdown page size selector (`.size-per-page`) used by Blackhole DEX
+  - Significantly faster than navigating through many pages sequentially
+- **Improved Pool Selection**: Enhanced pool selection logic to navigate through all pages when selecting recommended pools
+  - Previously only selected pools visible on current page
+  - Now navigates through all pagination pages to find and select all recommended pools
+- **Improved Selected Pool Detection**: Updated `getSelectedPools()` to check all pages when determining which pools are selected
+  - Side panel now correctly shows all selected pools, not just those visible on current page
+
 ## [1.1.2] - 2026-01-14
 
 ### Refactored & Fixed - Browser Extension

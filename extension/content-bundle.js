@@ -356,32 +356,517 @@ function recommendPools(pools, options = {}) {
 
 /**
  * Extract pool data from DOM elements on the voting page
+ * Now handles pagination to extract pools from all pages
  */
-function extractPoolsFromDOM() {
+async function extractPoolsFromDOM() {
   const pools = [];
-  let poolElements = document.querySelectorAll('div.liquidity-pool-cell.even, div.liquidity-pool-cell.odd');
+  const foundPoolIds = new Set(); // Track to avoid duplicates
   
-  if (poolElements.length === 0) {
-    const allPoolElements = document.querySelectorAll('div.liquidity-pool-cell');
-    poolElements = Array.from(allPoolElements).filter(elem => {
-      const classes = elem.className || '';
-      return classes.includes('even') || classes.includes('odd');
-    });
-  }
+  // Helper function to extract pools from current page
+  function extractPoolsFromCurrentPage() {
+    let poolElements = document.querySelectorAll('div.liquidity-pool-cell.even, div.liquidity-pool-cell.odd');
+    
+    if (poolElements.length === 0) {
+      const allPoolElements = document.querySelectorAll('div.liquidity-pool-cell');
+      poolElements = Array.from(allPoolElements).filter(elem => {
+        const classes = elem.className || '';
+        return classes.includes('even') || classes.includes('odd');
+      });
+    }
 
-  console.log(`Found ${poolElements.length} pool elements`);
-
-  for (const element of poolElements) {
-    try {
-      const pool = extractPoolFromElement(element);
-      if (pool) {
-        pools.push(pool);
+    for (const element of poolElements) {
+      try {
+        const pool = extractPoolFromElement(element);
+        if (pool) {
+          // Use pool_id to avoid duplicates (in case same pool appears on multiple pages)
+          const poolKey = pool.pool_id ? pool.pool_id.toLowerCase() : pool.name.toLowerCase();
+          if (!foundPoolIds.has(poolKey)) {
+            pools.push(pool);
+            foundPoolIds.add(poolKey);
+          }
+        }
+      } catch (error) {
+        console.warn('Error extracting pool from element:', error);
       }
-    } catch (error) {
-      console.warn('Error extracting pool from element:', error);
+    }
+    
+    return poolElements.length;
+  }
+  
+  // Extract pools from current page
+  const poolsOnCurrentPage = extractPoolsFromCurrentPage();
+  console.log(`Found ${poolsOnCurrentPage} pool elements on current page, ${pools.length} unique pools so far`);
+  
+  // Check if pagination exists - if so, try to temporarily increase page size
+  const paginationContainer = document.querySelector('.pagination');
+  let originalPageSize = null;
+  let pageSizeSelector = null;
+  let pageSizeChanged = false;
+  
+  // Try to find and change page size selector to 100
+  // Based on the HTML structure: <div class="size-per-page"> with clickable dropdown
+  console.log('Searching for page size selector...');
+  
+  // First, try to find the size-per-page element (custom dropdown)
+  const sizePerPageElement = document.querySelector('.size-per-page');
+  if (sizePerPageElement) {
+    // Extract current page size from the text (e.g., "Pools/Page: 10")
+    const textContent = sizePerPageElement.textContent || '';
+    const pageSizeMatch = textContent.match(/Pools\/Page:\s*(\d+)/i) || textContent.match(/(\d+)/);
+    if (pageSizeMatch) {
+      originalPageSize = pageSizeMatch[1];
+      console.log(`Found size-per-page element, current value: ${originalPageSize}`);
+      
+      // Store reference to the clickable element (the whole size-per-page div is likely clickable)
+      pageSizeSelector = sizePerPageElement;
     }
   }
-
+  
+  // Also try standard select elements as fallback
+  if (!pageSizeSelector) {
+    const possibleSelectors = [
+      'select[class*="page"]',
+      'select[class*="size"]',
+      'select[class*="per"]',
+      '.pagination select',
+      '[class*="page-size"] select'
+    ];
+    
+    for (const selector of possibleSelectors) {
+      const element = document.querySelector(selector);
+      if (element && element.tagName === 'SELECT') {
+        const option100 = Array.from(element.options).find(opt => {
+          const val = opt.value || opt.textContent.trim();
+          return val === '100';
+        });
+        if (option100) {
+          pageSizeSelector = element;
+          originalPageSize = element.value;
+          console.log(`Found page size select element, current value: ${originalPageSize}`);
+          break;
+        }
+      }
+    }
+  }
+  
+  if (!pageSizeSelector) {
+    console.log('Could not find page size selector. Will navigate through pages normally.');
+  }
+  
+  // If we found a page size selector, temporarily change it to 100
+  if (pageSizeSelector && originalPageSize !== '100') {
+    try {
+      console.log(`Temporarily changing page size from ${originalPageSize} to 100...`);
+      
+      // Check if it's a standard select element
+      if (pageSizeSelector.tagName === 'SELECT') {
+        pageSizeSelector.value = '100';
+        
+        // Trigger change event
+        const changeEvent = new Event('change', { bubbles: true });
+        pageSizeSelector.dispatchEvent(changeEvent);
+        
+        // Also try input event
+        const inputEvent = new Event('input', { bubbles: true });
+        pageSizeSelector.dispatchEvent(inputEvent);
+      } else {
+        // It's a custom dropdown (like .size-per-page)
+        // Click to open the dropdown
+        console.log('Clicking page size dropdown to open it...');
+        pageSizeSelector.click();
+        
+        // Wait a bit for dropdown to open
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Look for the "100" option in the dropdown menu
+        // The dropdown might be a sibling, child, or appear elsewhere in the DOM
+        let option100 = null;
+        
+        // Try multiple strategies to find the dropdown menu
+        const strategies = [
+          // Strategy 1: Look for a dropdown menu near the size-per-page element
+          () => {
+            const parent = pageSizeSelector.parentElement;
+            if (parent) {
+              return parent.querySelector('[class*="menu"], [class*="dropdown"], [class*="option"]');
+            }
+            return null;
+          },
+          // Strategy 2: Look for elements with "100" text that appeared after click
+          () => {
+            const allElements = document.querySelectorAll('div, span, button, a');
+            for (const elem of allElements) {
+              const text = elem.textContent.trim();
+              if (text === '100') {
+                const rect = elem.getBoundingClientRect();
+                const selectorRect = pageSizeSelector.getBoundingClientRect();
+                // Check if it's near the selector (likely the dropdown option)
+                if (Math.abs(rect.top - selectorRect.bottom) < 200 && 
+                    Math.abs(rect.left - selectorRect.left) < 100) {
+                  return elem;
+                }
+              }
+            }
+            return null;
+          },
+          // Strategy 3: Look for any visible element with "100" that's clickable
+          () => {
+            const allElements = document.querySelectorAll('div, span, button, a, [role="menuitem"], [role="option"]');
+            for (const elem of allElements) {
+              const text = elem.textContent.trim();
+              const style = getComputedStyle(elem);
+              if (text === '100' && 
+                  style.display !== 'none' && 
+                  style.visibility !== 'hidden' &&
+                  style.opacity !== '0') {
+                return elem;
+              }
+            }
+            return null;
+          }
+        ];
+        
+        for (const strategy of strategies) {
+          option100 = strategy();
+          if (option100) {
+            console.log('Found "100" option in dropdown');
+            break;
+          }
+        }
+        
+        if (option100) {
+          // Click the 100 option
+          console.log('Clicking "100" option...');
+          option100.click();
+          pageSizeChanged = true;
+        } else {
+          console.warn('Could not find "100" option in dropdown. Trying to search more broadly...');
+          // Last resort: search the entire document for clickable "100"
+          const allClickable = document.querySelectorAll('div, span, button, a');
+          for (const elem of allClickable) {
+            if (elem.textContent.trim() === '100') {
+              const rect = elem.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) { // Element is visible
+                console.log('Found visible "100" element, clicking it...');
+                elem.click();
+                pageSizeChanged = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      if (pageSizeChanged) {
+        // Wait for page to reload with new page size
+        console.log('Waiting for page to reload with new page size...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for page to update
+        
+        // Verify the change took effect by checking if more pools are visible
+        const poolCountAfter = document.querySelectorAll('div.liquidity-pool-cell').length;
+        console.log(`Page size changed. Pools visible: ${poolCountAfter}`);
+        
+        // Also check if the text updated
+        if (sizePerPageElement) {
+          const updatedText = sizePerPageElement.textContent || '';
+          console.log(`Page size element now shows: ${updatedText}`);
+        }
+      }
+      
+    } catch (error) {
+      console.warn('Error changing page size:', error);
+      pageSizeChanged = false;
+    }
+  }
+  
+  let pageItems = [];
+  let nextButton = null;
+  
+  if (paginationContainer) {
+    // Find all page number items
+    pageItems = Array.from(paginationContainer.querySelectorAll('.item')).filter(item => {
+      const text = item.textContent ? item.textContent.trim() : '';
+      return /^\d+$/.test(text) && !item.classList.contains('extreme') && !item.classList.contains('selected');
+    });
+    
+    // Find next button (right arrow)
+    const rightExtreme = paginationContainer.querySelector('.item.extreme.right');
+    if (rightExtreme) {
+      nextButton = rightExtreme;
+    }
+  }
+  
+  // Store the current page to return to it later (after we potentially changed page size)
+  const currentPageItem = paginationContainer ? paginationContainer.querySelector('.item.selected') : null;
+  const currentPageNum = currentPageItem ? parseInt(currentPageItem.textContent.trim()) : 1;
+  
+  // If we changed page size, we might only need to check 1-2 pages now instead of many
+  if (paginationContainer && (pageItems.length > 0 || nextButton)) {
+    console.log(`Pagination detected. Extracting pools from all pages...`);
+    
+    // Helper function to wait for page to load by checking if pool cells have updated
+    async function waitForPageLoad(previousPoolCount, maxWaitTime = 5000) {
+      const startTime = Date.now();
+      while (Date.now() - startTime < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const currentPoolCount = document.querySelectorAll('div.liquidity-pool-cell').length;
+        // Check if pools have changed (new page loaded) or if we're still waiting
+        const currentPageItem = document.querySelector('.pagination .item.selected');
+        if (currentPageItem) {
+          // Page seems to have loaded
+          await new Promise(resolve => setTimeout(resolve, 500)); // Extra wait for stability
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    // Helper function to get current page number
+    function getCurrentPageNum() {
+      const pagination = document.querySelector('.pagination');
+      if (!pagination) return null;
+      const selectedItem = pagination.querySelector('.item.selected');
+      if (!selectedItem) return null;
+      const text = selectedItem.textContent.trim();
+      const pageNum = parseInt(text);
+      return isNaN(pageNum) ? null : pageNum;
+    }
+    
+    // Navigate through all pages to extract pools
+    // If we successfully changed page size to 100, we'll need fewer pages
+    const maxPagesToCheck = pageSizeChanged ? 5 : 100; // Safety limit (fewer if page size is 100)
+    let pagesChecked = 1;
+    let consecutiveFailures = 0;
+    const maxConsecutiveFailures = 3;
+    
+    // First, make sure we're on page 1 to start from the beginning
+    const initialPageNum = getCurrentPageNum();
+    if (initialPageNum && initialPageNum > 1) {
+      console.log(`Starting from page ${initialPageNum}, navigating to page 1 first...`);
+      const pagination = document.querySelector('.pagination');
+      if (pagination) {
+        const page1Item = Array.from(pagination.querySelectorAll('.item')).find(item => {
+          const text = item.textContent.trim();
+          return /^1$/.test(text) && !item.classList.contains('extreme');
+        });
+        if (page1Item) {
+          const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+          clickable.click();
+          await waitForPageLoad(0, 5000);
+          // Re-extract from page 1 (we already got it, but this ensures we're synced)
+          extractPoolsFromCurrentPage();
+        }
+      }
+    }
+    
+    // Now navigate through all pages using next button
+    // If page size was changed to 100, we should only need 1-2 pages
+    while (pagesChecked < maxPagesToCheck && consecutiveFailures < maxConsecutiveFailures) {
+      const pagination = document.querySelector('.pagination');
+      if (!pagination) {
+        console.log('Pagination container disappeared');
+        break;
+      }
+      
+      const currentPageBefore = getCurrentPageNum();
+      const previousPoolCount = pools.length;
+      
+      // Find next button
+      const rightExtreme = pagination.querySelector('.item.extreme.right');
+      if (!rightExtreme) {
+        console.log('No next button found');
+        break;
+      }
+      
+      const clickable = rightExtreme.closest('.item') || rightExtreme.parentElement || rightExtreme;
+      const isDisabled = clickable.classList.contains('disabled') || 
+                        clickable.hasAttribute('disabled') ||
+                        clickable.style.pointerEvents === 'none' ||
+                        getComputedStyle(clickable).pointerEvents === 'none';
+      
+      if (isDisabled) {
+        console.log('Next button is disabled - reached last page');
+        break;
+      }
+      
+      // Click next button
+      console.log(`Clicking next button (currently on page ${currentPageBefore || 'unknown'})...`);
+      clickable.click();
+      
+      // Wait for page to load
+      const pageLoaded = await waitForPageLoad(previousPoolCount, 5000);
+      if (!pageLoaded) {
+        console.warn('Page load timeout - continuing anyway');
+      }
+      
+      // Verify we actually moved to a new page
+      const currentPageAfter = getCurrentPageNum();
+      if (currentPageAfter === currentPageBefore) {
+        consecutiveFailures++;
+        console.warn(`Still on same page (${currentPageAfter}) after clicking next. Failure count: ${consecutiveFailures}`);
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          console.log('Too many consecutive failures, stopping pagination');
+          break;
+        }
+        // Wait a bit longer and try again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      
+      consecutiveFailures = 0; // Reset on success
+      
+      // Extract pools from this page
+      const poolsOnPage = extractPoolsFromCurrentPage();
+      pagesChecked++;
+      console.log(`Extracted ${poolsOnPage} pools from page ${currentPageAfter} (${pools.length} total unique pools so far)`);
+      
+      // Small delay between pages
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    console.log(`Finished navigating through ${pagesChecked} pages`);
+    
+    // Restore original page size if we changed it
+    if (pageSizeChanged && pageSizeSelector && originalPageSize !== null) {
+      try {
+        console.log(`Restoring page size from 100 back to ${originalPageSize}...`);
+        
+        // Check if it's a standard select element
+        if (pageSizeSelector.tagName === 'SELECT') {
+          pageSizeSelector.value = originalPageSize;
+          
+          // Trigger change event
+          const changeEvent = new Event('change', { bubbles: true });
+          pageSizeSelector.dispatchEvent(changeEvent);
+          
+          // Also try input event
+          const inputEvent = new Event('input', { bubbles: true });
+          pageSizeSelector.dispatchEvent(inputEvent);
+        } else {
+          // It's a custom dropdown (like .size-per-page)
+          // Click to open the dropdown
+          pageSizeSelector.click();
+          
+          // Wait for dropdown to open
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Look for the original page size option (e.g., "10")
+          let originalOption = null;
+          
+          // Try to find the option with the original page size value
+          const allElements = document.querySelectorAll('div, span, button, a, [role="menuitem"], [role="option"]');
+          for (const elem of allElements) {
+            const text = elem.textContent.trim();
+            if (text === originalPageSize) {
+              const rect = elem.getBoundingClientRect();
+              const selectorRect = pageSizeSelector.getBoundingClientRect();
+              // Check if it's near the selector (likely the dropdown option)
+              if (rect.width > 0 && rect.height > 0 && // Element is visible
+                  Math.abs(rect.top - selectorRect.bottom) < 200 && 
+                  Math.abs(rect.left - selectorRect.left) < 100) {
+                originalOption = elem;
+                break;
+              }
+            }
+          }
+          
+          if (originalOption) {
+            console.log(`Found "${originalPageSize}" option, clicking it...`);
+            originalOption.click();
+          } else {
+            console.warn(`Could not find "${originalPageSize}" option in dropdown`);
+          }
+        }
+        
+        // Wait for page to reload with original page size
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log('Page size restored');
+        
+        // After restoring page size, we need to navigate back to the original page
+        // because changing page size likely reset us to page 1
+        if (currentPageNum > 1) {
+          console.log(`Navigating back to original page ${currentPageNum}...`);
+          const restoredPagination = document.querySelector('.pagination');
+          if (restoredPagination) {
+            const allPageItems = Array.from(restoredPagination.querySelectorAll('.item')).filter(item => {
+              const text = item.textContent.trim();
+              return /^\d+$/.test(text) && !item.classList.contains('extreme');
+            });
+            
+            const targetPageItem = allPageItems.find(item => {
+              const pageNum = parseInt(item.textContent.trim());
+              return pageNum === currentPageNum;
+            });
+            
+            if (targetPageItem) {
+              const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
+              clickable.click();
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              console.log(`Returned to page ${currentPageNum}`);
+            } else {
+              console.warn(`Could not find page ${currentPageNum} button after restoring page size`);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Error restoring page size:', error);
+      }
+    } else if (currentPageNum > 1) {
+      // If we didn't change page size, just return to original page normally
+      console.log(`Returning to page ${currentPageNum}...`);
+      const finalPagination = document.querySelector('.pagination');
+      if (finalPagination) {
+        const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
+          const text = item.textContent ? item.textContent.trim() : '';
+          return /^\d+$/.test(text) && !item.classList.contains('extreme');
+        });
+        
+        const targetPageItem = allPageItems.find(item => {
+          const pageNum = parseInt(item.textContent.trim());
+          return pageNum === currentPageNum;
+        });
+        
+        if (targetPageItem) {
+          const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
+          clickable.click();
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        } else {
+          // Try to go to page 1 and navigate from there
+          const page1Item = allPageItems.find(item => {
+            const pageNum = parseInt(item.textContent.trim());
+            return pageNum === 1;
+          });
+          if (page1Item) {
+            const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+            clickable.click();
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Navigate to target page if needed
+            if (currentPageNum > 1) {
+              const updatedPagination = document.querySelector('.pagination');
+              if (updatedPagination) {
+                const updatedPageItems = Array.from(updatedPagination.querySelectorAll('.item')).filter(item => {
+                  const text = item.textContent ? item.textContent.trim() : '';
+                  return /^\d+$/.test(text) && !item.classList.contains('extreme');
+                });
+                const targetItem = updatedPageItems.find(item => {
+                  const pageNum = parseInt(item.textContent.trim());
+                  return pageNum === currentPageNum;
+                });
+                if (targetItem) {
+                  const clickable = targetItem.closest('.item') || targetItem.parentElement || targetItem;
+                  clickable.click();
+                  await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`Extraction complete: Found ${pools.length} unique pools across all pages`);
   return pools;
 }
 
@@ -741,9 +1226,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false });
     });
   } else if (message.type === 'GET_SELECTED_POOLS') {
-    const selectedPools = getSelectedPools();
-    sendResponse({ success: true, selectedPools: selectedPools.map(p => ({ poolId: p.poolId })) });
-    return true; // Keep channel open for async response if needed, though sendResponse is called synchronously here
+    getSelectedPools().then(selectedPools => {
+      sendResponse({ success: true, selectedPools: selectedPools.map(p => ({ poolId: p.poolId })) });
+    }).catch(err => {
+      console.error('Error getting selected pools:', err);
+      sendResponse({ success: false, error: err.message });
+    });
+    return true; // Keep channel open for async response
   } else if (message.type === 'SHOW_OVERLAY') {
     // Show overlay if hidden
     let overlay = document.getElementById('blackhole-tools-overlay');
@@ -869,8 +1358,8 @@ async function fetchPoolData(forceRefresh = false) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     try {
-      pools = extractPoolsFromDOM();
-      console.log(`Extracted ${pools.length} pools from DOM`);
+      pools = await extractPoolsFromDOM();
+      console.log(`Extracted ${pools.length} pools from DOM (across all pages)`);
       
       // Debug: log first pool to see what we're getting (only once)
       if (pools.length > 0 && !window._loggedSamplePool) {
@@ -1324,46 +1813,215 @@ async function selectRecommendedPools() {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    // Use the same logic as blackhole_select_pools.js
+    // Track which pools still need to be selected
+    const poolsToSelect = new Set(poolAddresses);
     let selectedCount = 0;
-    const poolCells = document.querySelectorAll('div.liquidity-pool-cell');
     
-    // Use for...of loop to support await
-    for (const address of poolAddresses) {
-      let found = false;
+    // Helper function to select pools on the current page
+    async function selectPoolsOnCurrentPage() {
+      const poolCells = document.querySelectorAll('div.liquidity-pool-cell');
+      let foundOnThisPage = 0;
       
-      for (let cell of poolCells) {
-        const innerHTML = cell.innerHTML || '';
-        const innerText = cell.innerText || '';
+      for (const address of Array.from(poolsToSelect)) {
+        let found = false;
         
-        if (innerHTML.includes(address) || innerText.includes(address)) {
-          // Find the select button
-          const selectButton = cell.querySelector('button.btn.yellow-btn.clickable') ||
-                              cell.querySelector('button.btn.yellow-btn') ||
-                              cell.querySelector('.liquidity-pool-cell-btn button') ||
-                              cell.querySelector('.liquidity-pool-cell-right button') ||
-                              cell.querySelector('button[class*="yellow-btn"]') ||
-                              cell.querySelector('button:not([disabled])');
+        for (let cell of poolCells) {
+          const innerHTML = cell.innerHTML || '';
+          const innerText = cell.innerText || '';
           
-          if (selectButton && !selectButton.disabled) {
-            try {
-              selectButton.click();
-              console.log(`✓ Selected pool: ${address}`);
-              selectedCount++;
-              found = true;
-              // Small delay between clicks
-              await new Promise(resolve => setTimeout(resolve, 100));
+          if (innerHTML.includes(address) || innerText.includes(address)) {
+            // Find the select button
+            const selectButton = cell.querySelector('button.btn.yellow-btn.clickable') ||
+                                cell.querySelector('button.btn.yellow-btn') ||
+                                cell.querySelector('.liquidity-pool-cell-btn button') ||
+                                cell.querySelector('.liquidity-pool-cell-right button') ||
+                                cell.querySelector('button[class*="yellow-btn"]') ||
+                                cell.querySelector('button:not([disabled])');
+            
+            if (selectButton && !selectButton.disabled) {
+              try {
+                selectButton.click();
+                console.log(`✓ Selected pool: ${address}`);
+                selectedCount++;
+                foundOnThisPage++;
+                poolsToSelect.delete(address);
+                found = true;
+                // Small delay between clicks
+                await new Promise(resolve => setTimeout(resolve, 100));
+                break;
+              } catch (e) {
+                console.warn(`Error clicking button for ${address}:`, e);
+              }
+            }
+          }
+        }
+        
+        if (!found) {
+          // Pool not found on this page - will check other pages
+        }
+      }
+      
+      return foundOnThisPage;
+    }
+    
+    // First, try to select pools on the current page
+    await selectPoolsOnCurrentPage();
+    
+    // If there are still pools to select and pagination exists, navigate through pages
+    if (poolsToSelect.size > 0) {
+      const paginationContainer = document.querySelector('.pagination');
+      let pageItems = [];
+      let nextButton = null;
+      
+      if (paginationContainer) {
+        // Find all page number items
+        pageItems = Array.from(paginationContainer.querySelectorAll('.item')).filter(item => {
+          const text = item.textContent ? item.textContent.trim() : '';
+          return /^\d+$/.test(text) && !item.classList.contains('extreme') && !item.classList.contains('selected');
+        });
+        
+        // Find next button (right arrow)
+        const rightExtreme = paginationContainer.querySelector('.item.extreme.right');
+        if (rightExtreme) {
+          nextButton = rightExtreme;
+        }
+      }
+      
+      if (paginationContainer && (pageItems.length > 0 || nextButton)) {
+        console.log(`Pagination detected. ${poolsToSelect.size} pools still need to be selected. Navigating through pages...`);
+        
+        // Store the current page to return to it later
+        const currentPageItem = paginationContainer.querySelector('.item.selected');
+        const currentPageNum = currentPageItem ? parseInt(currentPageItem.textContent.trim()) : 1;
+        
+        // Navigate through pages to find remaining pools
+        const maxPagesToCheck = 20; // Safety limit
+        let pagesChecked = 1;
+        let hadMorePools = poolsToSelect.size > 0;
+        
+        // Start from page 2 if we found page number buttons
+        if (pageItems.length > 0) {
+          for (const pageItem of pageItems) {
+            if (poolsToSelect.size === 0) break;
+            if (pagesChecked >= maxPagesToCheck) break;
+            
+            const pageNum = parseInt(pageItem.textContent.trim());
+            if (pageNum > 1) {
+              console.log(`Navigating to page ${pageNum} to find remaining pools...`);
+              
+              // Click the page item
+              const clickable = pageItem.closest('.item') || pageItem.parentElement || pageItem;
+              clickable.click();
+              await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to load
+              
+              // Try to select pools on this page
+              const foundOnPage = await selectPoolsOnCurrentPage();
+              pagesChecked++;
+              
+              if (foundOnPage > 0) {
+                console.log(`Found and selected ${foundOnPage} pool(s) on page ${pageNum}`);
+                hadMorePools = true;
+              }
+            }
+          }
+        } else if (nextButton) {
+          // Use next button to navigate
+          while (poolsToSelect.size > 0 && pagesChecked < maxPagesToCheck) {
+            const clickable = nextButton.closest('.item') || nextButton.parentElement || nextButton;
+            const isDisabled = clickable.classList.contains('disabled') || clickable.hasAttribute('disabled');
+            
+            if (isDisabled) {
+              console.log('Reached last page');
               break;
-            } catch (e) {
-              console.warn(`Error clicking button for ${address}:`, e);
+            }
+            
+            clickable.click();
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to load
+            
+            const foundOnPage = await selectPoolsOnCurrentPage();
+            pagesChecked++;
+            
+            if (foundOnPage > 0) {
+              console.log(`Found and selected ${foundOnPage} pool(s) on page ${pagesChecked + 1}`);
+              hadMorePools = true;
+            } else {
+              // No pools found on this page, might be at the end
+              break;
+            }
+            
+            // Check if next button is still available
+            const newPagination = document.querySelector('.pagination');
+            if (newPagination) {
+              const newRightExtreme = newPagination.querySelector('.item.extreme.right');
+              if (newRightExtreme && (newRightExtreme.classList.contains('disabled') || newRightExtreme.hasAttribute('disabled'))) {
+                break;
+              }
+              nextButton = newRightExtreme;
+            } else {
+              break;
+            }
+          }
+        }
+        
+        // Return to the original page
+        if (currentPageNum > 1) {
+          console.log(`Returning to page ${currentPageNum}...`);
+          const finalPagination = document.querySelector('.pagination');
+          if (finalPagination) {
+            const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
+              const text = item.textContent ? item.textContent.trim() : '';
+              return /^\d+$/.test(text) && !item.classList.contains('extreme');
+            });
+            
+            const targetPageItem = allPageItems.find(item => {
+              const pageNum = parseInt(item.textContent.trim());
+              return pageNum === currentPageNum;
+            });
+            
+            if (targetPageItem) {
+              const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
+              clickable.click();
+              await new Promise(resolve => setTimeout(resolve, 1500));
+            } else {
+              // Try to go to page 1 and navigate from there
+              const page1Item = allPageItems.find(item => {
+                const pageNum = parseInt(item.textContent.trim());
+                return pageNum === 1;
+              });
+              if (page1Item) {
+                const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+                clickable.click();
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // Navigate to target page if needed
+                if (currentPageNum > 1) {
+                  const updatedPagination = document.querySelector('.pagination');
+                  if (updatedPagination) {
+                    const updatedPageItems = Array.from(updatedPagination.querySelectorAll('.item')).filter(item => {
+                      const text = item.textContent ? item.textContent.trim() : '';
+                      return /^\d+$/.test(text) && !item.classList.contains('extreme');
+                    });
+                    const targetItem = updatedPageItems.find(item => {
+                      const pageNum = parseInt(item.textContent.trim());
+                      return pageNum === currentPageNum;
+                    });
+                    if (targetItem) {
+                      const clickable = targetItem.closest('.item') || targetItem.parentElement || targetItem;
+                      clickable.click();
+                      await new Promise(resolve => setTimeout(resolve, 1500));
+                    }
+                  }
+                }
+              }
             }
           }
         }
       }
-      
-      if (!found) {
-        console.warn(`Could not find pool: ${address}`);
-      }
+    }
+    
+    // Log any pools that couldn't be found
+    if (poolsToSelect.size > 0) {
+      console.warn(`Could not find ${poolsToSelect.size} pool(s) on any page:`, Array.from(poolsToSelect));
     }
     
     console.log(`Selection complete: ${selectedCount} pools selected`);
@@ -2264,44 +2922,181 @@ async function clearAllSelectedPools() {
   return clearedCount;
 }
 
-// Get all currently selected pools
-function getSelectedPools() {
+// Get all currently selected pools (checks all pages if pagination exists)
+async function getSelectedPools() {
   const selectedPools = [];
-  const allPoolCells = document.querySelectorAll('div.liquidity-pool-cell');
+  const foundPoolIds = new Set(); // Track to avoid duplicates
   
-  for (let cell of allPoolCells) {
-    const selectToVoteContainer = cell.querySelector('.select-to-vote-container');
-    if (selectToVoteContainer) {
-      const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
-      if (completedText && completedText.textContent.includes('Selected to vote')) {
-        // Try to find pool address/ID using multiple strategies
-        let poolId = cell.getAttribute('data-pool-id') || 
-                     cell.getAttribute('data-pool-address') || 
-                     cell.getAttribute('data-id');
-        
-        if (!poolId) {
-          const idElem = cell.querySelector('[data-pool-id], [data-pool-address], [data-id]');
-          if (idElem) {
-            poolId = idElem.getAttribute('data-pool-id') || 
-                     idElem.getAttribute('data-pool-address') || 
-                     idElem.getAttribute('data-id');
+  // Helper function to collect selected pools on current page
+  function collectSelectedPoolsOnCurrentPage() {
+    const allPoolCells = document.querySelectorAll('div.liquidity-pool-cell');
+    
+    for (let cell of allPoolCells) {
+      const selectToVoteContainer = cell.querySelector('.select-to-vote-container');
+      if (selectToVoteContainer) {
+        const completedText = selectToVoteContainer.querySelector('.select-to-vote.completed');
+        if (completedText && completedText.textContent.includes('Selected to vote')) {
+          // Try to find pool address/ID using multiple strategies
+          let poolId = cell.getAttribute('data-pool-id') || 
+                       cell.getAttribute('data-pool-address') || 
+                       cell.getAttribute('data-id');
+          
+          if (!poolId) {
+            const idElem = cell.querySelector('[data-pool-id], [data-pool-address], [data-id]');
+            if (idElem) {
+              poolId = idElem.getAttribute('data-pool-id') || 
+                       idElem.getAttribute('data-pool-address') || 
+                       idElem.getAttribute('data-id');
+            }
           }
-        }
 
-        if (!poolId) {
-          // Fallback to regex
-          const innerHTML = cell.innerHTML || '';
-          const addressMatch = innerHTML.match(/0x[a-fA-F0-9]{40}/i);
-          if (addressMatch) {
-            poolId = addressMatch[0];
+          if (!poolId) {
+            // Fallback to regex
+            const innerHTML = cell.innerHTML || '';
+            const addressMatch = innerHTML.match(/0x[a-fA-F0-9]{40}/i);
+            if (addressMatch) {
+              poolId = addressMatch[0];
+            }
+          }
+          
+          if (poolId && !foundPoolIds.has(poolId.toLowerCase())) {
+            selectedPools.push({
+              poolId: poolId,
+              cell: cell
+            });
+            foundPoolIds.add(poolId.toLowerCase());
           }
         }
+      }
+    }
+  }
+  
+  // First, collect pools on current page
+  collectSelectedPoolsOnCurrentPage();
+  
+  // Check if pagination exists and navigate through pages
+  const paginationContainer = document.querySelector('.pagination');
+  let pageItems = [];
+  let nextButton = null;
+  
+  if (paginationContainer) {
+    // Find all page number items
+    pageItems = Array.from(paginationContainer.querySelectorAll('.item')).filter(item => {
+      const text = item.textContent ? item.textContent.trim() : '';
+      return /^\d+$/.test(text) && !item.classList.contains('extreme') && !item.classList.contains('selected');
+    });
+    
+    // Find next button (right arrow)
+    const rightExtreme = paginationContainer.querySelector('.item.extreme.right');
+    if (rightExtreme) {
+      nextButton = rightExtreme;
+    }
+  }
+  
+  if (paginationContainer && (pageItems.length > 0 || nextButton)) {
+    // Store the current page to return to it later
+    const currentPageItem = paginationContainer.querySelector('.item.selected');
+    const currentPageNum = currentPageItem ? parseInt(currentPageItem.textContent.trim()) : 1;
+    
+    // Navigate through pages to find all selected pools
+    const maxPagesToCheck = 20; // Safety limit
+    let pagesChecked = 1;
+    
+    if (pageItems.length > 0) {
+      for (const pageItem of pageItems) {
+        if (pagesChecked >= maxPagesToCheck) break;
         
-        if (poolId) {
-          selectedPools.push({
-            poolId: poolId,
-            cell: cell
+        const pageNum = parseInt(pageItem.textContent.trim());
+        if (pageNum > 1) {
+          // Click the page item
+          const clickable = pageItem.closest('.item') || pageItem.parentElement || pageItem;
+          clickable.click();
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to load
+          
+          // Collect pools on this page
+          collectSelectedPoolsOnCurrentPage();
+          pagesChecked++;
+        }
+      }
+    } else if (nextButton) {
+      // Use next button to navigate
+      while (pagesChecked < maxPagesToCheck) {
+        const clickable = nextButton.closest('.item') || nextButton.parentElement || nextButton;
+        const isDisabled = clickable.classList.contains('disabled') || clickable.hasAttribute('disabled');
+        
+        if (isDisabled) {
+          break;
+        }
+        
+        clickable.click();
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to load
+        
+        collectSelectedPoolsOnCurrentPage();
+        pagesChecked++;
+        
+        // Check if next button is still available
+        const newPagination = document.querySelector('.pagination');
+        if (newPagination) {
+          const newRightExtreme = newPagination.querySelector('.item.extreme.right');
+          if (newRightExtreme && (newRightExtreme.classList.contains('disabled') || newRightExtreme.hasAttribute('disabled'))) {
+            break;
+          }
+          nextButton = newRightExtreme;
+        } else {
+          break;
+        }
+      }
+    }
+    
+    // Return to the original page
+    if (currentPageNum > 1) {
+      const finalPagination = document.querySelector('.pagination');
+      if (finalPagination) {
+        const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
+          const text = item.textContent ? item.textContent.trim() : '';
+          return /^\d+$/.test(text) && !item.classList.contains('extreme');
+        });
+        
+        const targetPageItem = allPageItems.find(item => {
+          const pageNum = parseInt(item.textContent.trim());
+          return pageNum === currentPageNum;
+        });
+        
+        if (targetPageItem) {
+          const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
+          clickable.click();
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        } else {
+          // Try to go to page 1 and navigate from there
+          const page1Item = allPageItems.find(item => {
+            const pageNum = parseInt(item.textContent.trim());
+            return pageNum === 1;
           });
+          if (page1Item) {
+            const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+            clickable.click();
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Navigate to target page if needed
+            if (currentPageNum > 1) {
+              const updatedPagination = document.querySelector('.pagination');
+              if (updatedPagination) {
+                const updatedPageItems = Array.from(updatedPagination.querySelectorAll('.item')).filter(item => {
+                  const text = item.textContent ? item.textContent.trim() : '';
+                  return /^\d+$/.test(text) && !item.classList.contains('extreme');
+                });
+                const targetItem = updatedPageItems.find(item => {
+                  const pageNum = parseInt(item.textContent.trim());
+                  return pageNum === currentPageNum;
+                });
+                if (targetItem) {
+                  const clickable = targetItem.closest('.item') || targetItem.parentElement || targetItem;
+                  clickable.click();
+                  await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -2313,7 +3108,7 @@ function getSelectedPools() {
 // Split votes evenly across selected pools
 async function splitVotesEvenly() {
   // Get all selected pools
-  let selectedPools = getSelectedPools();
+  let selectedPools = await getSelectedPools();
   
   if (selectedPools.length === 0) {
     alert('No pools are currently selected. Please select pools first.');
