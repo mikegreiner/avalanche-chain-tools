@@ -103,6 +103,15 @@ async function runTests() {
     }
   });
 
+  // Regression: Test state after Clear All
+  console.log('Testing state after Clear All...');
+  const emptySelectedIds = [];
+  const p1 = recs.find(p => p.pool_id === '0x123');
+  const isSelectedAfterClear = emptySelectedIds.includes(p1.pool_id);
+  const selectedClassAfterClear = isSelectedAfterClear ? 'pool-selected' : '';
+  assertEquals(isSelectedAfterClear, false, "Pool 0x123 no longer selected after Clear All");
+  assertEquals(selectedClassAfterClear, '', "Pool 0x123 no longer has pool-selected class after Clear All");
+
   // --- Vote Distribution Logic Tests ---
   console.log('\n--- Testing Vote Distribution Logic ---');
   

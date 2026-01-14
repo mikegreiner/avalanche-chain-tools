@@ -792,14 +792,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await selectSinglePool(id);
         await new Promise(r => setTimeout(r, 100));
       }
+      updateOverlay();
       sendResponse({ success: true });
     })();
   } else if (message.type === 'CLEAR_ALL_VOTES') {
     clearAllSelectedPools().then((count) => {
+      updateOverlay();
       sendResponse({ success: true, count });
     });
   } else if (message.type === 'SPLIT_VOTES') {
     splitVotesEvenly().then(() => {
+      updateOverlay();
       sendResponse({ success: true });
     });
   } else if (message.type === 'SUBMIT_VOTE') {
@@ -2250,6 +2253,10 @@ async function clearAllSelectedPools() {
   }
   
   console.log(`Cleared ${clearedCount} selected pools total`);
+  
+  // Update UI to reflect changes
+  updateOverlay();
+  
   return clearedCount;
 }
 

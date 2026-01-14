@@ -156,9 +156,16 @@ function setupListeners() {
     }
   });
 
-  document.getElementById('clearAllBtn').addEventListener('click', () => {
-    sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
+  document.getElementById('clearAllBtn').addEventListener('click', async () => {
     showStatus('Clearing all votes...', 'success');
+    try {
+      await sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
+      // Wait slightly for page state to settle
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await loadAndRenderRecommendations();
+    } catch (e) {
+      console.error('Error clearing votes:', e);
+    }
   });
 
   document.getElementById('splitVotesBtn').addEventListener('click', async () => {
