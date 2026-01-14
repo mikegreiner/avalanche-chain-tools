@@ -896,6 +896,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!isVisible) {
       updateOverlay();
     }
+  } else if (message.type === 'SELECT_POOL') {
+    selectSinglePool(message.poolId);
+  } else if (message.type === 'SELECT_POOLS') {
+    const poolIds = message.poolIds || [];
+    // Process sequentially to avoid UI conflicts
+    (async () => {
+      for (const id of poolIds) {
+        await selectSinglePool(id);
+        await new Promise(r => setTimeout(r, 100));
+      }
+    })();
+  } else if (message.type === 'CLEAR_ALL_VOTES') {
+    clearAllSelectedPools();
+  } else if (message.type === 'SPLIT_VOTES') {
+    splitVotesEvenly();
   }
   return true;
 });

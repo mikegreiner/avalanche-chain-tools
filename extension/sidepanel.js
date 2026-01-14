@@ -1,7 +1,8 @@
+
 import { Pool, recommendPools } from './popup-helper.js';
 
 /**
- * Popup script for Blackhole DEX Tools extension
+ * Side Panel script for Blackhole DEX Tools extension
  */
 
 // Auto-save debounce timer
@@ -79,7 +80,6 @@ function setupListeners() {
   // Enable overlay checkbox
   document.getElementById('enableOverlay').addEventListener('change', async () => {
     await autoSaveSettings();
-    // Immediately notify content script to toggle overlay
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
       chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' }).catch(() => {});
@@ -122,10 +122,54 @@ function setupListeners() {
     }
   });
 
-  // Open Voting Page Button (Delegated or Initial)
+  // Action Buttons
+  document.getElementById('selectAllBtn').addEventListener('click', async () => {
+    // Get current recommendations to select them all
+    const pools = getCurrentRecommendationIds();
+    if (pools.length > 0) {
+      sendMessageToContentScript({ type: 'SELECT_POOLS', poolIds: pools });
+      showStatus(`Selecting ${pools.length} pools...`, 'success');
+    }
+  });
+
+  document.getElementById('clearAllBtn').addEventListener('click', () => {
+    sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
+    showStatus('Clearing all votes...', 'success');
+  });
+
+  document.getElementById('splitVotesBtn').addEventListener('click', async () => {
+    const settings = await loadSettings();
+    // Use currently filtered pools for splitting
+    const poolIds = getCurrentRecommendationIds();
+    sendMessageToContentScript({ 
+      type: 'SPLIT_VOTES', 
+      poolIds: poolIds,
+      votingPower: settings.votingPower 
+    });
+    showStatus('Splitting votes...', 'success');
+  });
+
+  // Open Voting Page Button (Delegated)
   const openBtn = document.getElementById('openVotePageBtn');
   if (openBtn) {
     openBtn.addEventListener('click', openVotingPage);
+  }
+}
+
+// Helper to get currently displayed pool IDs
+function getCurrentRecommendationIds() {
+  const items = document.querySelectorAll('.recommendation-item');
+  return Array.from(items).map(item => item.dataset.poolId).filter(id => id);
+}
+
+async function sendMessageToContentScript(message) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
+    chrome.tabs.sendMessage(tab.id, message).catch(() => {
+      showStatus('Error: Cannot communicate with page. Refresh page.', 'error');
+    });
+  } else {
+    showStatus('Open Blackhole voting page first', 'error');
   }
 }
 
@@ -133,7 +177,6 @@ function openVotingPage() {
   chrome.tabs.query({ url: 'https://blackhole.xyz/vote*' }).then(([tab]) => {
     if (tab) {
       chrome.tabs.update(tab.id, { active: true });
-      // Removed: Sending SHOW_OVERLAY message (fix for UX confusion)
     } else {
       chrome.tabs.create({ url: 'https://blackhole.xyz/vote' });
     }
@@ -218,10 +261,13 @@ async function loadAndRenderRecommendations() {
       const rewardsPerVote = pool.rewardsPerVote();
       
       html += `
-        <div class="recommendation-item">
+        <div class="recommendation-item" data-pool-id="${pool.pool_id}">
           <div class="pool-rank">#${index + 1}</div>
           <div class="pool-info">
-            <div class="pool-name" title="${pool.name}">${pool.name}</div>
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div class="pool-name" title="${pool.name}">${pool.name}</div>
+              <button class="btn btn-secondary btn-sm select-pool-btn" data-id="${pool.pool_id}" style="padding: 2px 6px; font-size: 10px; min-height: 20px; flex: 0 0 auto;">Select</button>
+            </div>
             <div class="pool-metrics">
               <span>$${pool.total_rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               <span>${pool.vapr.toFixed(0)}% VAPR</span>
@@ -250,6 +296,16 @@ async function loadAndRenderRecommendations() {
     
     // Re-attach listener for the new button
     document.getElementById('goToVotePageBtn').addEventListener('click', openVotingPage);
+
+    // Attach listeners to "Select" buttons
+    document.querySelectorAll('.select-pool-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const poolId = e.target.dataset.id;
+        sendMessageToContentScript({ type: 'SELECT_POOL', poolId: poolId });
+        e.target.textContent = 'Selecting...';
+        setTimeout(() => e.target.textContent = 'Select', 1000);
+      });
+    });
     
   } catch (error) {
     console.error('Error rendering:', error);
@@ -310,7 +366,6 @@ async function autoSaveSettings() {
 }
 
 function validateSettings() {
-  // Validation logic...
   return true;
 }
 
