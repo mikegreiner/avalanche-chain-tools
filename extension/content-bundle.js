@@ -2252,12 +2252,18 @@ async function clearAllSelectedPools() {
           const newPageText = newCurrentPage ? newCurrentPage.textContent.trim() : '';
           if (newPageText === '1') {
             console.log('✓ Successfully returned to page 1');
-            // Try multiple scrolling methods
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            // Force scroll to top immediately (no smooth scroll)
+            window.scrollTo(0, 0);
             document.documentElement.scrollTop = 0;
             document.body.scrollTop = 0;
+            
             const poolList = document.querySelector('[data-pool-list]') || document.querySelector('.pool-list');
-            if (poolList) poolList.scrollTo({ top: 0, behavior: 'smooth' });
+            if (poolList) poolList.scrollTop = 0;
+            
+            // Retry scrolling after page settles
+            setTimeout(() => window.scrollTo(0, 0), 100);
+            setTimeout(() => window.scrollTo(0, 0), 400);
           } else {
             console.warn(`Still on page ${newPageText}, page 1 navigation may have failed`);
           }
@@ -2266,11 +2272,14 @@ async function clearAllSelectedPools() {
         }
       } else {
         console.log('Already on page 1');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo(0, 0);
         document.documentElement.scrollTop = 0;
         document.body.scrollTop = 0;
+        
         const poolList = document.querySelector('[data-pool-list]') || document.querySelector('.pool-list');
-        if (poolList) poolList.scrollTo({ top: 0, behavior: 'smooth' });
+        if (poolList) poolList.scrollTop = 0;
+        
+        setTimeout(() => window.scrollTo(0, 0), 100);
       }
     }
   } else {
