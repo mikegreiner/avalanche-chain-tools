@@ -128,11 +128,19 @@ export function recommendPools(pools, options = {}) {
   }
 
   if (poolName !== null) {
-    let pattern = poolName;
-    if (!pattern.includes('*') && !pattern.includes('?')) {
-      pattern = `*${pattern}*`;
-    }
-    filteredPools = filteredPools.filter(pool => fnmatch(pattern, pool.name));
+    const patterns = Array.isArray(poolName) ? poolName : [poolName];
+    
+    filteredPools = filteredPools.filter(pool => {
+      // Must match ALL patterns
+      return patterns.every(p => {
+        if (!p) return true;
+        let pattern = p;
+        if (!pattern.includes('*') && !pattern.includes('?')) {
+          pattern = `*${pattern}*`;
+        }
+        return fnmatch(pattern, pool.name);
+      });
+    });
   }
 
   if (maxPoolPercentage !== null && userVotingPower !== null) {

@@ -53,7 +53,7 @@ function setupTabs() {
 function setupListeners() {
   // Auto-save on input changes (with debounce)
   const inputs = [
-    'votingPower', 'topN', 'minRewards', 'maxPoolPercentage', 'sortBy'
+    'votingPower', 'topN', 'minRewards', 'maxPoolPercentage', 'sortBy', 'settingsPoolNameFilter'
   ].map(id => document.getElementById(id));
   
   inputs.forEach(input => {
@@ -209,6 +209,7 @@ function populateForm(settings) {
   setVal('minRewards', settings.minRewards);
   setVal('maxPoolPercentage', settings.maxPoolPercentage);
   setVal('sortBy', settings.sortBy);
+  setVal('settingsPoolNameFilter', settings.poolNameFilter);
   
   if (settings.hideVamm !== undefined) document.getElementById('hideVamm').checked = settings.hideVamm;
   if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
@@ -241,9 +242,13 @@ async function loadAndRenderRecommendations() {
     // Convert to Pool objects
     const pools = poolData.map(data => new Pool(data));
     
-    // Get filter value
-    const filterInput = document.getElementById('poolNameFilter');
-    const poolNameFilter = filterInput ? filterInput.value.trim() : null;
+    // Get filter values (View Filter + Settings Filter)
+    const viewFilterInput = document.getElementById('poolNameFilter');
+    const viewFilter = viewFilterInput ? viewFilterInput.value.trim() : null;
+    
+    const filters = [];
+    if (settings.poolNameFilter) filters.push(settings.poolNameFilter);
+    if (viewFilter) filters.push(viewFilter);
     
     // Generate recommendations
     const recommendations = recommendPools(pools, {
@@ -252,7 +257,7 @@ async function loadAndRenderRecommendations() {
       hideVamm: settings.hideVamm,
       minRewards: settings.minRewards,
       maxPoolPercentage: settings.maxPoolPercentage,
-      poolName: poolNameFilter || null,
+      poolName: filters.length > 0 ? filters : null,
       sortBy: settings.sortBy || 'auto'
     });
     
@@ -352,15 +357,17 @@ function formatNumber(num) {
 // Reuse existing logic for saving settings
 async function loadSettings() {
   const result = await chrome.storage.local.get(['blackholeSettings']);
-  return result.blackholeSettings || {
+  const defaults = {
     votingPower: null,
     topN: 10,
     minRewards: null,
     maxPoolPercentage: null,
     sortBy: 'auto',
     hideVamm: false,
-    enableOverlay: true
+    enableOverlay: true,
+    poolNameFilter: null
   };
+  return { ...defaults, ...(result.blackholeSettings || {}) };
 }
 
 async function autoSaveSettings() {
@@ -371,7 +378,8 @@ async function autoSaveSettings() {
     maxPoolPercentage: parseFloatInput('maxPoolPercentage'),
     sortBy: document.getElementById('sortBy').value,
     hideVamm: document.getElementById('hideVamm').checked,
-    enableOverlay: document.getElementById('enableOverlay').checked
+    enableOverlay: document.getElementById('enableOverlay').checked,
+    poolNameFilter: document.getElementById('settingsPoolNameFilter').value.trim() || null
   };
   
   await chrome.storage.local.set({ blackholeSettings: settings });
