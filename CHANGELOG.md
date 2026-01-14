@@ -4,6 +4,18 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-01-14
+
+### Refactored & Fixed - Browser Extension
+- **Version**: 1.1.2
+- **Modular Architecture**: Consolidated shared logic (Pool class, Recommender) into `extension/lib/` for better maintainability.
+- **Automated Build Process**: Added `build_bundle.js` script to generate `content-bundle.js` from modules, including automatic validation to prevent syntax errors from module keywords.
+- **Improved Vote Toggle**: Renamed "Vote" button to "Show Votes" / "Hide Votes" with logic to both open and close the in-page voting window.
+- **Enhanced Selection State**: Fixed issues where selection styling wouldn't reset after "Clear All" or during page refreshes.
+- **Optimized Vote Distribution**: Selected pools are now sorted by profitability before splitting votes, ensuring the best pools receive rounding remainders.
+- **Expanded Testing**: Added a comprehensive unit test suite (`npm test`) covering core logic, UI state rendering, and mathematical correctness of vote splits.
+- **Developer Tooling**: Added `package.json` with standard build and test scripts.
+
 ## [1.1.1] - 2026-01-14
 
 ### Fixed - Browser Extension

@@ -195,25 +195,27 @@ python3 blackhole_pool_recommender.py --version
 
 ### 6. Blackhole DEX Tools Browser Extension
 **Location:** `extension/`  
-**Version:** 1.0.1
+**Version:** 1.1.2
 
-A browser extension that brings pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections all without leaving the page.
+A browser extension that brings powerful pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections using a convenient side panel.
 
 **Features:**
-- **Pool Recommendations**: Automatically extracts and analyzes pools from the voting page
-- **Personalized Estimates**: Shows estimated USD rewards based on your voting power
-- **Voting Tools**: Select pools, clear selections, and split votes evenly
-- **Draggable Panel**: Move the recommendations panel anywhere on the page
-- **Auto-Refresh**: Recommendations update automatically when filters change
-- **Dark Theme**: Matches Blackhole DEX styling with yellow/green accents
+- **Native Side Panel**: Provides a dedicated workspace that doesn't obscure page content.
+- **Pool Recommendations**: Automatically extracts and analyzes pools from the voting page.
+- **Modular Logic**: Shared pool analysis logic unified across sidebar, popup, and page overlay.
+- **Dual Filtering System**: Persistent global filters plus quick view filters with wildcard support.
+- **Personalized Estimates**: Shows estimated USD rewards and % pool share based on your voting power.
+- **Voting Tools**: Select pools, clear selections, and split votes evenly with profitability-aware distribution.
+- **One-Click Voting**: Smart "Show/Hide Votes" button to control the in-page voting window.
+- **Dark Theme**: Matches Blackhole DEX styling with consistent dark-mode accents.
 
 **Quick Start:**
 1. Open `chrome://extensions` (or `brave://extensions`)
 2. Enable "Developer mode"
 3. Click "Load unpacked" and select the `extension/` folder
 4. Navigate to `https://blackhole.xyz/vote`
-5. Click the extension icon and configure your voting power
-6. View recommendations in the overlay panel
+5. Open the Side Panel (click the extension icon) and configure your voting power.
+6. View recommendations and use the tools directly in the sidebar.
 
 **Documentation:** See [extension/README.md](extension/README.md) for detailed installation and usage instructions.
 
