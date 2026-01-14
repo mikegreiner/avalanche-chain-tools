@@ -4,6 +4,26 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-01-13
+
+### Enhanced - Browser Extension
+- **Version**: 1.1.0
+- **Native Side Panel**: Replaced popup overlay with a persistent browser Side Panel
+  - Provides a dedicated workspace that doesn't obscure page content
+  - Opens automatically when clicking the extension icon
+  - Includes two tabs: "Recommendations" and "Settings"
+- **Dual Filtering System**:
+  - **Global Filter**: Persistent "Pool Name Filter" in Settings tab (saves across sessions)
+  - **View Filter**: Quick "Filter by name" input in Recommendations tab (for temporary narrowing)
+  - Filters support partial matching (e.g., "BTC" matches "BTC.b") and wildcards
+  - Both filters work together (AND logic)
+- **Improved UX**:
+  - **Visual Feedback**: "Settings saved" notification appears automatically; no manual save needed
+  - **Smart Scrolling**: "Clear All" action now reliably scrolls to the top of the page (using aggressive "nuclear" scroll strategy)
+  - **Clear Buttons**: Added "X" buttons to text inputs for instant clearing
+  - **Action Buttons**: Added "Vote", "Select All", "Clear All", and "Split Votes" buttons directly to the side panel
+  - **Vote Button**: Smart "Vote" button finds the main page button or modal confirmation button automatically
+
 ## [1.5.2] - 2026-01-05
 
 ### Fixed - Pool Recommender (`blackhole_pool_recommender.py`)
