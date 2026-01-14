@@ -2253,26 +2253,30 @@ async function clearAllSelectedPools() {
           if (newPageText === '1') {
             console.log('✓ Successfully returned to page 1');
             
-            // Nuclear Scroll: Find ANY element that is scrolled and reset it
-            const scrollAll = () => {
+            // Continuous scroll reset for 600ms to catch layout updates immediately
+            const startTime = performance.now();
+            const duration = 600;
+            
+            const scrollLoop = (currentTime) => {
+              // Reset main window scroll
               window.scrollTo(0, 0);
               document.documentElement.scrollTop = 0;
               document.body.scrollTop = 0;
               
-              const allElements = document.querySelectorAll('*');
-              for (const el of allElements) {
+              // Find scrolled containers (optimization: only check divs/mains/sections)
+              const containers = document.querySelectorAll('div, main, section, ul');
+              for (const el of containers) {
                 if (el.scrollTop > 0) {
                   el.scrollTop = 0;
                 }
               }
+              
+              if (currentTime - startTime < duration) {
+                requestAnimationFrame(scrollLoop);
+              }
             };
             
-            scrollAll();
-            
-            // Retry a few times to handle dynamic loading/rendering
-            setTimeout(scrollAll, 100);
-            setTimeout(scrollAll, 500);
-            setTimeout(scrollAll, 1000);
+            requestAnimationFrame(scrollLoop);
           } else {
             console.warn(`Still on page ${newPageText}, page 1 navigation may have failed`);
           }
@@ -2282,21 +2286,27 @@ async function clearAllSelectedPools() {
       } else {
         console.log('Already on page 1');
         
-        const scrollAll = () => {
+        const startTime = performance.now();
+        const duration = 600;
+        
+        const scrollLoop = (currentTime) => {
           window.scrollTo(0, 0);
           document.documentElement.scrollTop = 0;
           document.body.scrollTop = 0;
           
-          const allElements = document.querySelectorAll('*');
-          for (const el of allElements) {
+          const containers = document.querySelectorAll('div, main, section, ul');
+          for (const el of containers) {
             if (el.scrollTop > 0) {
               el.scrollTop = 0;
             }
           }
+          
+          if (currentTime - startTime < duration) {
+            requestAnimationFrame(scrollLoop);
+          }
         };
         
-        scrollAll();
-        setTimeout(scrollAll, 100);
+        requestAnimationFrame(scrollLoop);
       }
     }
   } else {
