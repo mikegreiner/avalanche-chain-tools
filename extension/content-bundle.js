@@ -282,16 +282,9 @@ const RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
 const API_URL = 'https://resources.blackhole.xyz/cl-pools-list/cl-pools.json';
 
 const SELECTORS = {
-  length: '0x1f7b6d32',
-  pools: '0xac4afa38',
   weights: '0xa7cac846',
   totalWeight: '0x96c82e57'
 };
-
-// Helper to encode uint256 for RPC calls
-function encodeUint256(num) {
-  return num.toString(16).padStart(64, '0');
-}
 
 // Helper to decode hex to BigInt
 function hexToBigInt(hex) {
@@ -350,40 +343,6 @@ class PoolDataProvider {
     }
   }
 
-  async getVoterPools() {
-    try {
-      // 1. Get pool count
-      const lengthHex = await this.rpc.ethCall(VOTER_ADDRESS, SELECTORS.length);
-      const count = Number(hexToBigInt(lengthHex));
-      console.log(`Voter contract has ${count} pools`);
-
-      if (count === 0) return [];
-
-      // 2. Fetch pool addresses (batch/parallel)
-      const poolAddresses = [];
-      const batchSize = 20;
-      
-      for (let i = 0; i < count; i += batchSize) {
-        const batch = [];
-        for (let j = 0; j < batchSize && (i + j) < count; j++) {
-          const index = i + j;
-          const data = SELECTORS.pools + encodeUint256(index);
-          batch.push(this.rpc.ethCall(VOTER_ADDRESS, data).then(res => {
-            // Extract address (last 20 bytes of 32-byte word)
-            return '0x' + res.slice(-40);
-          }));
-        }
-        const results = await Promise.all(batch);
-        poolAddresses.push(...results);
-      }
-
-      return poolAddresses;
-    } catch (e) {
-      console.error('Error fetching voter pools:', e);
-      return [];
-    }
-  }
-
   async getPoolWeights(addresses) {
     const weights = new Map(); // Address -> Weight (BigInt)
     const batchSize = 20;
@@ -406,29 +365,24 @@ class PoolDataProvider {
   }
 
   async getPools() {
-    const [metadataMap, voterPoolAddresses] = await Promise.all([
-      this.fetchMetadata(),
-      this.getVoterPools()
-    ]);
+    // 1. Fetch metadata first (API acts as the pool list source)
+    const metadataMap = await this.fetchMetadata();
+    const poolAddresses = Array.from(metadataMap.keys());
 
-    if (voterPoolAddresses.length === 0) {
-      console.warn('No pools found in Voter contract');
+    if (poolAddresses.length === 0) {
+      console.warn('No pools found in API');
       return [];
     }
 
-    const weightsMap = await this.getPoolWeights(voterPoolAddresses);
+    console.log(`Fetching weights for ${poolAddresses.length} pools from API list`);
+
+    // 2. Fetch weights for these pools
+    const weightsMap = await this.getPoolWeights(poolAddresses);
     const pools = [];
 
-    for (const addr of voterPoolAddresses) {
-      const addrLower = addr.toLowerCase();
-      const meta = metadataMap.get(addrLower) || {
-        name: `Unknown Pool (${addr.slice(0, 6)}...${addr.slice(-4)})`,
-        totalRewards: 0,
-        feePercentage: '?',
-        poolType: 'Unknown'
-      };
-
-      const weightBigInt = weightsMap.get(addrLower) || 0n;
+    for (const addr of poolAddresses) {
+      const meta = metadataMap.get(addr);
+      const weightBigInt = weightsMap.get(addr) || 0n;
       // formatted votes (assuming 18 decimals)
       const currentVotes = Number(weightBigInt) / 1e18;
 
@@ -446,7 +400,6 @@ class PoolDataProvider {
     return pools;
   }
 }
-
 // --- From pool-recommender.js ---
 /**
  * Pool recommender logic
