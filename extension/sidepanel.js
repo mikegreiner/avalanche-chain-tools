@@ -93,6 +93,10 @@ function setupListeners() {
       loadAndRenderRecommendations();
     }
   });
+
+  document.getElementById('deepScan').addEventListener('change', async () => {
+    await autoSaveSettings();
+  });
   
   // Enable overlay checkbox
   document.getElementById('enableOverlay').addEventListener('change', async () => {
@@ -264,6 +268,7 @@ function populateForm(settings) {
   setVal('settingsPoolNameFilter', settings.poolNameFilter);
   
   if (settings.hideVamm !== undefined) document.getElementById('hideVamm').checked = settings.hideVamm;
+  if (settings.deepScan !== undefined) document.getElementById('deepScan').checked = settings.deepScan;
   if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
 }
 
@@ -459,6 +464,7 @@ async function loadSettings() {
     maxPoolPercentage: null,
     sortBy: 'auto',
     hideVamm: false,
+    deepScan: false,
     enableOverlay: true,
     poolNameFilter: null
   };
@@ -473,6 +479,7 @@ async function autoSaveSettings() {
     maxPoolPercentage: parseFloatInput('maxPoolPercentage'),
     sortBy: document.getElementById('sortBy').value,
     hideVamm: document.getElementById('hideVamm').checked,
+    deepScan: document.getElementById('deepScan').checked,
     enableOverlay: document.getElementById('enableOverlay').checked,
     poolNameFilter: document.getElementById('settingsPoolNameFilter').value.trim() || null
   };
@@ -536,6 +543,11 @@ async function updateStatus() {
   // vAMM
   if (settings.hideVamm) {
     html += `<span>No vAMM</span>`;
+  }
+
+  // Deep Scan
+  if (settings.deepScan) {
+    html += `<span>Deep Scan</span>`;
   }
   
   // Pool Name Filter
