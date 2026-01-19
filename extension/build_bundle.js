@@ -49,6 +49,9 @@ function build() {
             processed = processed.replace('export function ', 'function ');
             processed = processed.replace('export async function ', 'async function ');
             
+            // Replace export class -> class
+            processed = processed.replace('export class ', 'class ');
+            
             return processed;
         }).filter(line => line !== null);
         
@@ -59,6 +62,18 @@ function build() {
     let poolJs = fs.readFileSync(path.join(LIB_DIR, 'pool.js'), 'utf8');
     bundle += `// --- From pool.js ---
 ${stripModules(poolJs)}
+`;
+
+    // 2b. Include RpcClient
+    let rpcJs = fs.readFileSync(path.join(LIB_DIR, 'rpc-client.js'), 'utf8');
+    bundle += `// --- From rpc-client.js ---
+${stripModules(rpcJs)}
+`;
+
+    // 2c. Include PoolDataProvider
+    let providerJs = fs.readFileSync(path.join(LIB_DIR, 'pool-data-provider.js'), 'utf8');
+    bundle += `// --- From pool-data-provider.js ---
+${stripModules(providerJs)}
 `;
 
     // 3. Include pool-recommender.js

@@ -12,7 +12,8 @@
   "host_permissions": [
     "https://blackhole.xyz/*",
     "https://resources.blackhole.xyz/*",
-    "https://api.snowtrace.io/*"
+    "https://api.snowtrace.io/*",
+    "https://api.avax.network/*"
   ],
   "action": {
     "default_title": "Blackhole DEX Tools",

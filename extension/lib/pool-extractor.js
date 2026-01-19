@@ -315,3 +315,28 @@ export async function extractPoolsFromAPI() {
     return [];
   }
 }
+
+/**
+ * Hybrid extraction using RPC and API
+ */
+export async function extractPoolsHybrid() {
+  console.log('Attempting hybrid extraction (RPC + API)...');
+  try {
+    // PoolDataProvider is available in the bundle scope
+    if (typeof PoolDataProvider !== 'undefined') {
+      const provider = new PoolDataProvider();
+      const pools = await provider.getPools();
+      if (pools && pools.length > 0) {
+        console.log(`Hybrid extraction success: ${pools.length} pools`);
+        return pools;
+      }
+    } else {
+      console.warn('PoolDataProvider not found in scope');
+    }
+  } catch (error) {
+    console.warn('Hybrid extraction failed:', error);
+  }
+  
+  console.log('Falling back to DOM extraction...');
+  return extractPoolsFromDOM();
+}
