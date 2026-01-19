@@ -321,14 +321,15 @@ export async function extractPoolsFromAPI() {
  */
 export async function extractPoolsHybrid() {
   console.log('Attempting hybrid extraction (RPC + API)...');
+  let apiPools = [];
+  
   try {
     // PoolDataProvider is available in the bundle scope
     if (typeof PoolDataProvider !== 'undefined') {
       const provider = new PoolDataProvider();
-      const pools = await provider.getPools();
-      if (pools && pools.length > 0) {
-        console.log(`Hybrid extraction success: ${pools.length} pools`);
-        return pools;
+      apiPools = await provider.getPools();
+      if (apiPools && apiPools.length > 0) {
+        console.log(`API extraction success: ${apiPools.length} pools`);
       }
     } else {
       console.warn('PoolDataProvider not found in scope');
@@ -337,6 +338,36 @@ export async function extractPoolsHybrid() {
     console.warn('Hybrid extraction failed:', error);
   }
   
-  console.log('Falling back to DOM extraction...');
-  return extractPoolsFromDOM();
+  // Always fetch from DOM to ensure we don't miss pools not in the API (e.g. vAMM/sAMM)
+  console.log('Fetching from DOM to supplement/fallback...');
+  const domPools = extractPoolsFromDOM();
+  console.log(`DOM extraction: ${domPools.length} pools`);
+  
+  // Merge lists (prefer API data if available as it has precise weights)
+  const poolMap = new Map();
+  
+  // Add DOM pools first
+  for (const p of domPools) {
+    const key = p.pool_id ? p.pool_id.toLowerCase() : p.name;
+    poolMap.set(key, p);
+  }
+  
+  // Add/Override with API pools
+  for (const p of apiPools) {
+    const key = p.pool_id ? p.pool_id.toLowerCase() : p.name;
+    // If pool exists, we might want to keep some DOM data (like VAPR if API doesn't have it)
+    if (poolMap.has(key)) {
+      const domP = poolMap.get(key);
+      // API vapr is 0, so keep DOM vapr if available
+      if (p.vapr === 0 && domP.vapr > 0) {
+        p.vapr = domP.vapr;
+      }
+    }
+    poolMap.set(key, p);
+  }
+  
+  const mergedPools = Array.from(poolMap.values());
+  console.log(`Final merged pool count: ${mergedPools.length}`);
+  
+  return mergedPools;
 }
