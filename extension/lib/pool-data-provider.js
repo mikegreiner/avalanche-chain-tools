@@ -55,7 +55,7 @@ export class PoolDataProvider {
             name: `${p.token0.symbol}/${p.token1.symbol}`,
             feePercentage: feePct,
             poolType: poolType,
-            totalRewards: parseFloat(p.feesUSD || p.untrackedFeesUSD || 0)
+            totalRewards: 0 // API only provides lifetime fees, which we don't want
           });
         }
       }

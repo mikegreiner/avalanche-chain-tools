@@ -331,7 +331,7 @@ class PoolDataProvider {
             name: `${p.token0.symbol}/${p.token1.symbol}`,
             feePercentage: feePct,
             poolType: poolType,
-            totalRewards: parseFloat(p.feesUSD || p.untrackedFeesUSD || 0)
+            totalRewards: 0 // API only provides lifetime fees, which we don't want
           });
         }
       }
@@ -971,24 +971,45 @@ async function extractPoolsHybrid(deepScan = false) {
   
   // Merge lists (prefer API data if available as it has precise weights)
   const poolMap = new Map();
+  const domPoolsByName = new Map();
   
   // Add DOM pools first
   for (const p of domPools) {
     const key = p.pool_id ? p.pool_id.toLowerCase() : p.name;
     poolMap.set(key, p);
+    if (p.name) {
+      domPoolsByName.set(p.name.toLowerCase(), p);
+    }
   }
   
   // Add/Override with API pools
   for (const p of apiPools) {
     const key = p.pool_id ? p.pool_id.toLowerCase() : p.name;
     
-    if (poolMap.has(key)) {
+    let domP = poolMap.get(key);
+    
+    // Fallback: If not found by ID, try matching by name
+    if (!domP && p.name) {
+      const apiNameLower = p.name.toLowerCase();
+      // Try exact name match
+      domP = domPoolsByName.get(apiNameLower);
+      
+      // Try substring match (e.g. API "XAUt0/WAVAX" matches DOM "CL200-XAUt0/WAVAX")
+      if (!domP) {
+        for (const [domName, pool] of domPoolsByName.entries()) {
+          if (domName.includes(apiNameLower)) {
+            domP = pool;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (domP) {
       // If pool exists in DOM, merge intelligently
-      const domP = poolMap.get(key);
       
       // Use DOM data for rewards/VAPR (API has lifetime fees, DOM has epoch rewards)
-      // STRICT OVERWRITE: API 'feesUSD' is lifetime fees, which is misleading for voting.
-      // We must use the DOM value (current epoch rewards), even if it's 0.
+      // We set API rewards to 0 in provider, so if DOM has data, use it.
       p.total_rewards = domP.total_rewards;
       p.vapr = domP.vapr > 0 ? domP.vapr : p.vapr;
       
@@ -1002,7 +1023,17 @@ async function extractPoolsHybrid(deepScan = false) {
       if (!p.pool_type && domP.pool_type) p.pool_type = domP.pool_type;
       
       // API provides accurate current_votes (RPC), so we keep p.current_votes
+      
+      // Remove the original DOM entry if it was stored under a different key (like name)
+      const domKey = domP.pool_id ? domP.pool_id.toLowerCase() : domP.name;
+      if (domKey !== key) {
+        poolMap.delete(domKey);
+      }
     }
+    
+    // Only add if it has rewards (DOM match) or if we want to show it anyway
+    // If it's an API pool with 0 rewards and no DOM match, it might be a dead pool
+    // But for coverage, we'll add it.
     poolMap.set(key, p);
   }
   
