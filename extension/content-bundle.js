@@ -277,7 +277,7 @@ class RpcClient {
 
 // --- From pool-data-provider.js ---
 
-const VOTER_ADDRESS = '0x6bD81E7eaFA4B21d5AD069B452Ab4b8bb40c4525';
+const VOTER_ADDRESS = '0xe30d0c8532721551a51a9fec7fb233759964d9e3';
 const RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
 const API_URL = 'https://resources.blackhole.xyz/cl-pools-list/cl-pools.json';
 
