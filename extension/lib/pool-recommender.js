@@ -78,6 +78,14 @@ export function recommendPools(pools, options = {}) {
 
   // Filter out pools where user would exceed max pool percentage threshold
   if (maxPoolPercentage !== null && userVotingPower !== null) {
+    const poolsBefore = filteredPools.length;
+    // Calculate roughly the minimum votes a pool needs to have to pass this filter
+    // user_share = user_power / (current_votes + user_power) <= max_pct / 100
+    // user_power / (max_pct/100) <= current_votes + user_power
+    // (user_power * 100 / max_pct) - user_power <= current_votes
+    const minVotesRequired = (userVotingPower * 100 / maxPoolPercentage) - userVotingPower;
+    console.log(`Debug: To pass ${maxPoolPercentage}% filter with ${userVotingPower} power, pools need > ~${Math.floor(minVotesRequired).toLocaleString()} votes`);
+
     filteredPools = filteredPools.filter(pool => {
       // Skip pools without vote data (can't calculate percentage)
       if (pool.current_votes === null || pool.current_votes === 0) {
@@ -93,6 +101,10 @@ export function recommendPools(pools, options = {}) {
       // Include pool only if user percentage is <= threshold
       return userPercentage <= maxPoolPercentage;
     });
+    
+    if (poolsBefore > 0 && filteredPools.length === 0) {
+      console.warn(`Warning: All ${poolsBefore} pools were filtered out by max pool percentage (${maxPoolPercentage}%). Try increasing this value or decreasing voting power.`);
+    }
   }
 
   // Determine sort method
