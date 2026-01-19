@@ -9,24 +9,36 @@ export class RpcClient {
 
   async call(method, params = []) {
     try {
-      const response = await fetch(this.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: method,
-          params: params,
-          id: this.id++,
-        }),
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: 'PROXY_REQUEST',
+          url: this.url,
+          options: {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: method,
+              params: params,
+              id: this.id++,
+            })
+          }
+        }, result => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(result);
+          }
+        });
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.success) {
+        throw new Error(response.error || `HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = response.data;
       if (data.error) {
         throw new Error(data.error.message || 'RPC Error');
       }
