@@ -355,13 +355,25 @@ export async function extractPoolsHybrid() {
   // Add/Override with API pools
   for (const p of apiPools) {
     const key = p.pool_id ? p.pool_id.toLowerCase() : p.name;
-    // If pool exists, we might want to keep some DOM data (like VAPR if API doesn't have it)
+    
     if (poolMap.has(key)) {
+      // If pool exists in DOM, merge intelligently
       const domP = poolMap.get(key);
-      // API vapr is 0, so keep DOM vapr if available
-      if (p.vapr === 0 && domP.vapr > 0) {
-        p.vapr = domP.vapr;
+      
+      // Use DOM data for rewards/VAPR (API has lifetime fees, DOM has epoch rewards)
+      p.total_rewards = domP.total_rewards > 0 ? domP.total_rewards : p.total_rewards;
+      p.vapr = domP.vapr > 0 ? domP.vapr : p.vapr;
+      
+      // Use DOM name if available (often better formatted)
+      if (domP.name && domP.name !== 'Unknown') {
+        p.name = domP.name;
       }
+      
+      // Keep other DOM metadata if missing in API
+      if (!p.fee_percentage && domP.fee_percentage) p.fee_percentage = domP.fee_percentage;
+      if (!p.pool_type && domP.pool_type) p.pool_type = domP.pool_type;
+      
+      // API provides accurate current_votes (RPC), so we keep p.current_votes
     }
     poolMap.set(key, p);
   }
