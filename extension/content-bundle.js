@@ -554,30 +554,109 @@ function recommendPools(pools, options = {}) {
 
 /**
  * Extract pool data from DOM elements on the voting page
+ * @param {boolean} deepScan - If true, navigate through all pages. If false, only scan current page.
  */
-function extractPoolsFromDOM() {
+async function extractPoolsFromDOM(deepScan = false) {
   const pools = [];
-  let poolElements = document.querySelectorAll('div.liquidity-pool-cell.even, div.liquidity-pool-cell.odd');
+  const foundPoolIds = new Set(); // Track to avoid duplicates
   
-  if (poolElements.length === 0) {
-    const allPoolElements = document.querySelectorAll('div.liquidity-pool-cell');
-    poolElements = Array.from(allPoolElements).filter(elem => {
-      const classes = elem.className || '';
-      return classes.includes('even') || classes.includes('odd');
-    });
+  // Helper to extract from current page
+  function extractPoolsFromCurrentPage() {
+    let poolElements = document.querySelectorAll('div.liquidity-pool-cell.even, div.liquidity-pool-cell.odd');
+    
+    if (poolElements.length === 0) {
+      const allPoolElements = document.querySelectorAll('div.liquidity-pool-cell');
+      poolElements = Array.from(allPoolElements).filter(elem => {
+        const classes = elem.className || '';
+        return classes.includes('even') || classes.includes('odd');
+      });
+    }
+
+    for (const element of poolElements) {
+      try {
+        const pool = extractPoolFromElement(element);
+        if (pool) {
+          const poolKey = pool.pool_id ? pool.pool_id.toLowerCase() : pool.name.toLowerCase();
+          if (!foundPoolIds.has(poolKey)) {
+            pools.push(pool);
+            foundPoolIds.add(poolKey);
+          }
+        }
+      } catch (error) {
+        console.warn('Error extracting pool from element:', error);
+      }
+    }
+    return poolElements.length;
   }
 
-  console.log(`Found ${poolElements.length} pool elements`);
+  // Always extract current page
+  const poolsOnCurrentPage = extractPoolsFromCurrentPage();
+  console.log(`Found ${poolsOnCurrentPage} pool elements on current page`);
 
-  for (const element of poolElements) {
-    try {
-      const pool = extractPoolFromElement(element);
-      if (pool) {
-        pools.push(pool);
-      }
-    } catch (error) {
-      console.warn('Error extracting pool from element:', error);
+  // If not deep scan, return immediately
+  if (!deepScan) {
+    return pools;
+  }
+
+  console.log('Deep Scan enabled: checking for pagination...');
+  
+  // Pagination Logic
+  const paginationContainer = document.querySelector('.pagination');
+  if (!paginationContainer) {
+    console.log('No pagination found, scan complete.');
+    return pools;
+  }
+
+  // Helper to wait for page load
+  async function waitForPageLoad(previousCount, maxWait = 5000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+      await new Promise(r => setTimeout(r, 200));
+      const currentCount = document.querySelectorAll('div.liquidity-pool-cell').length;
+      // Simple check: if we have pools, we assume page loaded (could be improved)
+      if (currentCount > 0) return true;
     }
+    return false;
+  }
+
+  // Iterate pages
+  let pagesChecked = 1;
+  const maxPages = 20; // Safety limit
+  
+  while (pagesChecked < maxPages) {
+    const pagination = document.querySelector('.pagination');
+    if (!pagination) break;
+
+    const rightExtreme = pagination.querySelector('.item.extreme.right');
+    if (!rightExtreme) break;
+
+    const clickable = rightExtreme.closest('.item') || rightExtreme.parentElement || rightExtreme;
+    if (clickable.classList.contains('disabled') || clickable.hasAttribute('disabled')) {
+      console.log('Next button disabled, reached last page.');
+      break;
+    }
+
+    console.log(`Navigating to page ${pagesChecked + 1}...`);
+    clickable.click();
+    
+    // Wait for load
+    await waitForPageLoad(0);
+    
+    // Extract
+    const count = extractPoolsFromCurrentPage();
+    console.log(`Extracted ${count} pools from page ${pagesChecked + 1}`);
+    pagesChecked++;
+    
+    // Small delay
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  // Restore page 1? Probably good UX but maybe not strictly required if we just want data.
+  // Let's try to go back to page 1 to leave the user in a consistent state.
+  console.log('Deep Scan complete. Returning to page 1...');
+  const firstPage = document.querySelector('.pagination .item:not(.extreme)');
+  if (firstPage && firstPage.textContent.trim() === '1') {
+    firstPage.click();
   }
 
   return pools;
@@ -866,8 +945,8 @@ async function extractPoolsFromAPI() {
 /**
  * Hybrid extraction using RPC and API
  */
-async function extractPoolsHybrid() {
-  console.log('Attempting hybrid extraction (RPC + API)...');
+async function extractPoolsHybrid(deepScan = false) {
+  console.log(`Attempting hybrid extraction (RPC + API) with Deep Scan: ${deepScan}...`);
   let apiPools = [];
   
   try {
@@ -887,7 +966,7 @@ async function extractPoolsHybrid() {
   
   // Always fetch from DOM to ensure we don't miss pools not in the API (e.g. vAMM/sAMM)
   console.log('Fetching from DOM to supplement/fallback...');
-  const domPools = extractPoolsFromDOM();
+  const domPools = await extractPoolsFromDOM(deepScan);
   console.log(`DOM extraction: ${domPools.length} pools`);
   
   // Merge lists (prefer API data if available as it has precise weights)
@@ -930,7 +1009,6 @@ async function extractPoolsHybrid() {
   
   return mergedPools;
 }
-
 // Now include the main content script logic
 console.log('Blackhole DEX Tools: Content script loaded');
 
@@ -1142,9 +1220,9 @@ async function fetchPoolData(forceRefresh = false) {
     try {
       // Use hybrid extraction (RPC/API -> DOM fallback)
       if (typeof extractPoolsHybrid === 'function') {
-        pools = await extractPoolsHybrid();
+        pools = await extractPoolsHybrid(settings.deepScan);
       } else {
-        pools = await extractPoolsFromDOM();
+        pools = await extractPoolsFromDOM(settings.deepScan);
       }
       console.log(`Extracted ${pools.length} pools`);
       
