@@ -440,7 +440,9 @@ export async function extractPoolsHybrid(deepScan = false) {
       const domP = poolMap.get(key);
       
       // Use DOM data for rewards/VAPR (API has lifetime fees, DOM has epoch rewards)
-      p.total_rewards = domP.total_rewards > 0 ? domP.total_rewards : p.total_rewards;
+      // STRICT OVERWRITE: API 'feesUSD' is lifetime fees, which is misleading for voting.
+      // We must use the DOM value (current epoch rewards), even if it's 0.
+      p.total_rewards = domP.total_rewards;
       p.vapr = domP.vapr > 0 ? domP.vapr : p.vapr;
       
       // Use DOM name if available (often better formatted)
