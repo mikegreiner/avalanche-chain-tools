@@ -1055,6 +1055,19 @@ let settings = {
   enableOverlay: true
 };
 
+// Forward API discovery logs to extension
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  
+  if (event.data && event.data.type === 'NETWORK_REQUEST') {
+    try {
+      chrome.runtime.sendMessage(event.data);
+    } catch (e) {
+      // Extension context might be invalidated
+    }
+  }
+});
+
 // Load settings with error handling
 try {
   if (chrome.runtime && chrome.runtime.id) {

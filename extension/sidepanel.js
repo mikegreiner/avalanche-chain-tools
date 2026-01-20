@@ -7,6 +7,7 @@ import { recommendPools } from './lib/pool-recommender.js';
 
 // Auto-save debounce timer
 let saveTimer = null;
+let capturedRequests = [];
 
 // Load settings on popup open
 document.addEventListener('DOMContentLoaded', async () => {
@@ -207,6 +208,48 @@ function setupListeners() {
     openBtn.addEventListener('click', openVotingPage);
   }
 
+  // Clear API Logs Button
+  const clearLogsBtn = document.getElementById('clearApiLogsBtn');
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', () => {
+      capturedRequests = [];
+      const list = document.getElementById('api-logs-list');
+      if (list) {
+        list.innerHTML = '<div class="empty-state"><p>No network requests intercepted yet.</p></div>';
+      }
+    });
+  }
+
+  // Download API Logs Button
+  const downloadLogsBtn = document.getElementById('downloadApiLogsBtn');
+  if (downloadLogsBtn) {
+    downloadLogsBtn.addEventListener('click', () => {
+      if (capturedRequests.length === 0) {
+        showStatus('No logs to download', 'error');
+        return;
+      }
+
+      const blob = new Blob([JSON.stringify(capturedRequests, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `blackhole-api-logs-${new Date().toISOString()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showStatus('Logs downloaded', 'success');
+    });
+  }
+
+  // Listen for intercepted network requests
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'NETWORK_REQUEST') {
+      addApiLogItem(message.data);
+    }
+  });
+
   // Clear Input Buttons
   document.querySelectorAll('.clear-input-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -220,6 +263,51 @@ function setupListeners() {
       }
     });
   });
+}
+
+function addApiLogItem(data) {
+  capturedRequests.push(data);
+  const container = document.getElementById('api-logs-list');
+  if (!container) return;
+
+  // Remove empty state if present
+  const emptyState = container.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  // Create log item
+  const item = document.createElement('div');
+  item.className = `api-log-item ${data.method}`;
+  item.style.borderBottom = '1px solid #eee';
+  item.style.padding = '8px 0';
+  item.style.fontSize = '11px';
+  
+  const time = new Date(data.timestamp).toLocaleTimeString();
+  
+  let responseStr = '';
+  try {
+    responseStr = typeof data.responseBody === 'object' 
+      ? JSON.stringify(data.responseBody, null, 2) 
+      : data.responseBody;
+  } catch (e) {
+    responseStr = '(Could not parse response)';
+  }
+
+  item.innerHTML = `
+    <div style="display: flex; justify-content: space-between; font-weight: bold; color: #555;">
+      <span>${time} [${data.source.toUpperCase()}] Status: ${data.status}</span>
+      <span>${data.method}</span>
+    </div>
+    <div style="word-break: break-all; color: #0366d6; margin: 4px 0;">${data.url}</div>
+    <div style="max-height: 100px; overflow-y: auto; background: #f8f8f8; padding: 4px; font-family: monospace; white-space: pre-wrap;">${responseStr.substring(0, 1000)}${responseStr.length > 1000 ? '...' : ''}</div>
+  `;
+
+  // Prepend to show newest first
+  container.insertBefore(item, container.firstChild);
+
+  // Limit to 50 items to prevent performance issues
+  if (container.children.length > 50) {
+    container.removeChild(container.lastChild);
+  }
 }
 
 // Helper to get currently displayed pool IDs

@@ -19,6 +19,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <div class="tab active" data-tab="recommendations">Recommendations</div>
+      <div class="tab" data-tab="api-discovery">API Discovery</div>
       <div class="tab" data-tab="settings">Settings</div>
     </div>
 
@@ -31,7 +32,7 @@
           <span class="last-updated" id="lastUpdated">No data</span>
           <button id="refreshDataBtn" class="btn btn-secondary btn-sm" style="flex: 0 0 auto; width: auto;">Refresh</button>
         </div>
-
+        
         <div class="form-group" style="margin-bottom: 8px;">
           <div class="input-wrapper">
             <input type="text" id="poolNameFilter" placeholder="Filter by pool name (e.g., BTC, USDC)" style="padding: 6px 8px; font-size: 13px;">
@@ -55,6 +56,23 @@
         
         <div style="padding: 12px; font-size: 11px; color: #666; text-align: center;">
           <p>Tip: Click "Refresh" if data is outdated.</p>
+        </div>
+      </div>
+
+      <!-- API Discovery View -->
+      <div id="api-discovery-view" class="view">
+        <div class="refresh-bar">
+          <span class="last-updated">Real-time network log</span>
+          <div style="display: flex; gap: 4px;">
+            <button id="downloadApiLogsBtn" class="btn btn-primary btn-sm" style="flex: 0 0 auto; width: auto;">Download</button>
+            <button id="clearApiLogsBtn" class="btn btn-secondary btn-sm" style="flex: 0 0 auto; width: auto;">Clear</button>
+          </div>
+        </div>
+        <p class="info" style="margin-bottom: 8px;">Intercepted network requests from the page. Useful for finding the backend API.</p>
+        <div id="api-logs-list" class="api-logs-list" style="overflow-y: auto; max-height: 400px; border: 1px solid #eee; border-radius: 4px; padding: 4px;">
+          <div class="empty-state">
+            <p>No network requests intercepted yet.</p>
+          </div>
         </div>
       </div>
 

@@ -88,7 +88,15 @@ ${stripModules(recommenderJs)}
 ${stripModules(extractorJs)}
 `;
 
-    // 5. Append main content logic
+    // 5. Include api-discovery.js
+    if (fs.existsSync(path.join(LIB_DIR, 'api-discovery.js'))) {
+        let discoveryJs = fs.readFileSync(path.join(LIB_DIR, 'api-discovery.js'), 'utf8');
+        bundle += `// --- From api-discovery.js ---
+${stripModules(discoveryJs)}
+`;
+    }
+
+    // 6. Append main content logic
     const existingBundle = fs.readFileSync(path.join(EXT_DIR, 'content-bundle.js'), 'utf8');
     
     const mainStartMarker = "// Now include the main content script logic";
