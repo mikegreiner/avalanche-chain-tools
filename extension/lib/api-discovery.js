@@ -24,18 +24,22 @@
       }
 
       // Send to extension
-      window.postMessage({
-        type: 'NETWORK_REQUEST',
-        data: {
-          source: 'fetch',
-          method: options.method || 'GET',
-          url: url,
-          requestBody: options.body,
-          status: response.status,
-          responseBody: body,
-          timestamp: Date.now()
-        }
-      }, '*');
+      try {
+        window.postMessage({
+          type: 'NETWORK_REQUEST',
+          data: {
+            source: 'fetch',
+            method: options.method || 'GET',
+            url: url.toString(),
+            requestBody: typeof options.body === 'string' ? options.body : (options.body ? '[Non-string body]' : null),
+            status: response.status,
+            responseBody: body,
+            timestamp: Date.now()
+          }
+        }, '*');
+      } catch (postErr) {
+        console.warn('Discovery: Failed to post fetch log', postErr);
+      }
 
       return response;
     } catch (error) {
@@ -61,20 +65,23 @@
         responseBody = this.responseText;
       }
 
-      // Send to extension
-      window.postMessage({
-        type: 'NETWORK_REQUEST',
-        data: {
-          source: 'xhr',
-          method: this._method,
-          url: this._url,
-          requestBody: body,
-          status: this.status,
-          responseBody: responseBody,
-          timestamp: Date.now()
-        }
-      }, '*');
-    });
-    return originalSend.apply(this, arguments);
+            // Send to extension
+            try {
+              window.postMessage({
+                type: 'NETWORK_REQUEST',
+                data: {
+                  source: 'xhr',
+                  method: this._method,
+                  url: this._url.toString(),
+                  requestBody: typeof body === 'string' ? body : (body ? '[Non-string body]' : null),
+                  status: this.status,
+                  responseBody: responseBody,
+                  timestamp: Date.now()
+                }
+              }, '*');
+            } catch (postErr) {
+              console.warn('Discovery: Failed to post XHR log', postErr);
+            }
+          });    return originalSend.apply(this, arguments);
   };
 })();
