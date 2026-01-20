@@ -1214,8 +1214,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+function injectApiDiscovery() {
+  try {
+    console.log('Blackhole DEX Tools: Injecting API discovery...');
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('lib/api-discovery.js');
+    (document.head || document.documentElement).appendChild(script);
+    script.onload = () => script.remove();
+  } catch (error) {
+    console.warn('Blackhole DEX Tools: Failed to inject API discovery script:', error);
+  }
+}
+
 function init() {
   console.log('Blackhole DEX Tools: Initializing...');
+  
+  // Inject discovery tool into page context
+  injectApiDiscovery();
+  
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       setupExtension();
