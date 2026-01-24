@@ -255,20 +255,32 @@ export async function extractPoolsFromDOM() {
   if (paginationContainer && (pageItems.length > 0 || nextButton)) {
     console.log(`Pagination detected. Extracting pools from all pages...`);
     
-    // Helper function to wait for page to load by checking if pool cells have updated
-    async function waitForPageLoad(previousPoolCount, maxWaitTime = 5000) {
+    // Helper function to wait for page to load by checking if page number has updated
+    async function waitForPageLoad(previousPageNum, maxWaitTime = 10000) {
       const startTime = Date.now();
       while (Date.now() - startTime < maxWaitTime) {
         await new Promise(resolve => setTimeout(resolve, 200));
-        const currentPoolCount = document.querySelectorAll('div.liquidity-pool-cell').length;
-        // Check if pools have changed (new page loaded) or if we're still waiting
-        const currentPageItem = document.querySelector('.pagination .item.selected');
-        if (currentPageItem) {
-          // Page seems to have loaded
-          await new Promise(resolve => setTimeout(resolve, 500)); // Extra wait for stability
-          return true;
+        
+        // Check for loading indicators (optional, but good practice)
+        const isLoading = document.querySelector('.loading') || 
+                         document.querySelector('.spinner');
+        
+        if (!isLoading) {
+            const pagination = document.querySelector('.pagination');
+            if (pagination) {
+                const selectedItem = pagination.querySelector('.item.selected');
+                if (selectedItem) {
+                    const newPageNum = parseInt(selectedItem.textContent.trim());
+                    // If page number has changed, we are good
+                    if (!isNaN(newPageNum) && newPageNum !== previousPageNum) {
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Extra wait for table render
+                        return true;
+                    }
+                }
+            }
         }
       }
+      console.warn(`Page load timeout: Page number did not change from ${previousPageNum} within ${maxWaitTime}ms`);
       return false;
     }
     
@@ -303,7 +315,8 @@ export async function extractPoolsFromDOM() {
         if (page1Item) {
           const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
           clickable.click();
-          await waitForPageLoad(0, 5000);
+          // Wait for page 1 to load (previous was initialPageNum)
+          await waitForPageLoad(initialPageNum, 5000);
           // Re-extract from page 1 (we already got it, but this ensures we're synced)
           extractPoolsFromCurrentPage();
         }
@@ -344,10 +357,10 @@ export async function extractPoolsFromDOM() {
       console.log(`Clicking next button (currently on page ${currentPageBefore || 'unknown'})...`);
       clickable.click();
       
-      // Wait for page to load
-      const pageLoaded = await waitForPageLoad(previousPoolCount, 5000);
+      // Wait for page to load (pass current page number to check for change)
+      const pageLoaded = await waitForPageLoad(currentPageBefore, 10000);
       if (!pageLoaded) {
-        console.warn('Page load timeout - continuing anyway');
+        console.warn('Page load verification failed - continuing anyway');
       }
       
       // Verify we actually moved to a new page
