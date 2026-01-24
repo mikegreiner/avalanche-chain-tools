@@ -222,6 +222,10 @@ export async function extractPoolsFromDOM() {
           const updatedText = sizePerPageElement.textContent || '';
           console.log(`Page size element now shows: ${updatedText}`);
         }
+        
+        // CRITICAL: Extract pools from this expanded first page immediately
+        const poolsFromPage1 = extractPoolsFromCurrentPage();
+        console.log(`Extracted ${poolsFromPage1} pools from expanded Page 1`);
       }
       
     } catch (error) {
@@ -321,6 +325,12 @@ export async function extractPoolsFromDOM() {
           extractPoolsFromCurrentPage();
         }
       }
+    } else {
+       // If we are already on page 1 and haven't extracted yet (e.g. didn't change page size)
+       // ensure we extract the current page before navigating
+       if (!pageSizeChanged) {
+         extractPoolsFromCurrentPage();
+       }
     }
     
     // Now navigate through all pages using next button
@@ -358,23 +368,14 @@ export async function extractPoolsFromDOM() {
       clickable.click();
       
       // Wait for page to load (pass current page number to check for change)
-      const pageLoaded = await waitForPageLoad(currentPageBefore, 10000);
-      if (!pageLoaded) {
-        console.warn('Page load verification failed - continuing anyway');
-      }
+      const pageLoaded = await waitForPageLoad(currentPageBefore, 6000); // Reduced timeout
       
       // Verify we actually moved to a new page
       const currentPageAfter = getCurrentPageNum();
       if (currentPageAfter === currentPageBefore) {
-        consecutiveFailures++;
-        console.warn(`Still on same page (${currentPageAfter}) after clicking next. Failure count: ${consecutiveFailures}`);
-        if (consecutiveFailures >= maxConsecutiveFailures) {
-          console.log('Too many consecutive failures, stopping pagination');
-          break;
-        }
-        // Wait a bit longer and try again
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        continue;
+        // If page didn't change, we likely hit the end of the list even if button wasn't disabled
+        console.log(`Page did not advance from ${currentPageBefore}. Assuming reached last page.`);
+        break;
       }
       
       consecutiveFailures = 0; // Reset on success
