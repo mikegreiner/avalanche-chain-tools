@@ -1,0 +1,272 @@
+[
+  {
+    "address": "0x403822e6cfa57d10c32a4e910ed740f9ced8c615",
+    "token0": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+    "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 25367010.67415298
+  },
+  {
+    "address": "0x4a930a63b13e6683a204cb10ef20f68310231459",
+    "token0": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 20383651.4167552
+  },
+  {
+    "address": "0xfcbdd05f764702ec1cb56c6324a45d6472b51f74",
+    "token0": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "token1": "0xeec951bfdeb358371a19512c6c33cdd840d47db0",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1955241.830665476
+  },
+  {
+    "address": "0x758909881a386e30e39490664f85f2247417c0de",
+    "token0": "0x34a528da3b2ea5c6ad1796eba756445d1299a577",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1939830.6513841506
+  },
+  {
+    "address": "0xc3d792a7b51adeb521cd431ac75831d8c433801a",
+    "token0": "0x34a528da3b2ea5c6ad1796eba756445d1299a577",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1937621.1357839424
+  },
+  {
+    "address": "0xe89550d1986afd3ea82f9193a24bf5198f77f111",
+    "token0": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "token1": "0xffff003a6bad9b743d658048742935fffe2b6ed7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1735797.7717003075
+  },
+  {
+    "address": "0x59faf1480cb7cd749ee517c2aa7a15a26c0fb9af",
+    "token0": "0x451532f1c9eb7e4dc2d493db52b682c0acf6f5ef",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1560087.8869170637
+  },
+  {
+    "address": "0x0c128cd9ea013c0638b28df7e210e022376bcc38",
+    "token0": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1532068.8130439678
+  },
+  {
+    "address": "0x495b296c3fc52283fd9565b421386d36f628d55e",
+    "token0": "0x6aa38edd7f32a28b7b2c2dc86fc5b0bf2ae61579",
+    "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1366319.983185697
+  },
+  {
+    "address": "0xae93b851e2e526a46ab91bb9b045f0d41d45bd4e",
+    "token0": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 1325432.5218187433
+  },
+  {
+    "address": "0xfff3a856e0f9644e360e4dfc99550b56238084f0",
+    "token0": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "token1": "0x8e48d9f6d73e9805df87dcf63f7b35ae04079713",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 986577.863717558
+  },
+  {
+    "address": "0x3e70ddb1b82c311e49f16deff3b3805c94cdfe26",
+    "token0": "0x48f88a3fe843ccb0b5003e70b4192c1d7448bef0",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 873761.2672811544
+  },
+  {
+    "address": "0x64d05ecc2cdc3e80d45bd1b25b0e8a7f7bf15cfc",
+    "token0": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 828932.8116060907
+  },
+  {
+    "address": "0xc636951478ca5d543dcd26186c39f001d7fb4d1c",
+    "token0": "0x6edac263561da41ade155a992759260fafb87b43",
+    "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 811464.1420638479
+  },
+  {
+    "address": "0xaf7b503b9c1d0c7cacbfc984a91dea1a9f8b8fbf",
+    "token0": "0x6aa38edd7f32a28b7b2c2dc86fc5b0bf2ae61579",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 736007.0400282395
+  },
+  {
+    "address": "0x9d848cf080c46b92b797218835ae7e89e04c1515",
+    "token0": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+    "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 693046.5108814387
+  },
+  {
+    "address": "0x409985a488f7b1a79d964398d827b450a33a86a0",
+    "token0": "0x8729438eb15e2c8b576fcc6aecda6a148776c0f5",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 689306.9417802938
+  },
+  {
+    "address": "0x14e4a5bed2e5e688ee1a5ca3a4914250d1abd573",
+    "token0": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 494365.121146347
+  },
+  {
+    "address": "0x1131d1e669f6652cffe404213bfd0cc6b4676b48",
+    "token0": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "token1": "0xb8d7710f7d8349a506b75dd184f05777c82dad0c",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 478596.4193713423
+  },
+  {
+    "address": "0xdb0ef0808b53219beed7ff5dca8da99d009d69a0",
+    "token0": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+    "token1": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 464463.62783072225
+  },
+  {
+    "address": "0x0d9fd6dd9b1ff55fb0a9bb0e5f1b6a2d65b741a3",
+    "token0": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 401894.59868623235
+  },
+  {
+    "address": "0x8b8961133d63d8c5f7b84bdc359d1c04f99a9cfb",
+    "token0": "0x13af0fe9eb35e91758b467f95cbc78e16fdd8b6b",
+    "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 255466.90020860627
+  },
+  {
+    "address": "0x6d75a6fa7c7d95051b62f2858113634e63420ba0",
+    "token0": "0x26debd39d5ed069770406fca10a0e4f8d2c743eb",
+    "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 228083.20818475148
+  },
+  {
+    "address": "0x737f1cab9cd97c40bbe4d59c85b0d2c1fdbaa37d",
+    "token0": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 185002.67003390685
+  },
+  {
+    "address": "0x202b3e7af2635bbde922582909df6ebccf244d2a",
+    "token0": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "token1": "0xffff003a6bad9b743d658048742935fffe2b6ed7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 181126.25444961665
+  },
+  {
+    "address": "0xf81c84fc05baed862eeeb8ccdc0c6d4882f76c7b",
+    "token0": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+    "token1": "0xca58b8ad4a83d9e456ca88dab228803714074e23",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 171562.37004961882
+  },
+  {
+    "address": "0x15c5133f63c4914d4e151cbf4babfc8f51707477",
+    "token0": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 168498.7550549001
+  },
+  {
+    "address": "0x4c33a727e3744009f7413d2d1fbbad77d7df207f",
+    "token0": "0x420fca0121dc28039145009570975747295f2329",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 152060.25523757102
+  },
+  {
+    "address": "0x132a80e5cec87eca9137333f2ecfcb7572b45d56",
+    "token0": "0x2775d5105276781b4b85ba6ea6a6653beed1dd32",
+    "token1": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 126363.0242842667
+  },
+  {
+    "address": "0x2625e03748213f82485061ac17f22d84b5312ec0",
+    "token0": "0x79bbf4508b1391af3a0f4b30bb5fc4aa9ab0e07c",
+    "token1": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+    "fee": null,
+    "has_cl_interface": false,
+    "has_v2_interface": true,
+    "weight": 92730.1428531622
+  }
+]

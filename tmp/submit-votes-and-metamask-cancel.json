@@ -1,0 +1,31 @@
+[
+  {
+    "source": "fetch",
+    "method": "POST",
+    "url": "https://lb.drpc.live/avalanche/AhWtsxH3UU0ouxmDERKpMgbQpGm5VkgR8JVNrqRhf0fE",
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":153,\"method\":\"eth_estimateGas\",\"params\":[{\"data\":\"0x7ac09bf70000000000000000000000000000000000000000000000000000000000001156000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000010000000000000000000000001abe428146795bc754170af24cfd78663f257d29000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000003e8\",\"from\":\"0xc081B59fe4FB3De77e641342B210Bebf882D0ea4\",\"to\":\"0xE30D0C8532721551a51a9FeC7FB233759964d9e3\",\"value\":\"0x0\"}]}",
+    "status": 200,
+    "responseBody": {
+      "id": 153,
+      "jsonrpc": "2.0",
+      "result": "0xb2f26"
+    },
+    "timestamp": 1768411804615
+  },
+  {
+    "source": "fetch",
+    "method": "POST",
+    "url": "https://lb.drpc.org/ogrpc?network=avalanche-fuji&dkey=AhWtsxH3UU0ouxmDERKpMgZUu2DuUeoR8JMmrqRhf0fE",
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":154,\"method\":\"eth_getTransactionByHash\",\"params\":[\"0x0000000000000000000000000000000000000000\"]}",
+    "status": 400,
+    "responseBody": {
+      "id": 154,
+      "jsonrpc": "2.0",
+      "error": {
+        "message": "hex string has length 40, want 64 for common.Hash",
+        "code": 5
+      }
+    },
+    "timestamp": 1768411812592
+  }
+]

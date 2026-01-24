@@ -76,6 +76,7 @@ function setupListeners() {
       loadAndRenderRecommendations();
     }
   });
+
   
   // Enable overlay checkbox
   document.getElementById('enableOverlay').addEventListener('change', async () => {

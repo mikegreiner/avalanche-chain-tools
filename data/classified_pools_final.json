@@ -1,0 +1,925 @@
+{
+  "total_pools": 138,
+  "classification": {
+    "CL": 58,
+    "vAMM": 1,
+    "sAMM": 1,
+    "Unknown": 78
+  },
+  "pools_by_type": {
+    "CL": [
+      {
+        "address": "0x41100c6d2c6920b10d12cd8d59c8a9aa2ef56fc7",
+        "weight": 51062921.283137426,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xa02ec3ba8d17887567672b2cdcaf525534636ea0",
+        "weight": 24399207.884449515,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x5e128ebc09c918ddae3ca1668d4ee9527dc00d78",
+        "weight": 19879739.514760133,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x1abe428146795bc754170af24cfd78663f257d29",
+        "weight": 15390150.494345028,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x8fef4fe4970a5d6bfa7c65871a2ebfd0f42aa822",
+        "weight": 14137129.354584927,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x9a6142ef0766915db02066f791d969c22eba1dca",
+        "weight": 11086345.39438914,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x76eb2c0c8adabc6be513a1f3b6cc9191d017fac7",
+        "weight": 10423513.49078718,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xc13fd9599f0bedd2da2c307f35bc03ba54a64332",
+        "weight": 7171917.912741228,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xdb5cff75c32aa3e6f9dd3c5e553b7b1a960c9d59",
+        "weight": 6503919.358002087,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x668aa7aefa8512416fc6244afbe5129200277a69",
+        "weight": 5842461.729811261,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x1b70e2f24e9532e225c3f88c7010adde782178a1",
+        "weight": 5145250.753904731,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x859592a4a469610e573f96ef87a0e5565f9a94c8",
+        "weight": 4428286.771750073,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xcfafbf365fe78ffa2ab7af8b4341e2218188f91f",
+        "weight": 4093147.5348532777,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xa38d178a08dd88ec1517d4585929052631fcd1b8",
+        "weight": 4069363.4006344555,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x23ff0b5370bf33725918e6105108f3fa2c4b8a05",
+        "weight": 2968269.550166895,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xb7c3d6d3c0fb9c0846dffd58e399601ca4929dea",
+        "weight": 1868833.1012472513,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x259dc723d93da1d82d10ed75f3751cd3d3b6d7fa",
+        "weight": 1579042.989307768,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xee2ceda742bfb2ef566ab57642d47aba1909b653",
+        "weight": 1405463.4404463703,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xc11baec71ed3290825bdaee51f2d23f2ba882467",
+        "weight": 1259197.59881603,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x533f6eb38d1c2e420a043ae0bdb5040c86dbc07f",
+        "weight": 949363.7644848722,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xf6b5fc4f5999ffbddbc1c2f4b0de790fbf5344ea",
+        "weight": 868755.3992595931,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x0845601464919fa8049325cfdd8e28f03b7a41b2",
+        "weight": 844524.7185680668,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x1c9bc0a5705288a798a5dce908398fcb68ee09ea",
+        "weight": 818735.9946841013,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xd574497d5afee2c66253dd705855154fb2ade9ee",
+        "weight": 812114.8780237023,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xa12ce95e5ece68856d573fb1b1be696a497d4627",
+        "weight": 529505.8156345461,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x69307c779700de6ec88abe6f15a118e800429d01",
+        "weight": 506507.79436492786,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x177a7376860a04eea6bf7fb3f39bf10c49d3b42c",
+        "weight": 448923.85889936757,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x64b9b45dbf624d63d15c04c576faf5c8366d0696",
+        "weight": 419116.2378640022,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x30a561c356ab7a282c06fee8b83966697b03cb3b",
+        "weight": 382722.49734559125,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x8de04f92193ff295a9b5061c8e9365902ff8b111",
+        "weight": 367788.40771652234,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x4580081202c0fe4ee962506cd61d326687517bfe",
+        "weight": 231983.20189554212,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xfc231423e1a863d94abb21d9f68e8c2589b3edb9",
+        "weight": 187614.53404874346,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xf310d010964b2a8e6d5cac11e2089b63c582865a",
+        "weight": 169715.39361208325,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xe32f23b1894ec87eddee0947ce3d788a3eddd1e6",
+        "weight": 164028.8269875712,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x000d436a430cf25c4eaaa3eff031d2cefdfaf4b1",
+        "weight": 163685.83496466302,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x852b285de2cb28d7162583b5c672b8d5be8f3de3",
+        "weight": 161880.97341448304,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x0d8d4d17ced71c8fbcbe01f6031d882c8970fbba",
+        "weight": 155493.69017073055,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xa2d7ddf3757dd94199a2a3874605ad4fd8a26a9f",
+        "weight": 129411.68655881664,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x10ed86c3d147dcd4bdecacff5ada625328b9678d",
+        "weight": 74149.46524376623,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x5bfad13ba95cc71569dfd868f2e10fb5ea3a57ce",
+        "weight": 69614.9812641371,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xdf1f7979a8452303dea8d2bef845b0c0781889dc",
+        "weight": 68128.51813287618,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x75575748336d52f9179d16c56de1f1f9fc3225de",
+        "weight": 52419.99454914937,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x91f974842fd59d6ccbf49b5e7b6c640d63f79991",
+        "weight": 51302.60604864069,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xb064ff53523e8bdcabfc0f93a9666877ff1f1698",
+        "weight": 34330.78184701894,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xe0438e0778c86fe90c1e67abc6933a70a23a8207",
+        "weight": 24631.498213172144,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x930487d060fcd5fa7ff5167a8f5b6407bc7ca365",
+        "weight": 22426.791724235816,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xdb2162bf1a997d351bfd578976c0583e5d267a46",
+        "weight": 21606.726284503657,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x1b4d11ab4658744714d1a6d6633247efbd816be5",
+        "weight": 16934.47019321029,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x0acb28d0eb2ac098e822cfcd0d63d7473644c172",
+        "weight": 16704.619855279103,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x9ee7478ddf586d19bd946bc4ad7f523a4bf995de",
+        "weight": 12882.88382892673,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x7e919db48453d44f39c25af9bf64edc8318db19f",
+        "weight": 10590.728303631693,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x75234dddddea0bbf5a485b146d8274bc1b853908",
+        "weight": 10376.828126520739,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xf28764e649546616c748b9c66a4bf6c9547716be",
+        "weight": 8068.955188602764,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x5af652d03a7151fc233fde83a0f8217fff7cfdfb",
+        "weight": 5858.246071069313,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x38f57f2e719348ec224aab9df1a0fe9105398e72",
+        "weight": 5363.435390378287,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x49f293dd35c73540bae43c232d568ee240c914ac",
+        "weight": 4399.8945719139265,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0x86364634157b4247c1dd54c5945832eaf691af79",
+        "weight": 3639.9783436205976,
+        "type": "CL",
+        "classification_method": "cl_api"
+      },
+      {
+        "address": "0xacfdf585d2f67fe1a5fdf83700501e9eb30e1f70",
+        "weight": 3194.032545557425,
+        "type": "CL",
+        "classification_method": "cl_api"
+      }
+    ],
+    "vAMM": [
+      {
+        "address": "0x78f5a53731564894a7e4fff827a88e5fbf9cfcb6",
+        "weight": 346612.23407121794,
+        "type": "vAMM",
+        "classification_method": "known_pool"
+      }
+    ],
+    "sAMM": [
+      {
+        "address": "0xedcfa2d80cf06fb7642e956a1e95dbc37c75995b",
+        "weight": 842981.5650729369,
+        "type": "sAMM",
+        "classification_method": "known_pool"
+      }
+    ],
+    "Unknown": [
+      {
+        "address": "0x403822e6cfa57d10c32a4e910ed740f9ced8c615",
+        "weight": 25367010.67415298,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x4a930a63b13e6683a204cb10ef20f68310231459",
+        "weight": 20383651.4167552,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xfcbdd05f764702ec1cb56c6324a45d6472b51f74",
+        "weight": 1955241.830665476,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x758909881a386e30e39490664f85f2247417c0de",
+        "weight": 1939830.6513841506,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xc3d792a7b51adeb521cd431ac75831d8c433801a",
+        "weight": 1937621.1357839424,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xe89550d1986afd3ea82f9193a24bf5198f77f111",
+        "weight": 1735797.7717003075,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x59faf1480cb7cd749ee517c2aa7a15a26c0fb9af",
+        "weight": 1560087.8869170637,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x0c128cd9ea013c0638b28df7e210e022376bcc38",
+        "weight": 1532068.8130439678,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x495b296c3fc52283fd9565b421386d36f628d55e",
+        "weight": 1366319.983185697,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xae93b851e2e526a46ab91bb9b045f0d41d45bd4e",
+        "weight": 1325432.5218187433,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xfff3a856e0f9644e360e4dfc99550b56238084f0",
+        "weight": 986577.863717558,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x3e70ddb1b82c311e49f16deff3b3805c94cdfe26",
+        "weight": 873761.2672811544,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x64d05ecc2cdc3e80d45bd1b25b0e8a7f7bf15cfc",
+        "weight": 828932.8116060907,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xc636951478ca5d543dcd26186c39f001d7fb4d1c",
+        "weight": 811464.1420638479,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xaf7b503b9c1d0c7cacbfc984a91dea1a9f8b8fbf",
+        "weight": 736007.0400282395,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x9d848cf080c46b92b797218835ae7e89e04c1515",
+        "weight": 693046.5108814387,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x409985a488f7b1a79d964398d827b450a33a86a0",
+        "weight": 689306.9417802938,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x14e4a5bed2e5e688ee1a5ca3a4914250d1abd573",
+        "weight": 494365.121146347,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x1131d1e669f6652cffe404213bfd0cc6b4676b48",
+        "weight": 478596.4193713423,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xdb0ef0808b53219beed7ff5dca8da99d009d69a0",
+        "weight": 464463.62783072225,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x0d9fd6dd9b1ff55fb0a9bb0e5f1b6a2d65b741a3",
+        "weight": 401894.59868623235,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x8b8961133d63d8c5f7b84bdc359d1c04f99a9cfb",
+        "weight": 255466.90020860627,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x6d75a6fa7c7d95051b62f2858113634e63420ba0",
+        "weight": 228083.20818475148,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x737f1cab9cd97c40bbe4d59c85b0d2c1fdbaa37d",
+        "weight": 185002.67003390685,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x202b3e7af2635bbde922582909df6ebccf244d2a",
+        "weight": 181126.25444961665,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xf81c84fc05baed862eeeb8ccdc0c6d4882f76c7b",
+        "weight": 171562.37004961882,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x15c5133f63c4914d4e151cbf4babfc8f51707477",
+        "weight": 168498.7550549001,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x4c33a727e3744009f7413d2d1fbbad77d7df207f",
+        "weight": 152060.25523757102,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x132a80e5cec87eca9137333f2ecfcb7572b45d56",
+        "weight": 126363.0242842667,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x2625e03748213f82485061ac17f22d84b5312ec0",
+        "weight": 92730.1428531622,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x3afadc8477fc516dcd05259baee96ec586174ff4",
+        "weight": 90591.00987300996,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x5d9579592f328bd486de991d96859ecc97a81ddd",
+        "weight": 89133.64613284213,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x8e798638b28d9e677b2c0fa500d93989acf5d717",
+        "weight": 68540.72676520262,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x921ca54e1d32008c25b352bb75aa00593288f1b3",
+        "weight": 66934.0820334683,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x04a954bc8af9a1fdc2ce5f3192bdca369a4512cc",
+        "weight": 63867.333400790114,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x14c0c65e70ec101f8c4aabc97c4f29211e32f221",
+        "weight": 57040.278578382975,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xb46af12bbcd6540d63b8580601c0b149b2c6f8f5",
+        "weight": 55397.154512747016,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x503e7d44fffda3b23bcd38fcb93d3dc795643874",
+        "weight": 53194.23942625059,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x03eb46b34129a77ac7a115e87da19ae91d66019c",
+        "weight": 52438.99179791215,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xf2b0f7482685d5cf1f40a3de4abfa2665052fa14",
+        "weight": 49919.58295208914,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x7c0781874f5f0e78a920b7a8c840813c69c6e746",
+        "weight": 46509.2230757943,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x932dc494e571c4588a7e4927aa1c5cfaaa044491",
+        "weight": 45903.7597765224,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xd2f97b0a08452c8aa4386123c8a32133c2fa6a12",
+        "weight": 44089.40163846905,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x0e5aad7522acf208c5f691d3f20af0c26d1d669a",
+        "weight": 42682.113457050575,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xef94b376b0e9cb81287be8114a3c4e81aafa47a5",
+        "weight": 38287.97915788149,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x624e692595dfa46974179b39b9c23f664e9a23c3",
+        "weight": 36007.54780356029,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x2466f2d17689b734ed988eb0843aa2ac056c5c09",
+        "weight": 31131.571773184474,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x9d8a9fdf8890942e2b2364b843116bee8920a506",
+        "weight": 30189.493243795416,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x15c79629b9e2508726385b013dd5f550db0d49d9",
+        "weight": 28036.817604224034,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x7c1db2f875dcbeb509757dc0f442312a7425e56e",
+        "weight": 27363.476798196512,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xc26e546b632348e76ebbd2811f4458a32ea29b7a",
+        "weight": 25902.08542542995,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x419b7d20c1dabaa6fb333c07bf0a006bd6bf3600",
+        "weight": 24077.615350216092,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xbf71d22c5092df34bd0b29b4ef717c3aa4d551f9",
+        "weight": 21180.97593539943,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x4f905251040d1b31cd7eff74ef0c91bbf08022c0",
+        "weight": 18540.862167203326,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x8abd9e4ab4132116de3c3531edbb628f1b221e5c",
+        "weight": 17095.207487619195,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xd299699e69adc03fc65e14ec605286758facf1d8",
+        "weight": 16035.230452316557,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xbbb931e832bf3c789bab467e4a6f6c1551791d3e",
+        "weight": 14791.100273700607,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x2eda50d933fcff98ff0bbd9913bae53f71fdd68a",
+        "weight": 14016.88128731459,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x1dcec3446261334e9bdcb5f4b6e334fd72473d03",
+        "weight": 12483.933477531205,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x65f83ccacabaac4ed2f80289a02df4d35d744ae8",
+        "weight": 11008.6426864113,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x42712c828ccdc5034aeac5f2e1acfb72fcda5b25",
+        "weight": 10888.845739732382,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x4d5df15ff7dde069b2ff175f45c845e168b20cd5",
+        "weight": 10742.834554163066,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x5a758f607542c8a12aadc29f74dfba5f14df00b3",
+        "weight": 8795.204294452444,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xc2582deaa593bf8ef800ee980609824d412b6cbd",
+        "weight": 8199.024857224269,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xaf8208b27692e0b41f2e32d1f13054c3b0fa310a",
+        "weight": 7349.639314416932,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x85bec030b05da25871d2cf82f1e4442e7e044902",
+        "weight": 6156.390694053818,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x152e06cce8049f1e42ffd0c0cf842b9ffca6035b",
+        "weight": 5518.387822670033,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x5785c26501355206a7a136d50764d6a31816a9da",
+        "weight": 5296.217234954248,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xdc9ec8f6aca746f13253f14e79647265737bbb35",
+        "weight": 5239.809607574227,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x746472ebffe89b1ce1357f26d3e73fa1d4e3116c",
+        "weight": 4569.762846179777,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x6e6be1750b883b324caaeb97cce819a7d025a817",
+        "weight": 4084.9079196278913,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x612a0664a2c2b6d0b8e85c291181d9cff0b5dc60",
+        "weight": 3772.8471179121484,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xde8d1e2385836f18788da140641a79110eecab36",
+        "weight": 2404.530973882693,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x552e01991a4086fa290a4b826c33dde78e3d9966",
+        "weight": 641.072641581595,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x955514594f1b43514156c1c9e7a89cbd4815c172",
+        "weight": 561.8249999999999,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x36bece6964782fc1652a8e9a25e6b8756a37323e",
+        "weight": 454.46408653329286,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0xcd44913b74bee551af32a5cde2151821b6fcf04e",
+        "weight": 250.46122264917443,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      },
+      {
+        "address": "0x4f80724e5f2d2af81cb2a1eeb2cc049ab2a33089",
+        "weight": 10.332924224824705,
+        "type": "Unknown",
+        "classification_method": "unknown",
+        "name": "Unknown"
+      }
+    ]
+  }
+}

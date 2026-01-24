@@ -1,0 +1,2798 @@
+{
+  "endpoints": {
+    "found": [
+      {
+        "url": "https://resources.blackhole.xyz/cl-pools-list/cl-pools.json",
+        "exists": true,
+        "status": 200,
+        "accessible": true,
+        "content_type": "application/json",
+        "size": 75197,
+        "error": null,
+        "data": {
+          "pools": [
+            {
+              "id": "0x000d436a430cf25c4eaaa3eff031d2cefdfaf4b1",
+              "fee": "2500",
+              "token0": {
+                "id": "0x26debd39d5ed069770406fca10a0e4f8d2c743eb",
+                "symbol": "GUN",
+                "name": "GUNZ",
+                "decimals": "18",
+                "derivedMatic": "0.00206584678327663650454092254330056"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "3601045740940923843813483598",
+              "liquidity": "13147817730774898507865",
+              "tick": "-61826",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "12747.7867005769660706347375",
+              "totalValueLockedToken1": "72.2584584204213510944025",
+              "totalValueLockedUSD": "1254.755567292940775425866740418509",
+              "volumeUSD": "8250387.105389505595094121712473176",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "20625.96776347376398773530428118309",
+              "untrackedFeesUSD": "20628.66856747119314709948707686563",
+              "token0Price": "484.0630041371710491261126954564432",
+              "token1Price": "0.00206584678327663650454092254330056",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.3046109940207917403053723272915506",
+                  "tvlUSD": "1255.244224318096529801057076451877",
+                  "volumeUSD": "121.8443976083166961221489309166202",
+                  "id": "0x000d436a430cf25c4eaaa3eff031d2cefdfaf4b1-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x0845601464919fa8049325cfdd8e28f03b7a41b2",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xeb2729257280580694a06c499cb8c622e74215c8",
+                "symbol": "MOG",
+                "name": "Mog",
+                "decimals": "18",
+                "derivedMatic": "0.00000002141893545383727826848680814504777"
+              },
+              "sqrtPrice": "151748731902088162787497527568592619975",
+              "liquidity": "287046390563337331045",
+              "tick": "427484",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "2028.676003925",
+              "totalValueLockedToken1": "12426054189.374594575281279983255",
+              "totalValueLockedUSD": "5415.940348428753366187962954342312",
+              "volumeUSD": "14541819.665971",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "72709.098329855",
+              "untrackedFeesUSD": "72727.57963767142059439958427932429",
+              "token0Price": "0.0000002725894393340006593827968908332274",
+              "token1Price": "3668520.69707187617132355473102198",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.499765015",
+                  "tvlUSD": "4291.030249488904495584645186530015",
+                  "volumeUSD": "99.953003",
+                  "id": "0x0845601464919fa8049325cfdd8e28f03b7a41b2-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x0acb28d0eb2ac098e822cfcd0d63d7473644c172",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xc5718c4c91e9d051b082e02b1138ab5b6a01dcd1",
+                "symbol": "TRX",
+                "name": "TRON",
+                "decimals": "18",
+                "derivedMatic": "0.02478649810501387047475909272474321"
+              },
+              "sqrtPrice": "141093876469617255071039182817360834",
+              "liquidity": "22141022253771051",
+              "tick": "287866",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "1408.32702513",
+              "totalValueLockedToken1": "5446.251530618354975173315",
+              "totalValueLockedUSD": "3125.604728724569250409714782692275",
+              "volumeUSD": "1530395.158822",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "7651.97579411",
+              "untrackedFeesUSD": "7650.557538999026818507003071349323",
+              "token0Price": "0.3153136967582533701448340645403581",
+              "token1Price": "3.171444850893001658836604213193236",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.05333982",
+                  "tvlUSD": "3122.664633775917608816706233931017",
+                  "volumeUSD": "10.667964",
+                  "id": "0x0acb28d0eb2ac098e822cfcd0d63d7473644c172-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x0d8d4d17ced71c8fbcbe01f6031d882c8970fbba",
+              "fee": "7000",
+              "token0": {
+                "id": "0x6f911b6b39bcc665a463129c94b5380a4387b7eb",
+                "symbol": "SPX",
+                "name": "SPX6900",
+                "decimals": "18",
+                "derivedMatic": "0.03866830072961838520157618451617713"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "266962767027801522860641153295",
+              "liquidity": "118021515172339186929562",
+              "tick": "24296",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "2891.86831612835016563139",
+              "totalValueLockedToken1": "13206.262204167906809542962",
+              "totalValueLockedUSD": "2012.574262559574379540193241953269",
+              "volumeUSD": "6433148.888625297545785072927324211",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "45032.04222037708282049551049126885",
+              "untrackedFeesUSD": "45852.76101570473819201090808377871",
+              "token0Price": "0.08807603945860375401261956828435574",
+              "token1Price": "11.35382569592046383291524295439194",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "2019.495689306002241779792664317095",
+                  "volumeUSD": "0",
+                  "id": "0x0d8d4d17ced71c8fbcbe01f6031d882c8970fbba-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x10ed86c3d147dcd4bdecacff5ada625328b9678d",
+              "fee": "75",
+              "token0": {
+                "id": "0x00000000efe302beaa2b3e6e1b18d08d69a9012a",
+                "symbol": "AUSD",
+                "name": "AUSD",
+                "decimals": "6",
+                "derivedMatic": "0.07867713891048933180089411005431946"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "79221323529328983781957422383",
+              "liquidity": "537743398991941",
+              "tick": "-2",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "30697.989246549025",
+              "totalValueLockedToken1": "26502.37993454995",
+              "totalValueLockedUSD": "57195.06970126291962742423086871559",
+              "volumeUSD": "175261230.867121",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "13144.64169012415",
+              "untrackedFeesUSD": "13143.0114611448043787010545702653",
+              "token0Price": "1.000172662607165918642448508497232",
+              "token1Price": "0.9998273672000634007632102373989986",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.899666392725",
+                  "tvlUSD": "57194.34881447651020317234860007564",
+                  "volumeUSD": "11995.551903",
+                  "id": "0x10ed86c3d147dcd4bdecacff5ada625328b9678d-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x177a7376860a04eea6bf7fb3f39bf10c49d3b42c",
+              "fee": "500",
+              "token0": {
+                "id": "0x5947bb275c521040051d82396192181b413227a3",
+                "symbol": "LINK.e",
+                "name": "Chainlink Token",
+                "decimals": "18",
+                "derivedMatic": "1.013750597002967008614292483871015"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "284132839181655309391876",
+              "liquidity": "864172235186512244",
+              "tick": "-250781",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "5417.7087111733536130155625",
+              "totalValueLockedToken1": "16673.6982817735",
+              "totalValueLockedUSD": "86352.28696103411308837397014195218",
+              "volumeUSD": "30056840.908939",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "88903.2391897235",
+              "untrackedFeesUSD": "88917.97503377661028020090218499419",
+              "token0Price": "0.07775284795321780118371106604472065",
+              "token1Price": "12.86126523110353806037445677687048",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "3.798352359",
+                  "tvlUSD": "86343.86734767875943754588687584285",
+                  "volumeUSD": "7596.704718",
+                  "id": "0x177a7376860a04eea6bf7fb3f39bf10c49d3b42c-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x1abe428146795bc754170af24cfd78663f257d29",
+              "fee": "1000",
+              "token0": {
+                "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+                "symbol": "WETH.e",
+                "name": "Wrapped Ether",
+                "decimals": "18",
+                "derivedMatic": "251.3481940262734995959378938875543"
+              },
+              "token1": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "sqrtPrice": "4477066497270382700000000",
+              "liquidity": "387282651383742513",
+              "tick": "-195633",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "140.483584621587797922696",
+              "totalValueLockedToken1": "247492.35403587",
+              "totalValueLockedUSD": "695407.4406003323923644775797777187",
+              "volumeUSD": "212994787.7040213009970840123171166",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "213000.5151736110793548162569153328",
+              "untrackedFeesUSD": "285127.0851058917196135047913066463",
+              "token0Price": "0.0003131641773694148724714118271417438",
+              "token1Price": "3193.213248079711030251748150083218",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "661638.7647789727876538955685422522",
+                  "volumeUSD": "0",
+                  "id": "0x1abe428146795bc754170af24cfd78663f257d29-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x1b4d11ab4658744714d1a6d6633247efbd816be5",
+              "fee": "500",
+              "token0": {
+                "id": "0xa25eaf2906fa1a3a13edac9b9657108af7b703e3",
+                "symbol": "stAVAX",
+                "name": "Hypha Staked AVAX",
+                "decimals": "18",
+                "derivedMatic": "1.154004580809888455268999402409835"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "85110540809267155663621359079",
+              "liquidity": "10235590970548258791227721",
+              "tick": "1432",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "266.5231181193456683212525",
+              "totalValueLockedToken1": "109937.8591150550515882337575",
+              "totalValueLockedUSD": "1411908.114410074302781308627831382",
+              "volumeUSD": "7777786.088834200480994140471173916",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "3888.893044417100240497070235586951",
+              "untrackedFeesUSD": "3852.820624822192967932831718440293",
+              "token0Price": "0.8665476867502493209870239827519386",
+              "token1Price": "1.154004580809888455268999402409835",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.0003521866491856567702652467922913643",
+                  "tvlUSD": "1412903.51278086359514780445813389",
+                  "volumeUSD": "0.7043732983713135405304935845827285",
+                  "id": "0x1b4d11ab4658744714d1a6d6633247efbd816be5-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x1b70e2f24e9532e225c3f88c7010adde782178a1",
+              "fee": "7000",
+              "token0": {
+                "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+                "symbol": "SUPER",
+                "name": "SuperVerse",
+                "decimals": "18",
+                "derivedMatic": "0.01548170476785586914037846498990366"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "168136243226799604371087133225",
+              "liquidity": "26004002729125955458460773",
+              "tick": "15049",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "171600.495834475695680191692",
+              "totalValueLockedToken1": "468476.952427238445641608071",
+              "totalValueLockedUSD": "54135.95872213657672639177382291026",
+              "volumeUSD": "27584741.00968122921564454037376827",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "193093.187067768604509511782616373",
+              "untrackedFeesUSD": "217039.4856667520104457642563913787",
+              "token0Price": "0.222042694322551024967157403728915",
+              "token1Price": "4.503638379326035490575337823867853",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "54290.55442827307123978664392581227",
+                  "volumeUSD": "0",
+                  "id": "0x1b70e2f24e9532e225c3f88c7010adde782178a1-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x1c9bc0a5705288a798a5dce908398fcb68ee09ea",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xd9c5a9b5fe4006cd0fce1f4020beb9020cbcc6f1",
+                "symbol": "GSCORE",
+                "name": "GSCORE",
+                "decimals": "6",
+                "derivedMatic": "0.07251970190903118900421967954582605"
+              },
+              "sqrtPrice": "79228142811151118081155884476",
+              "liquidity": "600001411902800177",
+              "tick": "-1",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "149314.83759119",
+              "totalValueLockedToken1": "29848708.970631495",
+              "totalValueLockedUSD": "29998038.65427472069669720867001124",
+              "volumeUSD": "257378.714307",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "1286.893571535",
+              "untrackedFeesUSD": "1283.688547964052439890074999314988",
+              "token0Price": "1.000000497376688898133148186016323",
+              "token1Price": "0.9999995026235584853144683242460343",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.05803992",
+                  "tvlUSD": "29998038.65422605221195301777482122",
+                  "volumeUSD": "11.607984",
+                  "id": "0x1c9bc0a5705288a798a5dce908398fcb68ee09ea-20469",
+                  "date": 1768521600
+                }
+              ]
+            },
+            {
+              "id": "0x23ff0b5370bf33725918e6105108f3fa2c4b8a05",
+              "fee": "500",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "2411161977805296830555527065304",
+              "liquidity": "122824556342",
+              "tick": "68314",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "1.3197373202",
+              "totalValueLockedToken1": "77755.780597153",
+              "totalValueLockedUSD": "200027.9988120976422279284716412226",
+              "volumeUSD": "369662958.2951152896481252930101071",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "184831.4791475576448240626465050535",
+              "untrackedFeesUSD": "184829.907145082467842925279461023",
+              "token0Price": "0.00001079708186890194389358490573171696",
+              "token1Price": "92617.61762502031862381088173198386",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "21.7744567145",
+                  "tvlUSD": "223142.8197353284691615040450228826",
+                  "volumeUSD": "43548.913429",
+                  "id": "0x23ff0b5370bf33725918e6105108f3fa2c4b8a05-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x259dc723d93da1d82d10ed75f3751cd3d3b6d7fa",
+              "fee": "5000",
+              "token0": {
+                "id": "0x2775d5105276781b4b85ba6ea6a6653beed1dd32",
+                "symbol": "XAUt0",
+                "name": "XAUt0",
+                "decimals": "6",
+                "derivedMatic": "368.839712508441730000415081999062"
+              },
+              "token1": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "sqrtPrice": "5409226844364831064951770956481",
+              "liquidity": "1528074553636",
+              "tick": "84474",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "141.897501565",
+              "totalValueLockedToken1": "967447.531150315",
+              "totalValueLockedUSD": "1631135.287078806463329894968718878",
+              "volumeUSD": "7072621.643067757209808250359544281",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "35363.10821533878604904125179772144",
+              "untrackedFeesUSD": "123065.3519259151738451970676037786",
+              "token0Price": "0.0002145303682294308990519044918728837",
+              "token1Price": "4661.344723608284162695791914093984",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "1257726.54256796907017081145302597",
+                  "volumeUSD": "0",
+                  "id": "0x259dc723d93da1d82d10ed75f3751cd3d3b6d7fa-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x30a561c356ab7a282c06fee8b83966697b03cb3b",
+              "fee": "5000",
+              "token0": {
+                "id": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+                "symbol": "PEPE",
+                "name": "Pepe",
+                "decimals": "18",
+                "derivedMatic": "0.000000413221213464647633175911180854187"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "181528626961249630638",
+              "liquidity": "8807403553445921412",
+              "tick": "-397904",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "1109288484.17178290572431842678",
+              "totalValueLockedToken1": "1466.290086975",
+              "totalValueLockedUSD": "7289.676147204115500551278171326234",
+              "volumeUSD": "6171892.131672",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "30859.46065836",
+              "untrackedFeesUSD": "30861.90017859550544069428535838617",
+              "token0Price": "190488.5701718596038985770998462849",
+              "token1Price": "0.000005249658806813425691937147618383428",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "10.092626915",
+                  "tvlUSD": "7289.855721365748869631321774721848",
+                  "volumeUSD": "2018.525383",
+                  "id": "0x30a561c356ab7a282c06fee8b83966697b03cb3b-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x38f57f2e719348ec224aab9df1a0fe9105398e72",
+              "fee": "5000",
+              "token0": {
+                "id": "0x846e52d0dd71c2fdc891538b2d37ff84345c7b9f",
+                "symbol": "DOGE",
+                "name": "Binance-Peg DOGE",
+                "decimals": "18",
+                "derivedMatic": "0.01013229844922221818918592082923324"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "136016906961675925010352061449",
+              "liquidity": "6664276081166558136407",
+              "tick": "10809",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "2069.391192777188438321755",
+              "totalValueLockedToken1": "12586.797228062136623979265",
+              "totalValueLockedUSD": "816.8744807897741014322962886604794",
+              "volumeUSD": "402236.9910369029157305108925321437",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "2011.184955184514578652554462660735",
+              "untrackedFeesUSD": "2121.336005781906159195915629933496",
+              "token0Price": "0.3392918111661626463032941824864916",
+              "token1Price": "2.947315458522122315299137219766211",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "817.3555744624611745328591396139695",
+                  "volumeUSD": "0",
+                  "id": "0x38f57f2e719348ec224aab9df1a0fe9105398e72-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x41100c6d2c6920b10d12cd8d59c8a9aa2ef56fc7",
+              "fee": "500",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "282199259312189581002116",
+              "liquidity": "43782113536509299332",
+              "tick": "-250918",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "172639.1812612017193262035431",
+              "totalValueLockedToken1": "819805.3627617653",
+              "totalValueLockedUSD": "3010046.538495816841657598094465651",
+              "volumeUSD": "10034145122.34944051384447585207652",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "5191946.250552444066851827468798744",
+              "untrackedFeesUSD": "5191946.250552444066851827468798744",
+              "token0Price": "0.07882199603125546739067737081742397",
+              "token1Price": "12.686813965018948515649869820488",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "656.0242891946164798160125313494485",
+                  "tvlUSD": "2914884.668050393578486771433663748",
+                  "volumeUSD": "1312048.578389232959632025062698896",
+                  "id": "0x41100c6d2c6920b10d12cd8d59c8a9aa2ef56fc7-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x4580081202c0fe4ee962506cd61d326687517bfe",
+              "fee": "500",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xc891eb4cbdeff6e073e859e987815ed1505c2acd",
+                "symbol": "EURC",
+                "name": "Euro Coin",
+                "decimals": "6",
+                "derivedMatic": "0.09082085897503947194377384261483957"
+              },
+              "sqrtPrice": "73454270701110511036648865214",
+              "liquidity": "347205047507045",
+              "tick": "-1514",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "38171.0288721915",
+              "totalValueLockedToken1": "9346.715972071",
+              "totalValueLockedUSD": "48969.73202719782219592471300491299",
+              "volumeUSD": "7805022.852681",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "3902.5114263405",
+              "untrackedFeesUSD": "3901.635000936979178626793465153516",
+              "token0Price": "1.163389300044649478850394211200459",
+              "token1Price": "0.859557501484345098856227268643432",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "48441.74327298328166501788235358986",
+                  "volumeUSD": "0",
+                  "id": "0x4580081202c0fe4ee962506cd61d326687517bfe-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x49f293dd35c73540bae43c232d568ee240c914ac",
+              "fee": "500",
+              "token0": {
+                "id": "0x3d75f2bb8abcdbd1e27443cb5cbce8a668046c81",
+                "symbol": "HLP0",
+                "name": "HLP0",
+                "decimals": "6",
+                "derivedMatic": "0.07354535279198765613560775673700998"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "80188592749497274054959937093",
+              "liquidity": "487633329881",
+              "tick": "241",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "70.2198716885",
+              "totalValueLockedToken1": "1.077566464",
+              "totalValueLockedUSD": "73.01021448439170511978230503332651",
+              "volumeUSD": "17804615.985516",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "86119.2291731325",
+              "untrackedFeesUSD": "86157.047384635515064745358674202",
+              "token0Price": "0.9761891661293191706659366016027218",
+              "token1Price": "1.024391618650197686622369297628377",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.0018462885",
+                  "tvlUSD": "72.06761855544139167579655763952395",
+                  "volumeUSD": "3.692577",
+                  "id": "0x49f293dd35c73540bae43c232d568ee240c914ac-20464",
+                  "date": 1768089600
+                }
+              ]
+            },
+            {
+              "id": "0x533f6eb38d1c2e420a043ae0bdb5040c86dbc07f",
+              "fee": "5000",
+              "token0": {
+                "id": "0x2775d5105276781b4b85ba6ea6a6653beed1dd32",
+                "symbol": "XAUt0",
+                "name": "XAUt0",
+                "decimals": "6",
+                "derivedMatic": "368.839712508441730000415081999062"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "1520290289569471999841312485533347442",
+              "liquidity": "117317321204938971",
+              "tick": "335413",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "57.251748545",
+              "totalValueLockedToken1": "3988.391464832125089473005",
+              "totalValueLockedUSD": "318525.866235946293364095948084559",
+              "volumeUSD": "53876772.89676805233035731303527135",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "269383.8644838402616517865651763556",
+              "untrackedFeesUSD": "269311.5612971697940737306705516561",
+              "token0Price": "0.002715852155698561058386105840360126",
+              "token1Price": "368.2085557940777676676105848704327",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "5.86601141877979148677956041537144",
+                  "tvlUSD": "231724.7523046438332107495933321858",
+                  "volumeUSD": "1173.202283755958297355912083074288",
+                  "id": "0x533f6eb38d1c2e420a043ae0bdb5040c86dbc07f-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x5af652d03a7151fc233fde83a0f8217fff7cfdfb",
+              "fee": "1000",
+              "token0": {
+                "id": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+                "symbol": "sUSDe",
+                "name": "Staked USDe",
+                "decimals": "18",
+                "derivedMatic": "0.08188837583097142781422278501181052"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "87280607771140968798001",
+              "liquidity": "10917238337327044191",
+              "tick": "-274389",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "82.022299883897157602941",
+              "totalValueLockedToken1": "2262993.752733456",
+              "totalValueLockedUSD": "2263078.414625215818061622719942244",
+              "volumeUSD": "17854214.205392",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "17859.581108448",
+              "untrackedFeesUSD": "17856.77427460054486104098745854839",
+              "token0Price": "0.8239932308467815531269505711766019",
+              "token1Price": "1.213602202741816266966169698504038",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "2477654.958423411681093956694549169",
+                  "volumeUSD": "0",
+                  "id": "0x5af652d03a7151fc233fde83a0f8217fff7cfdfb-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x5bfad13ba95cc71569dfd868f2e10fb5ea3a57ce",
+              "fee": "5000",
+              "token0": {
+                "id": "0x67ea3abd5cee0b99d743155051c191b09135f93c",
+                "symbol": "AXD",
+                "name": "Aesyx Dollar",
+                "decimals": "18",
+                "derivedMatic": "0.07927022527208045412840540553867798"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "79359353782196081772210",
+              "liquidity": "45076523477242114730",
+              "tick": "-276291",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "18614.60450170928789192977",
+              "totalValueLockedToken1": "34162.49652653",
+              "totalValueLockedUSD": "52858.8352204583240017407132594504",
+              "volumeUSD": "10416436.307359",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "52082.181536795",
+              "untrackedFeesUSD": "52056.40521539262204824298895061328",
+              "token0Price": "0.996696474363155601941450652448465",
+              "token1Price": "1.00331447509027781296437049940966",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "76.763184785",
+                  "tvlUSD": "50831.82951894894197331102120075517",
+                  "volumeUSD": "15352.636957",
+                  "id": "0x5bfad13ba95cc71569dfd868f2e10fb5ea3a57ce-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x5e128ebc09c918ddae3ca1668d4ee9527dc00d78",
+              "fee": "500",
+              "token0": {
+                "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+                "symbol": "WETH.e",
+                "name": "Wrapped Ether",
+                "decimals": "18",
+                "derivedMatic": "251.3481940262734995959378938875543"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "1256080485044103187603883561051",
+              "liquidity": "252277126649472429040733",
+              "tick": "55271",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "310.2087109861877667239506",
+              "totalValueLockedToken1": "263504.9584972128621388008833",
+              "totalValueLockedUSD": "4332234.337727293478090848970846734",
+              "volumeUSD": "2494250819.349148803150146888167267",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "1297289.608240418691468634854263088",
+              "untrackedFeesUSD": "1297288.197040459617623155584266362",
+              "token0Price": "0.003978544599749420559059448460483467",
+              "token1Price": "251.3481940262734995959378938875543",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "212.9414196231362787537720444925227",
+                  "tvlUSD": "4724616.385217596954236638603692304",
+                  "volumeUSD": "425882.8392462725575075440889850448",
+                  "id": "0x5e128ebc09c918ddae3ca1668d4ee9527dc00d78-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x61c48716f6e03229b1e250aefddf429c48e75165",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "1064445721371152533648186764",
+              "liquidity": "0",
+              "tick": "-86202",
+              "tickSpacing": "150",
+              "totalValueLockedToken0": "0",
+              "totalValueLockedToken1": "0",
+              "totalValueLockedUSD": "0",
+              "volumeUSD": "0",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "0",
+              "untrackedFeesUSD": "0",
+              "token0Price": "0",
+              "token1Price": "0",
+              "deployer": "0x0000000000000000000000000000000000000000",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "0",
+                  "volumeUSD": "0",
+                  "id": "0x61c48716f6e03229b1e250aefddf429c48e75165-20280",
+                  "date": 1752192000
+                }
+              ]
+            },
+            {
+              "id": "0x64b9b45dbf624d63d15c04c576faf5c8366d0696",
+              "fee": "5000",
+              "token0": {
+                "id": "0x180af87b47bf272b2df59dccf2d76a6eafa625bf",
+                "symbol": "reUSD",
+                "name": "Re Protocol Deposit Token",
+                "decimals": "18",
+                "derivedMatic": "0.07656110945136428927278532172161873"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "81340368785065732237256",
+              "liquidity": "3680745060541027334615",
+              "tick": "-275798",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "148195.50678404030856978883",
+              "totalValueLockedToken1": "957663.35973664",
+              "totalValueLockedUSD": "1101546.420089535269803326707731215",
+              "volumeUSD": "8179968.428464",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "40899.84214232",
+              "untrackedFeesUSD": "40816.69141544553344613424289504035",
+              "token0Price": "0.9487393052035746207811859760303443",
+              "token1Price": "1.05403032689304062922836296276431",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "1101885.092406819527552431475472593",
+                  "volumeUSD": "0",
+                  "id": "0x64b9b45dbf624d63d15c04c576faf5c8366d0696-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x668aa7aefa8512416fc6244afbe5129200277a69",
+              "fee": "500",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "282245821628731595435888",
+              "liquidity": "14107964364656494820",
+              "tick": "-250914",
+              "tickSpacing": "50",
+              "totalValueLockedToken0": "19321.617060544212762423199",
+              "totalValueLockedToken1": "107139.2431147505",
+              "totalValueLockedUSD": "352269.0042652111849374943820475398",
+              "volumeUSD": "315224867.8989996700275275416599584",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "157612.4698985269119355302199973162",
+              "untrackedFeesUSD": "157612.4698985269119355302199973162",
+              "token0Price": "0.07879599152230657858824575088457636",
+              "token1Price": "12.69100090855392296027956817259403",
+              "deployer": "0x58b05074d52d1a84d8ffdadda3c1b652e8c56994",
+              "poolDayData": [
+                {
+                  "feesUSD": "111.2151772427094534290834458152125",
+                  "tvlUSD": "307282.4615441410768685811322136237",
+                  "volumeUSD": "222430.3544854189068581668916304242",
+                  "id": "0x668aa7aefa8512416fc6244afbe5129200277a69-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x683e964dae9defdcb13fa9c1f11810d0e3d6f097",
+              "fee": "100",
+              "token0": {
+                "id": "0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+                "symbol": "WBTC",
+                "name": "Wrapped BTC",
+                "decimals": "8",
+                "derivedMatic": "7294.763523965939405310371857290494"
+              },
+              "token1": {
+                "id": "0x2cd3cdb3bd68eea0d3be81da707bc0c8743d7335",
+                "symbol": "YBTC.B",
+                "name": "Yield BTC.B",
+                "decimals": "8",
+                "derivedMatic": "6971.450056016161340177621281070975"
+              },
+              "sqrtPrice": "79342319921979594833416986096",
+              "liquidity": "176140",
+              "tick": "28",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "0.001759007472",
+              "totalValueLockedToken1": "0.001764025149",
+              "totalValueLockedUSD": "318.5076242547858555316399768274344",
+              "volumeUSD": "0",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "0",
+              "untrackedFeesUSD": "0.004102876077708371000495161868107009",
+              "token0Price": "0.9971244782552336933682412600738926",
+              "token1Price": "1.002883814215250124547250974555616",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "322.3534972694966519659444531265253",
+                  "volumeUSD": "0",
+                  "id": "0x683e964dae9defdcb13fa9c1f11810d0e3d6f097-20430",
+                  "date": 1765152000
+                }
+              ]
+            },
+            {
+              "id": "0x69307c779700de6ec88abe6f15a118e800429d01",
+              "fee": "1000",
+              "token0": {
+                "id": "0x634608ed64c61ca9e741f8095193c0bfa0fa19cc",
+                "symbol": "SOL",
+                "name": "Solana",
+                "decimals": "18",
+                "derivedMatic": "10.520081513501703716424119695048"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "256973971298283210928986504759",
+              "liquidity": "9144987577438041281573",
+              "tick": "23534",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "50.721741373399305785727",
+              "totalValueLockedToken1": "71745.273902168578782995479",
+              "totalValueLockedUSD": "913840.0280840343154352104208685051",
+              "volumeUSD": "10090852.83502443885264532589222747",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "10090.97137721494973394423534674578",
+              "untrackedFeesUSD": "10086.54408926734262241723441141161",
+              "token0Price": "0.09505629768330008016571638427873549",
+              "token1Price": "10.520081513501703716424119695048",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.339060138666821979151168224983225",
+                  "tvlUSD": "916596.8272056194668642809135859982",
+                  "volumeUSD": "339.060138666821979151168224983225",
+                  "id": "0x69307c779700de6ec88abe6f15a118e800429d01-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x70fae7c4d4fe5b3e2c9ab3f57f6242f704faac43",
+              "fee": "500",
+              "token0": {
+                "id": "0x06d47f3fb376649c3a9dafe069b3d6e35572219e",
+                "symbol": "savUSD",
+                "name": "Staked avUSD",
+                "decimals": "18",
+                "derivedMatic": "0.08541980825404531024880356456630335"
+              },
+              "token1": {
+                "id": "0x24de8771bc5ddb3362db529fc3358f2df3a0e346",
+                "symbol": "avUSD",
+                "name": "avUSD",
+                "decimals": "18",
+                "derivedMatic": "0.07364483742314983542094156196606104"
+              },
+              "sqrtPrice": "84479561206105454307948952274",
+              "liquidity": "58219645969938612424",
+              "tick": "1283",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "54.6006099768409981396115",
+              "totalValueLockedToken1": "3298987.5584975083089177273575",
+              "totalValueLockedUSD": "3315284.524503768419300388031095977",
+              "volumeUSD": "0",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "0",
+              "untrackedFeesUSD": "4058.242364591128453826227199278175",
+              "token0Price": "0.8795405536770110038899526756169691",
+              "token1Price": "1.136957239571723804141180787033551",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "3315433.456956533877048511069382035",
+                  "volumeUSD": "0",
+                  "id": "0x70fae7c4d4fe5b3e2c9ab3f57f6242f704faac43-20469",
+                  "date": 1768521600
+                }
+              ]
+            },
+            {
+              "id": "0x75234dddddea0bbf5a485b146d8274bc1b853908",
+              "fee": "5000",
+              "token0": {
+                "id": "0x94f9bb5c972285728dcee7eaece48bec2ff341ce",
+                "symbol": "xUSD",
+                "name": "Staked Stream USD",
+                "decimals": "6",
+                "derivedMatic": "0.0005225660451760766235580579243251197"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "6482776389570892068303107897",
+              "liquidity": "766741573338",
+              "tick": "-50067",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "5616.380284485",
+              "totalValueLockedToken1": "2.687310125",
+              "totalValueLockedUSD": "39.916994146414736639057878110417",
+              "volumeUSD": "794652.89783",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "3973.26448915",
+              "untrackedFeesUSD": "3986.363175824296462265503409303946",
+              "token0Price": "149.3609557620645810596238921444935",
+              "token1Price": "0.006695190151253603877066817370161301",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "41.27694920509186677851736125003215",
+                  "volumeUSD": "0",
+                  "id": "0x75234dddddea0bbf5a485b146d8274bc1b853908-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x75575748336d52f9179d16c56de1f1f9fc3225de",
+              "fee": "5000",
+              "token0": {
+                "id": "0x846e52d0dd71c2fdc891538b2d37ff84345c7b9f",
+                "symbol": "DOGE",
+                "name": "Binance-Peg DOGE",
+                "decimals": "18",
+                "derivedMatic": "0.01013229844922221818918592082923324"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "28508867653600520937828",
+              "liquidity": "11357536002946235",
+              "tick": "-296768",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "364364.85116633136347305372",
+              "totalValueLockedToken1": "115.905541165",
+              "totalValueLockedUSD": "47062.41850725948943261664752349247",
+              "volumeUSD": "4001818.749088",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "20009.09374544",
+              "untrackedFeesUSD": "20030.32756709497633016881925032056",
+              "token0Price": "7.72323468240951096188409450336083",
+              "token1Price": "0.1294794268362201188090348204149994",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "1.101369635",
+                  "tvlUSD": "46864.32365223666770797853239475038",
+                  "volumeUSD": "220.273927",
+                  "id": "0x75575748336d52f9179d16c56de1f1f9fc3225de-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x76eb2c0c8adabc6be513a1f3b6cc9191d017fac7",
+              "fee": "500",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "sqrtPrice": "2412011081521142438805563204957",
+              "liquidity": "791020170025",
+              "tick": "68321",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "5.19912986387",
+              "totalValueLockedToken1": "430546.703704555",
+              "totalValueLockedUSD": "911815.7865038506650568499318757271",
+              "volumeUSD": "916326016.8458937616510049548135875",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "458256.6016502929810455374464518548",
+              "untrackedFeesUSD": "543963.427894659314060881029688008",
+              "token0Price": "0.00001078948138255172462441861343682606",
+              "token1Price": "92682.86069960286284782144153419797",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "911766.7666940231954701333882330041",
+                  "volumeUSD": "0",
+                  "id": "0x76eb2c0c8adabc6be513a1f3b6cc9191d017fac7-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x7e919db48453d44f39c25af9bf64edc8318db19f",
+              "fee": "5000",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0xbc78d84ba0c46dfe32cf2895a19939c86b81a777",
+                "symbol": "SolvBTC",
+                "name": "Solv BTC",
+                "decimals": "18",
+                "derivedMatic": "7255.208888559202715287699825246661"
+              },
+              "sqrtPrice": "7920685158121427416353499191461739",
+              "liquidity": "1448468045750598907",
+              "tick": "230264",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "4.9935170338",
+              "totalValueLockedToken1": "8.238082014602108864045",
+              "totalValueLockedUSD": "1234445.993479574718018226444797622",
+              "volumeUSD": "859477.4954942774224802022979759494",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "4297.387477471387112401011489879753",
+              "untrackedFeesUSD": "4881.161878901394165829015066125895",
+              "token0Price": "1.000538180713465740044527276499389",
+              "token1Price": "0.9994621087692206077738124937756775",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "1229842.852499253125391058728846757",
+                  "volumeUSD": "0",
+                  "id": "0x7e919db48453d44f39c25af9bf64edc8318db19f-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x852b285de2cb28d7162583b5c672b8d5be8f3de3",
+              "fee": "3000",
+              "token0": {
+                "id": "0x5947bb275c521040051d82396192181b413227a3",
+                "symbol": "LINK.e",
+                "name": "Chainlink Token",
+                "decimals": "18",
+                "derivedMatic": "1.013750597002967008614292483871015"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "1361349619755295141407374122281",
+              "liquidity": "48650172233250117741304",
+              "tick": "56880",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "24.19880262127995794951",
+              "totalValueLockedToken1": "10337.068928212054053884244",
+              "totalValueLockedUSD": "762.0493768328208392257430997246577",
+              "volumeUSD": "6428827.735880113212273071363350352",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "19286.49232201191464409886181093472",
+              "untrackedFeesUSD": "20111.82129639215363475652146713038",
+              "token0Price": "0.003387036047102201974515619329989577",
+              "token1Price": "295.2433886422778726092715904677315",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "761.290549231847236786232850364578",
+                  "volumeUSD": "0",
+                  "id": "0x852b285de2cb28d7162583b5c672b8d5be8f3de3-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x859592a4a469610e573f96ef87a0e5565f9a94c8",
+              "fee": "75",
+              "token0": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "79212513636114955726489591237",
+              "liquidity": "45697296903892297",
+              "tick": "-4",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "6082379.789509314775",
+              "totalValueLockedToken1": "4874979.21911187235",
+              "totalValueLockedUSD": "10954956.50382719718345077715441869",
+              "volumeUSD": "2736425975.088625044322339136848432",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "194996.5168946018974520309128234249",
+              "untrackedFeesUSD": "194996.4281393415967496028721884446",
+              "token0Price": "1.00039515029110876538811874973305",
+              "token1Price": "0.999605005790967919914853681172364",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "12.3847823694",
+                  "tvlUSD": "10954956.53042875678693520285160655",
+                  "volumeUSD": "165130.431592",
+                  "id": "0x859592a4a469610e573f96ef87a0e5565f9a94c8-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x86364634157b4247c1dd54c5945832eaf691af79",
+              "fee": "5000",
+              "token0": {
+                "id": "0x06d47f3fb376649c3a9dafe069b3d6e35572219e",
+                "symbol": "savUSD",
+                "name": "Staked avUSD",
+                "decimals": "18",
+                "derivedMatic": "0.08541980825404531024880356456630335"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "84720392791255627369910",
+              "liquidity": "1660725152197108056",
+              "tick": "-274984",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "378.191471652744157858725",
+              "totalValueLockedToken1": "398.18357797",
+              "totalValueLockedUSD": "838.0830010278952192430945434334526",
+              "volumeUSD": "1569.280524",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "7.84640262",
+              "untrackedFeesUSD": "7.995702371297416381156115298044576",
+              "token0Price": "0.8745471850054038925429610676281475",
+              "token1Price": "1.143448880912950311673780448971021",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "836.691000305087461076916890951515",
+                  "volumeUSD": "0",
+                  "id": "0x86364634157b4247c1dd54c5945832eaf691af79-20471",
+                  "date": 1768694400
+                }
+              ]
+            },
+            {
+              "id": "0x8de04f92193ff295a9b5061c8e9365902ff8b111",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xeec951bfdeb358371a19512c6c33cdd840d47db0",
+                "symbol": "MOANI",
+                "name": "MOANI",
+                "decimals": "18",
+                "derivedMatic": "0.00001998927639070214531514310141679388"
+              },
+              "sqrtPrice": "4977182383847337651024612545836636356",
+              "liquidity": "2820581354601421574",
+              "tick": "359133",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "902.537678925",
+              "totalValueLockedToken1": "7445828.75555409302718885354",
+              "totalValueLockedUSD": "2790.674067090458398488084913736789",
+              "volumeUSD": "4886.814184",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "24.43407092",
+              "untrackedFeesUSD": "24.42245295312470110106609843302073",
+              "token0Price": "0.0002533915084188898230051911064507757",
+              "token1Price": "3946.462161418871084292868873320168",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "4.767829975",
+                  "tvlUSD": "2656.540928330854262226730374901253",
+                  "volumeUSD": "953.565995",
+                  "id": "0x8de04f92193ff295a9b5061c8e9365902ff8b111-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x8fef4fe4970a5d6bfa7c65871a2ebfd0f42aa822",
+              "fee": "500",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "677029153584189706461713990638531057",
+              "liquidity": "300749410805604772",
+              "tick": "319233",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "7.026583517345",
+              "totalValueLockedToken1": "202483.8345221486375736693605",
+              "totalValueLockedUSD": "3219831.823027617419627517846846079",
+              "volumeUSD": "3797857941.214981857825838999778185",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "1898933.216529123137430334021783532",
+              "untrackedFeesUSD": "1898932.080580143798964978550354492",
+              "token0Price": "0.0001369444471085303713447040124966543",
+              "token1Price": "7302.231095266580232974859832744754",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "119.1768574266588135535913417956793",
+                  "tvlUSD": "3220056.336593529184251791374078394",
+                  "volumeUSD": "238353.7148533176271071826835913582",
+                  "id": "0x8fef4fe4970a5d6bfa7c65871a2ebfd0f42aa822-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x91f974842fd59d6ccbf49b5e7b6c640d63f79991",
+              "fee": "7000",
+              "token0": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "token1": {
+                "id": "0xeb2729257280580694a06c499cb8c622e74215c8",
+                "symbol": "MOG",
+                "name": "Mog",
+                "decimals": "18",
+                "derivedMatic": "0.00000002141893545383727826848680814504777"
+              },
+              "sqrtPrice": "31764933951381690268973571953954",
+              "liquidity": "50120620063209939517803852",
+              "tick": "119881",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "4532.004026786669867121343",
+              "totalValueLockedToken1": "916485757.96989364600016148812",
+              "totalValueLockedUSD": "446.6902147854488813722960568726349",
+              "volumeUSD": "2362154.172124296710158936896682737",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "16535.07920487007697111255827677936",
+              "untrackedFeesUSD": "16785.59550873630479763987794180368",
+              "token0Price": "0.000006221043730322852254813000089109683",
+              "token1Price": "160744.7308440802748058612152243847",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "446.7641613846094506781866691870105",
+                  "volumeUSD": "0",
+                  "id": "0x91f974842fd59d6ccbf49b5e7b6c640d63f79991-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0x930487d060fcd5fa7ff5167a8f5b6407bc7ca365",
+              "fee": "400",
+              "token0": {
+                "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+                "symbol": "WETH.e",
+                "name": "Wrapped Ether",
+                "decimals": "18",
+                "derivedMatic": "251.3481940262734995959378938875543"
+              },
+              "token1": {
+                "id": "0xa3d68b74bf0528fdd07263c60d6488749044914b",
+                "symbol": "weETH",
+                "name": "Wrapped eETH",
+                "decimals": "18",
+                "derivedMatic": "271.5539160150986673585654666481946"
+              },
+              "sqrtPrice": "76064677269981928806592579456",
+              "liquidity": "3465587594640908063754001",
+              "tick": "-815",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "617.8546352755111156845522",
+              "totalValueLockedToken1": "2.0487511988552359498008",
+              "totalValueLockedUSD": "1974941.352037229835714379738440327",
+              "volumeUSD": "66017809.83887933555699102284436656",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "26407.2088163172834356333109123437",
+              "untrackedFeesUSD": "27278.69322263948878590862283743371",
+              "token0Price": "1.084908504358670928132599135437616",
+              "token1Price": "0.9217367141859917038948918586055685",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "1724682.641422030623758021073478701",
+                  "volumeUSD": "0",
+                  "id": "0x930487d060fcd5fa7ff5167a8f5b6407bc7ca365-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x9a6142ef0766915db02066f791d969c22eba1dca",
+              "fee": "7000",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "1351300535342391115634104570233",
+              "liquidity": "40914832490124877589244633",
+              "tick": "56732",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "8579.664836989127989852875",
+              "totalValueLockedToken1": "5395349.582028781597129622459",
+              "totalValueLockedUSD": "344150.4438674887553909052609603136",
+              "volumeUSD": "175533641.3351567976845745992466579",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "1228732.210227428130102805572441961",
+              "untrackedFeesUSD": "1228736.958753305002002626502033824",
+              "token0Price": "0.003437599439361001528751936810159013",
+              "token1Price": "290.9006757884173634592595710695402",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "4.897822515738471312858722947870801",
+                  "tvlUSD": "344190.3033052273065061432948713299",
+                  "volumeUSD": "699.6889308197816161226747068386857",
+                  "id": "0x9a6142ef0766915db02066f791d969c22eba1dca-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0x9ee7478ddf586d19bd946bc4ad7f523a4bf995de",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xdf788ad40181894da035b827cdf55c523bf52f67",
+                "symbol": "rsAVAX",
+                "name": "Yak Milk Suzaku Restaked sAVAX",
+                "decimals": "18",
+                "derivedMatic": "1.241597794924451963378866090403596"
+              },
+              "sqrtPrice": "71103195226252264614617751612",
+              "liquidity": "1539018158989811077084",
+              "tick": "-2165",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "51.742633674053360105115",
+              "totalValueLockedToken1": "70.343695517982773662",
+              "totalValueLockedUSD": "1759.86881241537104806262426562193",
+              "volumeUSD": "794802.0793406608970643412588495089",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "3974.01039670330448532170629424756",
+              "untrackedFeesUSD": "3971.39216971126398803457894105307",
+              "token0Price": "1.241597794924451963378866090403596",
+              "token1Price": "0.8054138015450063129133447083358877",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.4458610115069551315003884750122483",
+                  "tvlUSD": "1408.615699495256598859369567735326",
+                  "volumeUSD": "89.17220230139102630007769500244965",
+                  "id": "0x9ee7478ddf586d19bd946bc4ad7f523a4bf995de-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xa02ec3ba8d17887567672b2cdcaf525534636ea0",
+              "fee": "500",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "282246762805994855151295",
+              "liquidity": "31210604241584682451",
+              "tick": "-250914",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "461913.48893116938342835824",
+              "totalValueLockedToken1": "20994.921913139",
+              "totalValueLockedUSD": "5881610.332348784805862909966935643",
+              "volumeUSD": "397107590.7939554354584688490239656",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "198553.8014581446846230501361839295",
+              "untrackedFeesUSD": "198553.8014581446846230501361839295",
+              "token0Price": "0.07879546601851499381669980388850021",
+              "token1Price": "12.69108554754945709134981899826618",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "633.8913536388639121703594270264932",
+                  "tvlUSD": "5881610.337024633595787224485460981",
+                  "volumeUSD": "1267782.70727772782434071885405299",
+                  "id": "0xa02ec3ba8d17887567672b2cdcaf525534636ea0-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xa12ce95e5ece68856d573fb1b1be696a497d4627",
+              "fee": "10000",
+              "token0": {
+                "id": "0x77146784315ba81904d654466968e3a7c196d1f3",
+                "symbol": "TREE",
+                "name": "Treehouse Token",
+                "decimals": "18",
+                "derivedMatic": "0.007804980013216362932303067199130706"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "6999475236445857326395150843",
+              "liquidity": "65651628085749228163806",
+              "tick": "-48533",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "224950.23707221123215903097",
+              "totalValueLockedToken1": "1393.10595806105456320443",
+              "totalValueLockedUSD": "39472.3585883612268240812316996509",
+              "volumeUSD": "34462.21751540788431161274175089731",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "335.4548509888672401155930072926208",
+              "untrackedFeesUSD": "335.8607165627774291384168096781363",
+              "token0Price": "128.1233261720946909813673187777003",
+              "token1Price": "0.007804980013216362932303067199130706",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "32.18824901905508507398715732917162",
+                  "tvlUSD": "39722.93511050227973705153205353853",
+                  "volumeUSD": "3218.824901905508507398715732917162",
+                  "id": "0xa12ce95e5ece68856d573fb1b1be696a497d4627-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0xa2d7ddf3757dd94199a2a3874605ad4fd8a26a9f",
+              "fee": "5000",
+              "token0": {
+                "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+                "symbol": "WETH.e",
+                "name": "Wrapped Ether",
+                "decimals": "18",
+                "derivedMatic": "251.3481940262734995959378938875543"
+              },
+              "token1": {
+                "id": "0x7bfd4ca2a6cf3a3fddd645d10b323031afe47ff0",
+                "symbol": "wrsETH",
+                "name": "rsETHWrapper",
+                "decimals": "18",
+                "derivedMatic": "250.4813573774161556608500310069533"
+              },
+              "sqrtPrice": "76754866535566883093243901800",
+              "liquidity": "14450491703575594493",
+              "tick": "-635",
+              "tickSpacing": "100",
+              "totalValueLockedToken0": "0.161717068410632637425",
+              "totalValueLockedToken1": "0.095511856570237149225",
+              "totalValueLockedUSD": "885.9287909928273067033968842199079",
+              "volumeUSD": "54597.746960321581317026653595383",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "272.9887348016079065851332679769146",
+              "untrackedFeesUSD": "983.3574588302681861718239528095123",
+              "token0Price": "1.065484964943376273610690168389794",
+              "token1Price": "0.9385397569201209877244342808927517",
+              "deployer": "0xf9221de143a0e57c324bf2a0f281e605e845d767",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "883.4145062801370274365493170307303",
+                  "volumeUSD": "0",
+                  "id": "0xa2d7ddf3757dd94199a2a3874605ad4fd8a26a9f-20468",
+                  "date": 1768435200
+                }
+              ]
+            },
+            {
+              "id": "0xa38d178a08dd88ec1517d4585929052631fcd1b8",
+              "fee": "7000",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "379268562562584108168940196583036433",
+              "liquidity": "21682870474515377733",
+              "tick": "307643",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "39050.286017724",
+              "totalValueLockedToken1": "2788883.034792503623172541375",
+              "totalValueLockedUSD": "160852.8413053797255600899382101938",
+              "volumeUSD": "78097099.21450745699717149657249627",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "537628.850587070325802544989364314",
+              "untrackedFeesUSD": "537629.9060167840379499157746310915",
+              "token0Price": "0.04363806412379558781168412082943983",
+              "token1Price": "22.91577365034178259595651824524264",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "18.314619596",
+                  "tvlUSD": "150509.2181727305718729727100288133",
+                  "volumeUSD": "2616.374228",
+                  "id": "0xa38d178a08dd88ec1517d4585929052631fcd1b8-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xab463b94c20d5a8296190e5025ca2c31e075c56c",
+              "fee": "5000",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xc541c9856f02070fcd1d52e84fd236eebbb1d5fd",
+                "symbol": "TEST",
+                "name": "Test",
+                "decimals": "18",
+                "derivedMatic": "0"
+              },
+              "sqrtPrice": "2515582309681695196964350041",
+              "liquidity": "0",
+              "tick": "-69000",
+              "tickSpacing": "150",
+              "totalValueLockedToken0": "0",
+              "totalValueLockedToken1": "1000000000",
+              "totalValueLockedUSD": "0",
+              "volumeUSD": "0",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "0",
+              "untrackedFeesUSD": "0",
+              "token0Price": "0",
+              "token1Price": "0",
+              "deployer": "0x0000000000000000000000000000000000000000",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "0",
+                  "volumeUSD": "0",
+                  "id": "0xab463b94c20d5a8296190e5025ca2c31e075c56c-20290",
+                  "date": 1753056000
+                }
+              ]
+            },
+            {
+              "id": "0xacfdf585d2f67fe1a5fdf83700501e9eb30e1f70",
+              "fee": "5000",
+              "token0": {
+                "id": "0x24de8771bc5ddb3362db529fc3358f2df3a0e346",
+                "symbol": "avUSD",
+                "name": "avUSD",
+                "decimals": "18",
+                "derivedMatic": "0.07364483742314983542094156196606104"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "79412442298308642775245",
+              "liquidity": "2734415929992840060",
+              "tick": "-276278",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "221.094576748973433641945",
+              "totalValueLockedToken1": "1228.76797892",
+              "totalValueLockedUSD": "1437.079300808806229900919027120124",
+              "volumeUSD": "9416.925147",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "47.084625735",
+              "untrackedFeesUSD": "47.11743179210959055171554991316333",
+              "token0Price": "0.9953643040216039655910103913937105",
+              "token1Price": "1.004657285739167333619925689171674",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "1251.817744713119426993155642135738",
+                  "volumeUSD": "0",
+                  "id": "0xacfdf585d2f67fe1a5fdf83700501e9eb30e1f70-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0xb064ff53523e8bdcabfc0f93a9666877ff1f1698",
+              "fee": "5000",
+              "token0": {
+                "id": "0x700103766c23fb8da956caf94c756b90106eeb41",
+                "symbol": "WLFI",
+                "name": "World Liberty Financial",
+                "decimals": "18",
+                "derivedMatic": "0.01306906851431080436435347921150135"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "32296925418128288850909",
+              "liquidity": "26415083112762730",
+              "tick": "-294273",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "139556.13234525036293945987",
+              "totalValueLockedToken1": "457.49771472",
+              "totalValueLockedUSD": "23657.18157550778862742812649769104",
+              "volumeUSD": "1063193.103116",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "5315.96551558",
+              "untrackedFeesUSD": "5315.749018973110467676397088079803",
+              "token0Price": "6.017786923325856734182251990881982",
+              "token1Price": "0.1661740458313417535603806074908621",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.61208405",
+                  "tvlUSD": "23566.11641375006445382178214513808",
+                  "volumeUSD": "122.41681",
+                  "id": "0xb064ff53523e8bdcabfc0f93a9666877ff1f1698-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0xb7c3d6d3c0fb9c0846dffd58e399601ca4929dea",
+              "fee": "5000",
+              "token0": {
+                "id": "0x6f911b6b39bcc665a463129c94b5380a4387b7eb",
+                "symbol": "SPX",
+                "name": "SPX6900",
+                "decimals": "18",
+                "derivedMatic": "0.03866830072961838520157618451617713"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "55494304962381018675715",
+              "liquidity": "46349494875305979",
+              "tick": "-283446",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "54534.796756405257348526285",
+              "totalValueLockedToken1": "1579.42132421",
+              "totalValueLockedUSD": "28334.81615938808315159269800727484",
+              "volumeUSD": "18259831.662995",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "91299.158314975",
+              "untrackedFeesUSD": "91307.68767829239078049152587608537",
+              "token0Price": "2.038272919998277247741724106579992",
+              "token1Price": "0.4906114339196760765264551011244676",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "2.990973895",
+                  "tvlUSD": "28334.3605070065317218664609319641",
+                  "volumeUSD": "598.194779",
+                  "id": "0xb7c3d6d3c0fb9c0846dffd58e399601ca4929dea-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xb9338be3b6ffc62bcaf72bcbb4046a90e424779d",
+              "fee": "500",
+              "token0": {
+                "id": "0x2b2c81e08f1af8835a78bb2a90ae924ace0ea4be",
+                "symbol": "sAVAX",
+                "name": "Staked AVAX",
+                "decimals": "18",
+                "derivedMatic": "1.24494345550308895278438036995048"
+              },
+              "token1": {
+                "id": "0xa25eaf2906fa1a3a13edac9b9657108af7b703e3",
+                "symbol": "stAVAX",
+                "name": "Hypha Staked AVAX",
+                "decimals": "18",
+                "derivedMatic": "1.154004580809888455268999402409835"
+              },
+              "sqrtPrice": "82341399730410084281589301233",
+              "liquidity": "5074915345801513356",
+              "tick": "770",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "4.883038411779666423687",
+              "totalValueLockedToken1": "5.274332002984417203759",
+              "totalValueLockedUSD": "174.6825507290889962587867675993898",
+              "volumeUSD": "0",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "0",
+              "untrackedFeesUSD": "1694.049697639251845768774411537564",
+              "token0Price": "0.9258117253552976895126290470954188",
+              "token1Price": "1.080133219976481894930116255644028",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "174.7583509647520206635437500953735",
+                  "volumeUSD": "0",
+                  "id": "0xb9338be3b6ffc62bcaf72bcbb4046a90e424779d-20468",
+                  "date": 1768435200
+                }
+              ]
+            },
+            {
+              "id": "0xc11baec71ed3290825bdaee51f2d23f2ba882467",
+              "fee": "7000",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "11550971604068516095635974232639754112",
+              "liquidity": "61496021887788775",
+              "tick": "375972",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "0.03126126199",
+              "totalValueLockedToken1": "195864.140112253678456060235",
+              "totalValueLockedUSD": "11459.54940598812612134109283405694",
+              "volumeUSD": "34739046.33606547897764904829884842",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "238448.9132299637264275173825713251",
+              "untrackedFeesUSD": "249460.3302395352109563878013328948",
+              "token0Price": "0.0000004704593833994763831225604230392406",
+              "token1Price": "2125582.006196016688085524770056449",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "11418.50235789564628957195243201063",
+                  "volumeUSD": "0",
+                  "id": "0xc11baec71ed3290825bdaee51f2d23f2ba882467-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xc13fd9599f0bedd2da2c307f35bc03ba54a64332",
+              "fee": "500",
+              "token0": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "22238460043994866425984557437510300",
+              "liquidity": "5250838521143448890",
+              "tick": "250912",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "119069.7697273062",
+              "totalValueLockedToken1": "18205.9777280888810530632027",
+              "totalValueLockedUSD": "349998.5903453350959326070192450841",
+              "volumeUSD": "1653915949.549342428168084254826502",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "868743.8626537448175262939523883955",
+              "untrackedFeesUSD": "868742.9787370909542337189927530911",
+              "token0Price": "12.69257525753182909770256163213745",
+              "token1Price": "0.07878621790377769645245102059169442",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "63.68787668596914051983983616860099",
+                  "tvlUSD": "349998.5849904431109184121803575512",
+                  "volumeUSD": "127375.7533719382810396796723372017",
+                  "id": "0xc13fd9599f0bedd2da2c307f35bc03ba54a64332-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xcfafbf365fe78ffa2ab7af8b4341e2218188f91f",
+              "fee": "5000",
+              "token0": {
+                "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+                "symbol": "SUPER",
+                "name": "SuperVerse",
+                "decimals": "18",
+                "derivedMatic": "0.01548170476785586914037846498990366"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "35199701394117503919374",
+              "liquidity": "8690601077101558223",
+              "tick": "-292551",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "391447.18634112916499538449",
+              "totalValueLockedToken1": "12353.21979602",
+              "totalValueLockedUSD": "89250.810586170018651594003007498",
+              "volumeUSD": "62776453.941498",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "313882.26970749",
+              "untrackedFeesUSD": "313865.6561398593253771595627822271",
+              "token0Price": "5.066186915335477287029175561784915",
+              "token1Price": "0.197387111196583457963718651702173",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "8.207003965",
+                  "tvlUSD": "73548.90865383313099820650655646229",
+                  "volumeUSD": "1641.400793",
+                  "id": "0xcfafbf365fe78ffa2ab7af8b4341e2218188f91f-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xd574497d5afee2c66253dd705855154fb2ade9ee",
+              "fee": "7000",
+              "token0": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "token1": {
+                "id": "0xbc78d84ba0c46dfe32cf2895a19939c86b81a777",
+                "symbol": "SolvBTC",
+                "name": "Solv BTC",
+                "decimals": "18",
+                "derivedMatic": "7255.208888559202715287699825246661"
+              },
+              "sqrtPrice": "927568270002761688052548309",
+              "liquidity": "273554899594028617668",
+              "tick": "-88955",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "573.357323539515035095699",
+              "totalValueLockedToken1": "0.052162417491594631843",
+              "totalValueLockedUSD": "12033.05363100523908096223025860029",
+              "volumeUSD": "36293250.88698455439230488100497484",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "254052.7443512810500874330854504065",
+              "untrackedFeesUSD": "254107.2386713070160596586713983064",
+              "token0Price": "7295.707257897900373310781702800255",
+              "token1Price": "0.0001370669031323123957012882028792006",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "12143.82690514906086055691068944881",
+                  "volumeUSD": "0",
+                  "id": "0xd574497d5afee2c66253dd705855154fb2ade9ee-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xdb2162bf1a997d351bfd578976c0583e5d267a46",
+              "fee": "7000",
+              "token0": {
+                "id": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+                "symbol": "PEPE",
+                "name": "Pepe",
+                "decimals": "18",
+                "derivedMatic": "0.000000413221213464647633175911180854187"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "866022612412073545213915223",
+              "liquidity": "10462873742283985617562943",
+              "tick": "-90329",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "72577388.182102633811390054039",
+              "totalValueLockedToken1": "11174.404795587035029060093",
+              "totalValueLockedUSD": "869.0363076965539003613576282493353",
+              "volumeUSD": "1021406.216807225037884091639874834",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "7149.843517650575265188641479123818",
+              "untrackedFeesUSD": "7209.920178426216972864571197940077",
+              "token0Price": "8369.522933707416578125340645576771",
+              "token1Price": "0.0001194811231082956963014461572305333",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "868.5693101744488677985344103833193",
+                  "volumeUSD": "0",
+                  "id": "0xdb2162bf1a997d351bfd578976c0583e5d267a46-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xdb5cff75c32aa3e6f9dd3c5e553b7b1a960c9d59",
+              "fee": "5000",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0x2775d5105276781b4b85ba6ea6a6653beed1dd32",
+                "symbol": "XAUt0",
+                "name": "XAUt0",
+                "decimals": "6",
+                "derivedMatic": "368.839712508441730000415081999062"
+              },
+              "sqrtPrice": "35303153011466310168747600566",
+              "liquidity": "20132633769",
+              "tick": "-16168",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "10.4157083247",
+              "totalValueLockedToken1": "37.975195945",
+              "totalValueLockedUSD": "1142894.764622771278350682344238309",
+              "volumeUSD": "12449235.78631611818018397134219971",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "62246.17893158059090091985671099796",
+              "untrackedFeesUSD": "132385.8050985253821098104959873965",
+              "token0Price": "0.05036538724051308726884822854580179",
+              "token1Price": "19.85490541797356586363957136220536",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "928068.1672174826849572402017986844",
+                  "volumeUSD": "0",
+                  "id": "0xdb5cff75c32aa3e6f9dd3c5e553b7b1a960c9d59-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xdf1f7979a8452303dea8d2bef845b0c0781889dc",
+              "fee": "7000",
+              "token0": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "379160777347894649302051348992954258",
+              "liquidity": "15064870605984115",
+              "tick": "307638",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "117.048520025",
+              "totalValueLockedToken1": "15177.638070435504408919418",
+              "totalValueLockedUSD": "778.9300895967578225355362465284805",
+              "volumeUSD": "16474254.77319496689676294930821595",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "114878.1031169311145066380320061259",
+              "untrackedFeesUSD": "115515.6395013762059071026458605511",
+              "token0Price": "0.04366287790695022508955886975837814",
+              "token1Price": "22.90275052714335004166870682584085",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "777.9053015511157970222348039857217",
+                  "volumeUSD": "0",
+                  "id": "0xdf1f7979a8452303dea8d2bef845b0c0781889dc-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xe0438e0778c86fe90c1e67abc6933a70a23a8207",
+              "fee": "7000",
+              "token0": {
+                "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+                "symbol": "USDt",
+                "name": "TetherToken",
+                "decimals": "6",
+                "derivedMatic": "0.07879086179927877188171437943526191"
+              },
+              "token1": {
+                "id": "0xffff003a6bad9b743d658048742935fffe2b6ed7",
+                "symbol": "KET",
+                "name": "yellow ket",
+                "decimals": "18",
+                "derivedMatic": "0.0004918130344987532991335002013742646"
+              },
+              "sqrtPrice": "1004247372017678588397622174412583333",
+              "liquidity": "20139524477020629",
+              "tick": "327119",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "36.473677855",
+              "totalValueLockedToken1": "193509.103275215686223757636",
+              "totalValueLockedUSD": "1240.41805736946370581426403018005",
+              "volumeUSD": "9811183.647985457533253505288964585",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "68678.28530998263255258944657985629",
+              "untrackedFeesUSD": "68849.23609549361019508863599463886",
+              "token0Price": "0.00622411716906345702878408794288107",
+              "token1Price": "160.6653558789719907805582542024964",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "1244.687448081015829461402231628875",
+                  "volumeUSD": "0",
+                  "id": "0xe0438e0778c86fe90c1e67abc6933a70a23a8207-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0xe32f23b1894ec87eddee0947ce3d788a3eddd1e6",
+              "fee": "1000",
+              "token0": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "token1": {
+                "id": "0xfc421ad3c883bf9e7c4f42de845c4e4405799e73",
+                "symbol": "GHO",
+                "name": "Gho Token",
+                "decimals": "18",
+                "derivedMatic": "0.07867376908604349632348590566996999"
+              },
+              "sqrtPrice": "79239321756128971711293352397928925",
+              "liquidity": "2659187442567558322771",
+              "tick": "276326",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "819370.584370738",
+              "totalValueLockedToken1": "378079.846031041309242831903",
+              "totalValueLockedUSD": "1197343.948234428008847948326406343",
+              "volumeUSD": "10098295.845936",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "10098.295845936",
+              "untrackedFeesUSD": "10086.8031685653340050187744167338",
+              "token0Price": "0.9997183606360690330468108554744525",
+              "token1Price": "1.000281718707008416257986002557551",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "16.704617629",
+                  "tvlUSD": "1197339.09884437603815617777209346",
+                  "volumeUSD": "16704.617629",
+                  "id": "0xe32f23b1894ec87eddee0947ce3d788a3eddd1e6-20472",
+                  "date": 1768780800
+                }
+              ]
+            },
+            {
+              "id": "0xee2ceda742bfb2ef566ab57642d47aba1909b653",
+              "fee": "500",
+              "token0": {
+                "id": "0x2b2c81e08f1af8835a78bb2a90ae924ace0ea4be",
+                "symbol": "sAVAX",
+                "name": "Staked AVAX",
+                "decimals": "18",
+                "derivedMatic": "1.24494345550308895278438036995048"
+              },
+              "token1": {
+                "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+                "symbol": "WAVAX",
+                "name": "Wrapped AVAX",
+                "decimals": "18",
+                "derivedMatic": "1"
+              },
+              "sqrtPrice": "88400433963848450384200229827",
+              "liquidity": "839672971872284824849751130",
+              "tick": "2191",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "46682.658714141640530129068",
+              "totalValueLockedToken1": "17024.062411046734584818219",
+              "totalValueLockedUSD": "953128.1277166849444827121757735279",
+              "volumeUSD": "144857921.4055183251698342238417294",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "72428.9612771991447291530254899023",
+              "untrackedFeesUSD": "72428.74072617923892954472961323527",
+              "token0Price": "0.8032493327947124589201168731639644",
+              "token1Price": "1.24494345550308895278438036995048",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0.0164938145970703117846626113348673",
+                  "tvlUSD": "952895.9421239579316240369544841512",
+                  "volumeUSD": "32.9876291941406235693252226697346",
+                  "id": "0xee2ceda742bfb2ef566ab57642d47aba1909b653-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xf28764e649546616c748b9c66a4bf6c9547716be",
+              "fee": "100",
+              "token0": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "token1": {
+                "id": "0x2cd3cdb3bd68eea0d3be81da707bc0c8743d7335",
+                "symbol": "YBTC.B",
+                "name": "Yield BTC.B",
+                "decimals": "8",
+                "derivedMatic": "6971.450056016161340177621281070975"
+              },
+              "sqrtPrice": "79251966342488857274199736448",
+              "liquidity": "648210867",
+              "tick": "6",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "0.003498113365",
+              "totalValueLockedToken1": "0.001884826338",
+              "totalValueLockedUSD": "512.3727994013184066703697888744269",
+              "volumeUSD": "7484252.725981581261016023766296658",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "1131.444181652001233831991573078548",
+              "untrackedFeesUSD": "1157.839610104019491464713919369566",
+              "token0Price": "0.999399377592559566585674871005513",
+              "token1Price": "1.000600983371519867345456749050279",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "512.3407783340839881503298069024815",
+                  "volumeUSD": "0",
+                  "id": "0xf28764e649546616c748b9c66a4bf6c9547716be-20471",
+                  "date": 1768694400
+                }
+              ]
+            },
+            {
+              "id": "0xf310d010964b2a8e6d5cac11e2089b63c582865a",
+              "fee": "7000",
+              "token0": {
+                "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+                "symbol": "WETH.e",
+                "name": "Wrapped Ether",
+                "decimals": "18",
+                "derivedMatic": "251.3481940262734995959378938875543"
+              },
+              "token1": {
+                "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+                "symbol": "BLACK",
+                "name": "BLACKHOLE",
+                "decimals": "18",
+                "derivedMatic": "0.003437599439361001528751936810159013"
+              },
+              "sqrtPrice": "21439778121627748464488063753607",
+              "liquidity": "4148490493152246005788",
+              "tick": "112019",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "0.145407262673931290704",
+              "totalValueLockedToken1": "38021.105143005585559429866",
+              "totalValueLockedUSD": "2119.256222121824128248833570000124",
+              "volumeUSD": "24835030.71744251551786871433064083",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "170976.47777362706602871835566053",
+              "untrackedFeesUSD": "172523.5028620096469179999138816242",
+              "token0Price": "0.00001365584549211240289685959795891582",
+              "token1Price": "73228.71370927553260030508810587376",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "2119.690515859509429669971406146876",
+                  "volumeUSD": "0",
+                  "id": "0xf310d010964b2a8e6d5cac11e2089b63c582865a-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xf6b5fc4f5999ffbddbc1c2f4b0de790fbf5344ea",
+              "fee": "1000",
+              "token0": {
+                "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+                "symbol": "WETH.e",
+                "name": "Wrapped Ether",
+                "decimals": "18",
+                "derivedMatic": "251.3481940262734995959378938875543"
+              },
+              "token1": {
+                "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "decimals": "6",
+                "derivedMatic": "0.07882199603125546739067737081742397"
+              },
+              "sqrtPrice": "4475756726666369697381674",
+              "liquidity": "9478000351299620",
+              "tick": "-195639",
+              "tickSpacing": "200",
+              "totalValueLockedToken0": "7.067900429130541393935",
+              "totalValueLockedToken1": "11218.840765644",
+              "totalValueLockedUSD": "33757.01662857246260766579641007513",
+              "volumeUSD": "55574264.99690534060051017916617442",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "55676.96370313989090508165472758565",
+              "untrackedFeesUSD": "55676.23521931470714888763569372026",
+              "token0Price": "0.0003133474908400383246248592157746667",
+              "token1Price": "3191.345165455602513079110769803754",
+              "deployer": "0x5d433a94a4a2aa8f9aa34d8d15692dc2e9960584",
+              "poolDayData": [
+                {
+                  "feesUSD": "5.614572188",
+                  "tvlUSD": "33757.13946369730225052509294387921",
+                  "volumeUSD": "5614.572188",
+                  "id": "0xf6b5fc4f5999ffbddbc1c2f4b0de790fbf5344ea-20473",
+                  "date": 1768867200
+                }
+              ]
+            },
+            {
+              "id": "0xfc231423e1a863d94abb21d9f68e8c2589b3edb9",
+              "fee": "100",
+              "token0": {
+                "id": "0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+                "symbol": "WBTC",
+                "name": "Wrapped BTC",
+                "decimals": "8",
+                "derivedMatic": "7294.763523965939405310371857290494"
+              },
+              "token1": {
+                "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+                "symbol": "BTC.b",
+                "name": "Bitcoin",
+                "decimals": "8",
+                "derivedMatic": "7302.231095266580232974859832744754"
+              },
+              "sqrtPrice": "79142674566192243880725469288",
+              "liquidity": "9134696903406",
+              "tick": "-22",
+              "tickSpacing": "1",
+              "totalValueLockedToken0": "4.15960970369",
+              "totalValueLockedToken1": "5.280444880047",
+              "totalValueLockedUSD": "873675.9292072829892879570266323885",
+              "volumeUSD": "161826318.4406725880412852482344935",
+              "collectedFeesToken0": "0",
+              "collectedFeesToken1": "0",
+              "feesUSD": "21905.97428732974785280679418346569",
+              "untrackedFeesUSD": "26438.96416658044444634066934781108",
+              "token0Price": "1.00216151702019825695467820265699",
+              "token1Price": "0.9978431450584679632591048982100133",
+              "deployer": "0xdcfccf2e8c4efbba9127b80eac76c5a122125d29",
+              "poolDayData": [
+                {
+                  "feesUSD": "0",
+                  "tvlUSD": "873414.0185393109368184233124605839",
+                  "volumeUSD": "0",
+                  "id": "0xfc231423e1a863d94abb21d9f68e8c2589b3edb9-20473",
+                  "date": 1768867200
+                }
+              ]
+            }
+          ]
+        },
+        "data_preview": "{'pools': [{'id': '0x000d436a430cf25c4eaaa3eff031d2cefdfaf4b1', 'fee': '2500', 'token0': {'id': '0x26debd39d5ed069770406fca10a0e4f8d2c743eb', 'symbol': 'GUN', 'name': 'GUNZ', 'decimals': '18', 'derivedMatic': '0.00206584678327663650454092254330056'}, 'token1': {'id': '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7', 'symbol': 'WAVAX', 'name': 'Wrapped AVAX', 'decimals': '18', 'derivedMatic': '1'}, 'sqrtPrice': '3601045740940923843813483598', 'liquidity': '13147817730774898507865', 'tick': '-61826', "
+      }
+    ],
+    "exists_but_denied": [
+      {
+        "url": "https://resources.blackhole.xyz/vamm-pools-list/vamm-pools.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/samm-pools-list/samm-pools.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 263,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/pools-list/pools.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 263,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/all-pools-list/all-pools.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 263,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/vamm-pools/vamm-pools.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/samm-pools/samm-pools.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/pools/vamm.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/pools/samm.json",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 263,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/api/pools/vamm",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/api/pools/samm",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 275,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/api/vamm-pools",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      },
+      {
+        "url": "https://resources.blackhole.xyz/api/samm-pools",
+        "exists": true,
+        "status": 403,
+        "accessible": false,
+        "content_type": "application/xml",
+        "size": 243,
+        "error": "Access denied (403)"
+      }
+    ],
+    "not_found": [],
+    "errors": []
+  },
+  "voter_contract": {
+    "totalWeight()": {
+      "selector": "0x96c82e57",
+      "result": "000000000000000000000000000000000000000000e1177d0dd01b79df97f2bb",
+      "decoded": null
+    }
+  },
+  "rpc_analysis": {
+    "rpc_methods": [
+      "eth_getBalance",
+      "eth_call"
+    ],
+    "contract_addresses": [
+      "0xca11bde05977b3631167028862be2a173976ca11"
+    ],
+    "function_selectors": [
+      "0x82ad56cb"
+    ]
+  },
+  "timestamp": 1768873279.4633713
+}

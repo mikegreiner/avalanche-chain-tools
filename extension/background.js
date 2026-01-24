@@ -41,3 +41,36 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     });
   }
 });
+
+// Handle proxy requests to bypass CORS
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'PROXY_REQUEST') {
+    (async () => {
+      try {
+        const response = await fetch(message.url, message.options);
+        const contentType = response.headers.get('content-type');
+        let data;
+        
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+        } else {
+          data = await response.text();
+        }
+        
+        sendResponse({
+          success: true,
+          status: response.status,
+          statusText: response.statusText,
+          data: data
+        });
+      } catch (error) {
+        console.error('Proxy request failed:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+    })();
+    return true; // Keep channel open for async response
+  }
+});
