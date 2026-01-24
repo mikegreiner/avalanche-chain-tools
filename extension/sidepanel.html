@@ -19,7 +19,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <div class="tab active" data-tab="recommendations">Recommendations</div>
-      <div class="tab" data-tab="api-discovery">API Discovery</div>
+      <div class="tab api-discovery-tab" data-tab="api-discovery" style="display: none;">API Discovery</div>
       <div class="tab" data-tab="settings">Settings</div>
     </div>
 
@@ -68,10 +68,54 @@
             <button id="clearApiLogsBtn" class="btn btn-secondary btn-sm" style="flex: 0 0 auto; width: auto;">Clear</button>
           </div>
         </div>
-        <p class="info" style="margin-bottom: 8px;">Intercepted network requests from the page. Useful for finding the backend API.</p>
-        <div id="api-logs-list" class="api-logs-list" style="overflow-y: auto; max-height: 400px; border: 1px solid #eee; border-radius: 4px; padding: 4px;">
+        
+        <!-- Statistics -->
+        <div id="api-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; font-size: 11px;">
+          <div style="background: #1a1a1a; padding: 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 18px; font-weight: bold; color: #ffd700;" id="stat-total">0</div>
+            <div style="color: #888;">Total</div>
+          </div>
+          <div style="background: #1a1a1a; padding: 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 18px; font-weight: bold; color: #4CAF50;" id="stat-pools">0</div>
+            <div style="color: #888;">Pool APIs</div>
+          </div>
+          <div style="background: #1a1a1a; padding: 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 18px; font-weight: bold; color: #2196F3;" id="stat-rpc">0</div>
+            <div style="color: #888;">RPC Calls</div>
+          </div>
+          <div style="background: #1a1a1a; padding: 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 18px; font-weight: bold; color: #FF9800;" id="stat-vamm">0</div>
+            <div style="color: #888;">vAMM</div>
+          </div>
+          <div style="background: #1a1a1a; padding: 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 18px; font-weight: bold; color: #9C27B0;" id="stat-samm">0</div>
+            <div style="color: #888;">sAMM</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+          <input type="text" id="api-filter-search" placeholder="Search URLs, methods..." style="flex: 1; min-width: 200px; padding: 6px 8px; font-size: 12px; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 4px;">
+          <select id="api-filter-category" style="padding: 6px 8px; font-size: 12px; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 4px;">
+            <option value="all">All Categories</option>
+            <option value="pool">Pool Related</option>
+            <option value="api">API Endpoints</option>
+            <option value="rpc">RPC Calls</option>
+            <option value="other">Other</option>
+          </select>
+          <select id="api-filter-pool-type" style="padding: 6px 8px; font-size: 12px; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 4px;">
+            <option value="all">All Pool Types</option>
+            <option value="CL">CL Pools</option>
+            <option value="vAMM">vAMM Pools</option>
+            <option value="sAMM">sAMM Pools</option>
+          </select>
+        </div>
+
+        <p class="info" style="margin-bottom: 8px; font-size: 11px;">Intercepted network requests from the page. Pool-related requests are highlighted.</p>
+        <div id="api-logs-list" class="api-logs-list" style="overflow-y: auto; max-height: 500px; border: 1px solid #333; border-radius: 4px; padding: 4px; background: #0a0a0a;">
           <div class="empty-state">
             <p>No network requests intercepted yet.</p>
+            <p style="font-size: 11px; color: #888; margin-top: 4px;">Navigate to blackhole.xyz/vote to start capturing requests.</p>
           </div>
         </div>
       </div>
@@ -131,13 +175,6 @@
             </label>
           </div>
 
-          <div class="form-group">
-            <label>
-              <input type="checkbox" id="deepScan">
-              Deep Scan (Scrape all pages)
-            </label>
-            <small>If enabled, extension will navigate through all pages to find pools not in the API.</small>
-          </div>
 
           <div class="form-group">
             <label>
@@ -145,6 +182,14 @@
               Show recommendations overlay on voting page
             </label>
             <small>Toggle this to show/hide the panel on the voting page</small>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="apiDiscoveryEnabled">
+              Enable API Discovery tab
+            </label>
+            <small>Shows a tab to capture and analyze network requests. Useful for debugging but may impact performance.</small>
           </div>
 
           <div class="button-group">

@@ -275,15 +275,24 @@ class RpcClient {
   }
 }
 
-// --- From pool-data-provider.js ---
+// --- From rpc-pool-provider.js ---
+/**
+ * RPC-based Pool Data Provider
+ * Gets pool data directly from blockchain via RPC calls
+ * Fast and reliable - no DOM dependency for basic data
+ */
+
 
 const VOTER_ADDRESS = '0xe30d0c8532721551a51a9fec7fb233759964d9e3';
 const RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
-const API_URL = 'https://resources.blackhole.xyz/cl-pools-list/cl-pools.json';
 
 const SELECTORS = {
   weights: '0xa7cac846',
-  totalWeight: '0x96c82e57'
+  token0: '0x0dfe1681',
+  token1: '0xd21220a7',
+  fee: '0xddca3f43',
+  liquidity: '0x1a686502',
+  totalSupply: '0x18160ddd',
 };
 
 // Helper to decode hex to BigInt
@@ -292,10 +301,715 @@ function hexToBigInt(hex) {
   return BigInt(hex);
 }
 
+// Helper to get address from hex
+function hexToAddress(hex) {
+  if (!hex || hex === '0x') return null;
+  return '0x' + hex.slice(-40).toLowerCase();
+}
+
+class RpcPoolProvider {
+  constructor() {
+    this.rpc = new RpcClient(RPC_URL);
+    this.poolCache = new Map(); // address -> pool data
+  }
+
+  /**
+   * Get pool weight (current_votes) from voter contract
+   */
+  async getPoolWeight(poolAddress) {
+    try {
+      const cleanAddr = poolAddress.replace('0x', '').toLowerCase().padStart(64, '0');
+      const data = SELECTORS.weights + cleanAddr;
+      const result = await this.rpc.ethCall(VOTER_ADDRESS, data);
+      return Number(hexToBigInt(result)) / 1e18;
+    } catch (e) {
+      console.warn(`Failed to get weight for ${poolAddress}:`, e);
+      return 0;
+    }
+  }
+
+  /**
+   * Get pool metadata (tokens, fee, liquidity) from pool contract
+   */
+  async getPoolMetadata(poolAddress) {
+    const metadata = {
+      token0: null,
+      token1: null,
+      fee: null,
+      liquidity: null,
+      totalSupply: null,
+    };
+
+    try {
+      // Get token0
+      const token0Result = await this.rpc.ethCall(poolAddress, SELECTORS.token0);
+      metadata.token0 = hexToAddress(token0Result);
+
+      // Get token1
+      const token1Result = await this.rpc.ethCall(poolAddress, SELECTORS.token1);
+      metadata.token1 = hexToAddress(token1Result);
+
+      // Get fee (for CL pools)
+      try {
+        const feeResult = await this.rpc.ethCall(poolAddress, SELECTORS.fee);
+        const fee = Number(hexToBigInt(feeResult));
+        if (fee > 0 && fee < 100000) {
+          metadata.fee = fee;
+        }
+      } catch (e) {
+        // Fee not available (vAMM/sAMM pools)
+      }
+
+      // Get liquidity or totalSupply
+      try {
+        const liqResult = await this.rpc.ethCall(poolAddress, SELECTORS.liquidity);
+        const liquidity = Number(hexToBigInt(liqResult)) / 1e18;
+        if (liquidity > 0) {
+          metadata.liquidity = liquidity;
+        }
+      } catch (e) {
+        // Try totalSupply instead
+        try {
+          const supplyResult = await this.rpc.ethCall(poolAddress, SELECTORS.totalSupply);
+          const supply = Number(hexToBigInt(supplyResult)) / 1e18;
+          if (supply > 0) {
+            metadata.totalSupply = supply;
+          }
+        } catch (e2) {
+          // Neither available
+        }
+      }
+    } catch (e) {
+      console.warn(`Failed to get metadata for ${poolAddress}:`, e);
+    }
+
+    return metadata;
+  }
+
+  /**
+   * Get complete pool data via RPC
+   * Returns Pool object with all available RPC data
+   */
+  async getPoolData(poolAddress, poolType = null) {
+    // Check cache
+    if (this.poolCache.has(poolAddress.toLowerCase())) {
+      return this.poolCache.get(poolAddress.toLowerCase());
+    }
+
+    // Get weight and metadata in parallel
+    const [weight, metadata] = await Promise.all([
+      this.getPoolWeight(poolAddress),
+      this.getPoolMetadata(poolAddress),
+    ]);
+
+    // Determine pool type if not provided
+    if (!poolType) {
+      if (metadata.fee) {
+        // CL pool
+        if (metadata.fee === 100) poolType = 'CL1';
+        else if (metadata.fee === 500) poolType = 'CL200';
+        else poolType = 'CL200';
+      } else {
+        // vAMM or sAMM (can't distinguish without more data)
+        poolType = 'vAMM'; // Default
+      }
+    }
+
+    // Create pool name from tokens (if available)
+    let name = `Pool ${poolAddress.slice(0, 8)}`;
+    if (metadata.token0 && metadata.token1) {
+      // We'd need token symbols, but for now use addresses
+      name = `${poolType || 'Pool'}-${metadata.token0.slice(0, 6)}/${metadata.token1.slice(0, 6)}`;
+    }
+
+    // Determine fee percentage
+    let feePercentage = null;
+    if (metadata.fee) {
+      if (metadata.fee === 100) feePercentage = '0.01%';
+      else if (metadata.fee === 500) feePercentage = '0.05%';
+      else feePercentage = `${metadata.fee / 10000}%`;
+    }
+
+    const pool = new Pool({
+      name: name,
+      pool_id: poolAddress,
+      pool_type: poolType,
+      fee_percentage: feePercentage,
+      total_rewards: 0, // Not available via RPC yet
+      vapr: 0, // Not available via RPC yet
+      current_votes: weight,
+    });
+
+    // Cache result
+    this.poolCache.set(poolAddress.toLowerCase(), pool);
+
+    return pool;
+  }
+
+  /**
+   * Get pool data for multiple pools (batched)
+   */
+  async getPoolsData(poolAddresses, poolTypes = {}) {
+    const pools = [];
+
+    // Process in batches to avoid overwhelming RPC
+    const batchSize = 10;
+    for (let i = 0; i < poolAddresses.length; i += batchSize) {
+      const batch = poolAddresses.slice(i, i + batchSize);
+      const batchPromises = batch.map(addr =>
+        this.getPoolData(addr, poolTypes[addr.toLowerCase()])
+      );
+      const batchResults = await Promise.all(batchPromises);
+      pools.push(...batchResults);
+    }
+
+    return pools;
+  }
+
+  /**
+   * Load pools from discovered pool list
+   * Can load from static JSON or fetch dynamically
+   */
+  async loadDiscoveredPools() {
+    // Option 1: Load from static file (if bundled)
+    // Option 2: Use discovered addresses from previous analysis
+    // Option 3: Fetch dynamically (future)
+
+    // For now, return empty - will be populated by caller
+    // In production, could load from vamm_samm_pools.json or similar
+    return [];
+  }
+}
+
+// --- From rpc-rewards-provider.js ---
+/**
+ * RPC Rewards Provider
+ * Gets rewards by intercepting multicall responses and extracting values
+ * This is a hybrid approach: we intercept the site's multicalls and extract rewards
+ */
+
+
+const AGGREGATE_SELECTOR = '0x82ad56cb';
+
+class RpcRewardsProvider {
+  constructor(knownPools = []) {
+    this.extractor = new RewardsExtractor(knownPools);
+    this.rpc = new RpcClient(RPC_URL);
+    this.rewardsCache = new Map(); // pool -> reward
+  }
+
+  /**
+   * Extract rewards from a multicall response
+   * This is called when we intercept a multicall response
+   * Now uses improved decoding to match calls to returns
+   */
+  extractFromResponse(responseHex, requestHex = null) {
+    // Try improved decoding if we have both request and response
+    if (requestHex && requestHex.startsWith('0x82ad56cb')) {
+      try {
+        const requests = decodeMulticallRequest(requestHex);
+        const { returns } = decodeMulticallResponse(responseHex);
+        
+        if (requests.length === returns.length) {
+          const matched = matchCallsToReturns(requests, returns);
+          const poolSet = new Set(
+            Array.from(this.extractor.knownPools).map(p => p.toLowerCase().replace('0x', ''))
+          );
+          const decodedRewards = extractRewardsFromDecoded(matched, poolSet);
+          
+          // Update cache with decoded rewards
+          for (const [pool, value] of Object.entries(decodedRewards)) {
+            this.rewardsCache.set(pool.toLowerCase(), value);
+          }
+          
+          if (Object.keys(decodedRewards).length > 0) {
+            console.log(`✓ Decoded ${Object.keys(decodedRewards).length} rewards from multicall`);
+            return decodedRewards;
+          }
+        }
+      } catch (e) {
+        console.warn('Improved decoding failed, falling back to pattern matching:', e);
+      }
+    }
+    
+    // Fallback to pattern matching
+    const rewards = this.extractor.extractRewards(responseHex);
+    
+    // Update cache
+    for (const [pool, value] of Object.entries(rewards)) {
+      this.rewardsCache.set(pool.toLowerCase(), value);
+    }
+    
+    return rewards;
+  }
+
+  /**
+   * Get reward for a specific pool
+   */
+  getReward(poolAddress) {
+    return this.rewardsCache.get(poolAddress.toLowerCase()) || 0;
+  }
+
+  /**
+   * Get rewards for multiple pools
+   */
+  getRewards(poolAddresses) {
+    const rewards = {};
+    for (const addr of poolAddresses) {
+      rewards[addr] = this.getReward(addr);
+    }
+    return rewards;
+  }
+
+  /**
+   * Update known pools list
+   */
+  setKnownPools(pools) {
+    this.extractor.setKnownPools(pools);
+  }
+
+  /**
+   * Clear cache
+   */
+  clearCache() {
+    this.rewardsCache.clear();
+  }
+
+  /**
+   * Get all cached rewards
+   */
+  getAllRewards() {
+    const rewards = {};
+    for (const [pool, value] of this.rewardsCache.entries()) {
+      rewards[pool] = value;
+    }
+    return rewards;
+  }
+}
+
+/**
+ * Intercept fetch/XHR calls to RPC endpoints and extract rewards
+ * This should be called from a content script that can intercept network requests
+ */
+function interceptMulticallResponses(rewardsProvider) {
+  // Store request data to match with responses
+  const requestCache = new Map();
+  
+  // Intercept fetch
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const url = args[0];
+    const options = args[1] || {};
+    
+    // Check if it's an RPC call
+    if (typeof url === 'string' && (url.includes('rpc') || url.includes('avax.network'))) {
+      // Try to extract request data
+      let requestHex = null;
+      if (options.body) {
+        try {
+          const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+          if (body.params && body.params[0] && body.params[0].data) {
+            requestHex = body.params[0].data;
+            // Store request with a unique ID (use timestamp + random)
+            const requestId = body.id || Date.now();
+            requestCache.set(requestId, requestHex);
+          }
+        } catch (e) {
+          // Not JSON or no data
+        }
+      }
+    }
+    
+    const response = await originalFetch.apply(this, args);
+    
+    // Check if it's an RPC call
+    if (typeof url === 'string' && (url.includes('rpc') || url.includes('avax.network'))) {
+      // Clone response to read it
+      const clonedResponse = response.clone();
+      
+      clonedResponse.json().then(data => {
+        if (data && data.result) {
+          // Check if it's a multicall response
+          if (data.result.startsWith('0x') && data.result.length > 1000) {
+            // Try to get matching request
+            const requestId = data.id;
+            const requestHex = requestCache.get(requestId);
+            
+            // Extract rewards (with improved decoding if we have request)
+            rewardsProvider.extractFromResponse(data.result, requestHex);
+            
+            // Clean up cache (keep last 100)
+            if (requestCache.size > 100) {
+              const firstKey = requestCache.keys().next().value;
+              requestCache.delete(firstKey);
+            }
+          }
+        }
+      }).catch(() => {
+        // Not JSON, ignore
+      });
+    }
+    
+    return response;
+  };
+
+  // Intercept XMLHttpRequest
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+  
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    this._url = url;
+    return originalOpen.apply(this, [method, url, ...rest]);
+  };
+  
+  XMLHttpRequest.prototype.send = function(body) {
+    // Store request data
+    let requestHex = null;
+    if (body && typeof body === 'string') {
+      try {
+        const bodyObj = JSON.parse(body);
+        if (bodyObj.params && bodyObj.params[0] && bodyObj.params[0].data) {
+          requestHex = bodyObj.params[0].data;
+          const requestId = bodyObj.id || Date.now();
+          requestCache.set(requestId, requestHex);
+        }
+      } catch (e) {
+        // Not JSON
+      }
+    }
+    
+    this.addEventListener('load', function() {
+      if (this._url && (this._url.includes('rpc') || this._url.includes('avax.network'))) {
+        try {
+          const data = JSON.parse(this.responseText);
+          if (data && data.result && data.result.startsWith('0x') && data.result.length > 1000) {
+            // Try to get matching request
+            const requestId = data.id;
+            const matchingRequest = requestCache.get(requestId) || requestHex;
+            
+            rewardsProvider.extractFromResponse(data.result, matchingRequest);
+            
+            // Clean up cache
+            if (requestCache.size > 100) {
+              const firstKey = requestCache.keys().next().value;
+              requestCache.delete(firstKey);
+            }
+          }
+        } catch (e) {
+          // Not JSON, ignore
+        }
+      }
+    });
+    
+    return originalSend.apply(this, arguments);
+  };
+}
+
+// --- From rewards-extractor.js ---
+/**
+ * Rewards Extractor from Multicall Responses
+ * Extracts reward values from multicall RPC responses by finding pool addresses
+ * and nearby reward values in the hex data
+ */
+
+class RewardsExtractor {
+  constructor(knownPools = []) {
+    // Convert to lowercase set for fast lookup
+    this.knownPools = new Set(
+      knownPools.map(addr => addr.toLowerCase().replace('0x', ''))
+    );
+  }
+
+  /**
+   * Extract rewards from a multicall response
+   * @param {string} responseHex - The hex response from multicall
+   * @returns {Object} Map of pool address (lowercase) to reward value (USD)
+   */
+  extractRewards(responseHex) {
+    if (!responseHex || responseHex === '0x') {
+      return {};
+    }
+
+    // Remove 0x prefix and convert to lowercase
+    let hexData = responseHex.startsWith('0x') 
+      ? responseHex.slice(2).toLowerCase() 
+      : responseHex.toLowerCase();
+
+    const rewards = {};
+
+    // Find each known pool address in the response
+    for (const poolHex of this.knownPools) {
+      const pos = hexData.indexOf(poolHex);
+      
+      if (pos === -1) continue;
+
+      // Look for values after the address (within 500 chars)
+      const searchArea = hexData.slice(pos + 40, pos + 500);
+
+      // Find 64-char chunks (uint256 values)
+      for (let i = 0; i < searchArea.length - 64; i += 64) {
+        const chunk = searchArea.slice(i, i + 64);
+        
+        try {
+          const value = BigInt('0x' + chunk);
+          
+          // Filter for reasonable reward values (1e20 to 1e27 wei)
+          if (value > 1e20 && value < 1e27) {
+            const usdValue = Number(value) / 1e18;
+            
+            // Filter for reasonable USD range (100 to 100M)
+            if (usdValue > 100 && usdValue < 100000000) {
+              const poolKey = '0x' + poolHex;
+              const poolKeyLower = poolKey.toLowerCase();
+              
+              // Take the maximum value found (most recent/accurate)
+              if (!rewards[poolKeyLower] || usdValue > rewards[poolKeyLower]) {
+                rewards[poolKeyLower] = usdValue;
+              }
+              break; // Take first reasonable value
+            }
+          }
+        } catch (e) {
+          // Invalid hex, skip
+          continue;
+        }
+      }
+    }
+
+    return rewards;
+  }
+
+  /**
+   * Extract rewards from multiple multicall responses
+   * @param {Array<string>} responses - Array of hex responses
+   * @returns {Object} Map of pool address to reward value (max across all responses)
+   */
+  extractRewardsFromMultiple(responses) {
+    const allRewards = {};
+
+    for (const response of responses) {
+      const rewards = this.extractRewards(response);
+      
+      for (const [pool, value] of Object.entries(rewards)) {
+        if (!allRewards[pool] || value > allRewards[pool]) {
+          allRewards[pool] = value;
+        }
+      }
+    }
+
+    return allRewards;
+  }
+
+  /**
+   * Update known pools list
+   */
+  setKnownPools(pools) {
+    this.knownPools = new Set(
+      pools.map(addr => addr.toLowerCase().replace('0x', ''))
+    );
+  }
+}
+
+// --- From vamm-samm-provider.js ---
+/**
+ * vAMM/sAMM Pool Data Provider
+ * Provides pool addresses discovered via RPC analysis
+ * Rewards/VAPR are extracted from DOM via pool-extractor.js
+ */
+
+
+
+
+// Known pool addresses from discovery
+// In production, this could be loaded from vamm_samm_pools.json
+// For now, we'll use a subset and let DOM extraction fill in the rest
+const KNOWN_VAMM_SAMM_POOLS = [
+  // These will be populated from vamm_samm_pools.json or discovered dynamically
+];
+
+// Helper to decode hex to BigInt
+
+// Helper to get address from hex result
+
+/**
+ * Get token symbol from contract
+ */
+async function getTokenSymbol(rpc, tokenAddress) {
+  try {
+    const result = await rpc.ethCall(tokenAddress, SELECTORS.symbol);
+    if (!result || result === '0x') return null;
+    
+    // Decode string from hex (first 32 bytes = offset, next 32 = length, then data)
+    // Simplified: just try to extract readable text
+    const hex = result.slice(2);
+    if (hex.length < 128) return null; // Need at least offset + length
+    
+    const lengthHex = hex.slice(64, 128);
+    const length = parseInt(lengthHex, 16);
+    if (length > 32 || length === 0) return null;
+    
+    const dataHex = hex.slice(128, 128 + (length * 2));
+    const symbol = Buffer.from(dataHex, 'hex').toString('utf-8').replace(/\0/g, '').trim();
+    
+    return symbol || null;
+  } catch (e) {
+    console.warn(`Failed to get symbol for ${tokenAddress}:`, e);
+    return null;
+  }
+}
+
+/**
+ * Get pool metadata (tokens) from contract
+ */
+async function getPoolMetadata(rpc, poolAddress) {
+  try {
+    const [token0Hex, token1Hex] = await Promise.all([
+      rpc.ethCall(poolAddress, SELECTORS.token0),
+      rpc.ethCall(poolAddress, SELECTORS.token1)
+    ]);
+    
+    const token0 = hexToAddress(token0Hex);
+    const token1 = hexToAddress(token1Hex);
+    
+    // Get symbols (optional, can be slow)
+    // For now, skip to avoid too many RPC calls
+    // Symbols can be extracted from DOM or use a token list
+    
+    return {
+      token0,
+      token1,
+      token0Symbol: null, // Will be filled from DOM or token list
+      token1Symbol: null
+    };
+  } catch (e) {
+    console.warn(`Failed to get metadata for ${poolAddress}:`, e);
+    return { token0: null, token1: null, token0Symbol: null, token1Symbol: null };
+  }
+}
+
+class VammSammProvider {
+  constructor() {
+    this.rpc = new RpcClient(RPC_URL);
+    this.knownPools = new Map(); // address -> { type, weight, token0, token1 }
+  }
+
+  /**
+   * Load known vAMM/sAMM pools from discovery data
+   * In production, this could load from vamm_samm_pools.json
+   */
+  async loadKnownPools() {
+    // For now, return empty - pools will be discovered via DOM
+    // In future, could load from static file or fetch dynamically
+    return [];
+  }
+
+  /**
+   * Get pool weights for vAMM/sAMM pools
+   */
+  async getPoolWeights(addresses) {
+    const weights = new Map();
+    const batchSize = 20;
+
+    for (let i = 0; i < addresses.length; i += batchSize) {
+      const batch = addresses.slice(i, i + batchSize);
+      const promises = batch.map(addr => {
+        const cleanAddr = addr.replace('0x', '');
+        const data = SELECTORS.weights + cleanAddr.padStart(64, '0');
+        return this.rpc.ethCall(VOTER_ADDRESS, data);
+      });
+
+      const results = await Promise.all(promises);
+      results.forEach((res, idx) => {
+        weights.set(batch[idx].toLowerCase(), hexToBigInt(res));
+      });
+    }
+    return weights;
+  }
+
+  /**
+   * Get vAMM/sAMM pools
+   * Returns pools with basic data (address, type, weight)
+   * Rewards/VAPR should be filled from DOM extraction
+   */
+  async getPools(knownAddresses = []) {
+    if (knownAddresses.length === 0) {
+      // If no addresses provided, return empty
+      // Pools will be discovered via DOM extraction
+      return [];
+    }
+
+    console.log(`Fetching weights for ${knownAddresses.length} vAMM/sAMM pools`);
+
+    // Get weights
+    const weightsMap = await this.getPoolWeights(knownAddresses);
+    const pools = [];
+
+    for (const addr of knownAddresses) {
+      const weightBigInt = weightsMap.get(addr.toLowerCase()) || 0n;
+      const currentVotes = Number(weightBigInt) / 1e18;
+
+      // Determine pool type (could be improved with better classification)
+      const poolInfo = this.knownPools.get(addr.toLowerCase());
+      const poolType = poolInfo?.type || 'vAMM'; // Default to vAMM
+
+      // Create pool with basic data
+      // Rewards/VAPR will be filled from DOM extraction
+      pools.push(new Pool({
+        name: poolInfo?.name || `vAMM/sAMM Pool ${addr.slice(0, 8)}`,
+        pool_id: addr,
+        pool_type: poolType,
+        fee_percentage: null, // vAMM/sAMM may not have standard fees
+        total_rewards: 0, // Will be filled from DOM
+        vapr: 0, // Will be filled from DOM
+        current_votes: currentVotes
+      }));
+    }
+
+    return pools;
+  }
+
+  /**
+   * Enrich pools with metadata (tokens, symbols)
+   * This is optional and can be slow due to RPC calls
+   */
+  async enrichPoolsWithMetadata(pools) {
+    console.log(`Enriching ${pools.length} pools with metadata...`);
+    
+    for (const pool of pools) {
+      if (!pool.pool_id) continue;
+      
+      try {
+        const metadata = await getPoolMetadata(this.rpc, pool.pool_id);
+        if (metadata.token0 && metadata.token1) {
+          // Update pool name if we have tokens
+          // Symbols will be filled from DOM or token list
+          pool.token0 = metadata.token0;
+          pool.token1 = metadata.token1;
+        }
+      } catch (e) {
+        console.warn(`Failed to enrich pool ${pool.pool_id}:`, e);
+      }
+    }
+    
+    return pools;
+  }
+}
+
+// --- From pool-data-provider.js ---
+
+const API_URL = 'https://resources.blackhole.xyz/cl-pools-list/cl-pools.json';
+
+
+// Helper to decode hex to BigInt
+
 class PoolDataProvider {
   constructor() {
     this.rpc = new RpcClient(RPC_URL);
     this.apiCache = null;
+    this.vammSammProvider = new VammSammProvider();
+    this.rpcProvider = new RpcPoolProvider();
+    this.rewardsProvider = new RpcRewardsProvider([]); // Will be populated with pool addresses
+    this.vammSammAddresses = null; // Will be loaded from discovery or DOM
   }
 
   async fetchMetadata() {
@@ -364,26 +1078,74 @@ class PoolDataProvider {
     return weights;
   }
 
-  async getPools() {
-    // 1. Fetch metadata first (API acts as the pool list source)
-    const metadataMap = await this.fetchMetadata();
-    const poolAddresses = Array.from(metadataMap.keys());
+  /**
+   * Load vAMM/sAMM pool addresses
+   * Can be from:
+   * 1. Static list (vamm_samm_pools.json)
+   * 2. DOM extraction (discover pools on page)
+   * 3. RPC discovery (check weights for known addresses)
+   */
+  async loadVammSammAddresses() {
+    if (this.vammSammAddresses) {
+      return this.vammSammAddresses;
+    }
 
-    if (poolAddresses.length === 0) {
-      console.warn('No pools found in API');
+    // Try to load from static file (if bundled)
+    // For now, return empty - will be populated from DOM extraction
+    // In future, could fetch from a hosted JSON file or bundle it
+    this.vammSammAddresses = [];
+    return this.vammSammAddresses;
+  }
+
+  /**
+   * Set vAMM/sAMM pool addresses (e.g., from DOM extraction)
+   */
+  setVammSammAddresses(addresses) {
+    this.vammSammAddresses = addresses;
+  }
+
+  /**
+   * Get pools using RPC for all available data
+   * This is faster than DOM extraction for basic data
+   */
+  async getPoolsViaRpc(poolAddresses, poolTypes = {}) {
+    console.log(`Fetching RPC data for ${poolAddresses.length} pools...`);
+    
+    // Use RPC provider to get all available data
+    const pools = await this.rpcProvider.getPoolsData(poolAddresses, poolTypes);
+    
+    console.log(`✓ Got RPC data for ${pools.length} pools`);
+    console.log(`  Note: Rewards/VAPR not available via RPC - will need DOM or multicall decoding`);
+    
+    return pools;
+  }
+
+  async getPools() {
+    // 1. Fetch CL pools metadata from API
+    const clMetadataMap = await this.fetchMetadata();
+    const clPoolAddresses = Array.from(clMetadataMap.keys());
+
+    // 2. Get vAMM/sAMM pool addresses
+    const vammSammAddresses = await this.loadVammSammAddresses();
+    
+    // Combine all pool addresses
+    const allPoolAddressesForWeights = [...clPoolAddresses, ...vammSammAddresses];
+
+    if (allPoolAddressesForWeights.length === 0) {
+      console.warn('No pools found');
       return [];
     }
 
-    console.log(`Fetching weights for ${poolAddresses.length} pools from API list`);
+    console.log(`Fetching weights for ${allPoolAddressesForWeights.length} pools (${clPoolAddresses.length} CL + ${vammSammAddresses.length} vAMM/sAMM)`);
 
-    // 2. Fetch weights for these pools
-    const weightsMap = await this.getPoolWeights(poolAddresses);
+    // 3. Fetch weights for all pools
+    const weightsMap = await this.getPoolWeights(allPoolAddressesForWeights);
     const pools = [];
 
-    for (const addr of poolAddresses) {
-      const meta = metadataMap.get(addr);
+    // Add CL pools
+    for (const addr of clPoolAddresses) {
+      const meta = clMetadataMap.get(addr);
       const weightBigInt = weightsMap.get(addr) || 0n;
-      // formatted votes (assuming 18 decimals)
       const currentVotes = Number(weightBigInt) / 1e18;
 
       pools.push(new Pool({
@@ -391,13 +1153,53 @@ class PoolDataProvider {
         pool_id: addr,
         pool_type: meta.poolType,
         fee_percentage: meta.feePercentage,
-        total_rewards: meta.totalRewards, // Note: this is Fees only, missing Bribes
-        vapr: 0, // Cannot calculate easily without emission rate & price
+        total_rewards: meta.totalRewards, // API sets to 0, DOM will fill
+        vapr: 0, // DOM will fill
         current_votes: currentVotes
       }));
     }
 
+    // Add vAMM/sAMM pools
+    // Note: Rewards/VAPR will be filled from DOM extraction or RPC rewards provider
+    const vammSammPools = await this.vammSammProvider.getPools(vammSammAddresses);
+    pools.push(...vammSammPools);
+
+    // Try to get rewards from RPC rewards provider (if available)
+    // Note: This only works if multicall responses have been intercepted
+    // For now, rewards will come from DOM extraction in hybrid mode
+    const allPoolAddresses = pools.map(p => p.pool_id);
+    this.rewardsProvider.setKnownPools(allPoolAddresses);
+    const rewards = this.rewardsProvider.getAllRewards();
+    
+    // Update pools with rewards if available (from intercepted multicall responses)
+    for (const pool of pools) {
+      const reward = rewards[pool.pool_id.toLowerCase()];
+      if (reward && reward > 0) {
+        pool.total_rewards = reward;
+        // VAPR calculation would go here (needs time period and emission data)
+        // For now, leave VAPR as 0 or calculate from rewards if we have the data
+      }
+    }
+    
+    // Note: Most pools will have total_rewards = 0 here
+    // DOM extraction in extractPoolsHybrid() will fill in rewards for visible pools
+
     return pools;
+  }
+
+  /**
+   * Extract rewards from a multicall response
+   * Call this when intercepting multicall responses
+   */
+  extractRewardsFromResponse(responseHex) {
+    return this.rewardsProvider.extractFromResponse(responseHex);
+  }
+
+  /**
+   * Get rewards provider for direct access
+   */
+  getRewardsProvider() {
+    return this.rewardsProvider;
   }
 }
 // --- From pool-recommender.js ---
@@ -554,13 +1356,13 @@ function recommendPools(pools, options = {}) {
 
 /**
  * Extract pool data from DOM elements on the voting page
- * @param {boolean} deepScan - If true, navigate through all pages. If false, only scan current page.
+ * Now handles pagination to extract pools from all pages
  */
-async function extractPoolsFromDOM(deepScan = false) {
+async function extractPoolsFromDOM() {
   const pools = [];
   const foundPoolIds = new Set(); // Track to avoid duplicates
   
-  // Helper to extract from current page
+  // Helper function to extract pools from current page
   function extractPoolsFromCurrentPage() {
     let poolElements = document.querySelectorAll('div.liquidity-pool-cell.even, div.liquidity-pool-cell.odd');
     
@@ -576,6 +1378,7 @@ async function extractPoolsFromDOM(deepScan = false) {
       try {
         const pool = extractPoolFromElement(element);
         if (pool) {
+          // Use pool_id to avoid duplicates (in case same pool appears on multiple pages)
           const poolKey = pool.pool_id ? pool.pool_id.toLowerCase() : pool.name.toLowerCase();
           if (!foundPoolIds.has(poolKey)) {
             pools.push(pool);
@@ -586,79 +1389,484 @@ async function extractPoolsFromDOM(deepScan = false) {
         console.warn('Error extracting pool from element:', error);
       }
     }
+    
     return poolElements.length;
   }
-
-  // Always extract current page
+  
+  // Extract pools from current page
   const poolsOnCurrentPage = extractPoolsFromCurrentPage();
-  console.log(`Found ${poolsOnCurrentPage} pool elements on current page`);
-
-  // If not deep scan, return immediately
-  if (!deepScan) {
-    return pools;
-  }
-
-  console.log('Deep Scan enabled: checking for pagination...');
+  console.log(`Found ${poolsOnCurrentPage} pool elements on current page, ${pools.length} unique pools so far`);
   
-  // Pagination Logic
+  // Check if pagination exists - if so, try to temporarily increase page size
   const paginationContainer = document.querySelector('.pagination');
-  if (!paginationContainer) {
-    console.log('No pagination found, scan complete.');
-    return pools;
-  }
-
-  // Helper to wait for page load
-  async function waitForPageLoad(previousCount, maxWait = 5000) {
-    const start = Date.now();
-    while (Date.now() - start < maxWait) {
-      await new Promise(r => setTimeout(r, 200));
-      const currentCount = document.querySelectorAll('div.liquidity-pool-cell').length;
-      // Simple check: if we have pools, we assume page loaded (could be improved)
-      if (currentCount > 0) return true;
-    }
-    return false;
-  }
-
-  // Iterate pages
-  let pagesChecked = 1;
-  const maxPages = 20; // Safety limit
+  let originalPageSize = null;
+  let pageSizeSelector = null;
+  let pageSizeChanged = false;
   
-  while (pagesChecked < maxPages) {
-    const pagination = document.querySelector('.pagination');
-    if (!pagination) break;
-
-    const rightExtreme = pagination.querySelector('.item.extreme.right');
-    if (!rightExtreme) break;
-
-    const clickable = rightExtreme.closest('.item') || rightExtreme.parentElement || rightExtreme;
-    if (clickable.classList.contains('disabled') || clickable.hasAttribute('disabled')) {
-      console.log('Next button disabled, reached last page.');
-      break;
+  // Try to find and change page size selector to 100
+  // Based on the HTML structure: <div class="size-per-page"> with clickable dropdown
+  console.log('Searching for page size selector...');
+  
+  // First, try to find the size-per-page element (custom dropdown)
+  const sizePerPageElement = document.querySelector('.size-per-page');
+  if (sizePerPageElement) {
+    // Extract current page size from the text (e.g., "Pools/Page: 10")
+    const textContent = sizePerPageElement.textContent || '';
+    const pageSizeMatch = textContent.match(/Pools\/Page:\s*(\d+)/i) || textContent.match(/(\d+)/);
+    if (pageSizeMatch) {
+      originalPageSize = pageSizeMatch[1];
+      console.log(`Found size-per-page element, current value: ${originalPageSize}`);
+      
+      // Store reference to the clickable element (the whole size-per-page div is likely clickable)
+      pageSizeSelector = sizePerPageElement;
     }
-
-    console.log(`Navigating to page ${pagesChecked + 1}...`);
-    clickable.click();
-    
-    // Wait for load
-    await waitForPageLoad(0);
-    
-    // Extract
-    const count = extractPoolsFromCurrentPage();
-    console.log(`Extracted ${count} pools from page ${pagesChecked + 1}`);
-    pagesChecked++;
-    
-    // Small delay
-    await new Promise(r => setTimeout(r, 500));
   }
-
-  // Restore page 1? Probably good UX but maybe not strictly required if we just want data.
-  // Let's try to go back to page 1 to leave the user in a consistent state.
-  console.log('Deep Scan complete. Returning to page 1...');
-  const firstPage = document.querySelector('.pagination .item:not(.extreme)');
-  if (firstPage && firstPage.textContent.trim() === '1') {
-    firstPage.click();
+  
+  // Also try standard select elements as fallback
+  if (!pageSizeSelector) {
+    const possibleSelectors = [
+      'select[class*="page"]',
+      'select[class*="size"]',
+      'select[class*="per"]',
+      '.pagination select',
+      '[class*="page-size"] select'
+    ];
+    
+    for (const selector of possibleSelectors) {
+      const element = document.querySelector(selector);
+      if (element && element.tagName === 'SELECT') {
+        const option100 = Array.from(element.options).find(opt => {
+          const val = opt.value || opt.textContent.trim();
+          return val === '100';
+        });
+        if (option100) {
+          pageSizeSelector = element;
+          originalPageSize = element.value;
+          console.log(`Found page size select element, current value: ${originalPageSize}`);
+          break;
+        }
+      }
+    }
   }
-
+  
+  if (!pageSizeSelector) {
+    console.log('Could not find page size selector. Will navigate through pages normally.');
+  }
+  
+  // If we found a page size selector, temporarily change it to 100
+  if (pageSizeSelector && originalPageSize !== '100') {
+    try {
+      console.log(`Temporarily changing page size from ${originalPageSize} to 100...`);
+      
+      // Check if it's a standard select element
+      if (pageSizeSelector.tagName === 'SELECT') {
+        pageSizeSelector.value = '100';
+        
+        // Trigger change event
+        const changeEvent = new Event('change', { bubbles: true });
+        pageSizeSelector.dispatchEvent(changeEvent);
+        
+        // Also try input event
+        const inputEvent = new Event('input', { bubbles: true });
+        pageSizeSelector.dispatchEvent(inputEvent);
+      } else {
+        // It's a custom dropdown (like .size-per-page)
+        // Click to open the dropdown
+        console.log('Clicking page size dropdown to open it...');
+        pageSizeSelector.click();
+        
+        // Wait a bit for dropdown to open
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Look for the "100" option in the dropdown menu
+        // The dropdown might be a sibling, child, or appear elsewhere in the DOM
+        let option100 = null;
+        
+        // Try multiple strategies to find the dropdown menu
+        const strategies = [
+          // Strategy 1: Look for a dropdown menu near the size-per-page element
+          () => {
+            const parent = pageSizeSelector.parentElement;
+            if (parent) {
+              return parent.querySelector('[class*="menu"], [class*="dropdown"], [class*="option"]');
+            }
+            return null;
+          },
+          // Strategy 2: Look for elements with "100" text that appeared after click
+          () => {
+            const allElements = document.querySelectorAll('div, span, button, a');
+            for (const elem of allElements) {
+              const text = elem.textContent.trim();
+              if (text === '100') {
+                const rect = elem.getBoundingClientRect();
+                const selectorRect = pageSizeSelector.getBoundingClientRect();
+                // Check if it's near the selector (likely the dropdown option)
+                if (Math.abs(rect.top - selectorRect.bottom) < 200 && 
+                    Math.abs(rect.left - selectorRect.left) < 100) {
+                  return elem;
+                }
+              }
+            }
+            return null;
+          },
+          // Strategy 3: Look for any visible element with "100" that's clickable
+          () => {
+            const allElements = document.querySelectorAll('div, span, button, a, [role="menuitem"], [role="option"]');
+            for (const elem of allElements) {
+              const text = elem.textContent.trim();
+              const style = getComputedStyle(elem);
+              if (text === '100' && 
+                  style.display !== 'none' && 
+                  style.visibility !== 'hidden' &&
+                  style.opacity !== '0') {
+                return elem;
+              }
+            }
+            return null;
+          }
+        ];
+        
+        for (const strategy of strategies) {
+          option100 = strategy();
+          if (option100) {
+            console.log('Found "100" option in dropdown');
+            break;
+          }
+        }
+        
+        if (option100) {
+          // Click the 100 option
+          console.log('Clicking "100" option...');
+          option100.click();
+          pageSizeChanged = true;
+        } else {
+          console.warn('Could not find "100" option in dropdown. Trying to search more broadly...');
+          // Last resort: search the entire document for clickable "100"
+          const allClickable = document.querySelectorAll('div, span, button, a');
+          for (const elem of allClickable) {
+            if (elem.textContent.trim() === '100') {
+              const rect = elem.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) { // Element is visible
+                console.log('Found visible "100" element, clicking it...');
+                elem.click();
+                pageSizeChanged = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      if (pageSizeChanged) {
+        // Wait for page to reload with new page size
+        console.log('Waiting for page to reload with new page size...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for page to update
+        
+        // Verify the change took effect by checking if more pools are visible
+        const poolCountAfter = document.querySelectorAll('div.liquidity-pool-cell').length;
+        console.log(`Page size changed. Pools visible: ${poolCountAfter}`);
+        
+        // Also check if the text updated
+        if (sizePerPageElement) {
+          const updatedText = sizePerPageElement.textContent || '';
+          console.log(`Page size element now shows: ${updatedText}`);
+        }
+      }
+      
+    } catch (error) {
+      console.warn('Error changing page size:', error);
+      pageSizeChanged = false;
+    }
+  }
+  
+  let pageItems = [];
+  let nextButton = null;
+  
+  if (paginationContainer) {
+    // Find all page number items
+    pageItems = Array.from(paginationContainer.querySelectorAll('.item')).filter(item => {
+      const text = item.textContent ? item.textContent.trim() : '';
+      return /^\d+$/.test(text) && !item.classList.contains('extreme') && !item.classList.contains('selected');
+    });
+    
+    // Find next button (right arrow)
+    const rightExtreme = paginationContainer.querySelector('.item.extreme.right');
+    if (rightExtreme) {
+      nextButton = rightExtreme;
+    }
+  }
+  
+  // Store the current page to return to it later (after we potentially changed page size)
+  const currentPageItem = paginationContainer ? paginationContainer.querySelector('.item.selected') : null;
+  const currentPageNum = currentPageItem ? parseInt(currentPageItem.textContent.trim()) : 1;
+  
+  // If we changed page size, we might only need to check 1-2 pages now instead of many
+  if (paginationContainer && (pageItems.length > 0 || nextButton)) {
+    console.log(`Pagination detected. Extracting pools from all pages...`);
+    
+    // Helper function to wait for page to load by checking if pool cells have updated
+    async function waitForPageLoad(previousPoolCount, maxWaitTime = 5000) {
+      const startTime = Date.now();
+      while (Date.now() - startTime < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const currentPoolCount = document.querySelectorAll('div.liquidity-pool-cell').length;
+        // Check if pools have changed (new page loaded) or if we're still waiting
+        const currentPageItem = document.querySelector('.pagination .item.selected');
+        if (currentPageItem) {
+          // Page seems to have loaded
+          await new Promise(resolve => setTimeout(resolve, 500)); // Extra wait for stability
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    // Helper function to get current page number
+    function getCurrentPageNum() {
+      const pagination = document.querySelector('.pagination');
+      if (!pagination) return null;
+      const selectedItem = pagination.querySelector('.item.selected');
+      if (!selectedItem) return null;
+      const text = selectedItem.textContent.trim();
+      const pageNum = parseInt(text);
+      return isNaN(pageNum) ? null : pageNum;
+    }
+    
+    // Navigate through all pages to extract pools
+    // If we successfully changed page size to 100, we'll need fewer pages
+    const maxPagesToCheck = pageSizeChanged ? 5 : 100; // Safety limit (fewer if page size is 100)
+    let pagesChecked = 1;
+    let consecutiveFailures = 0;
+    const maxConsecutiveFailures = 3;
+    
+    // First, make sure we're on page 1 to start from the beginning
+    const initialPageNum = getCurrentPageNum();
+    if (initialPageNum && initialPageNum > 1) {
+      console.log(`Starting from page ${initialPageNum}, navigating to page 1 first...`);
+      const pagination = document.querySelector('.pagination');
+      if (pagination) {
+        const page1Item = Array.from(pagination.querySelectorAll('.item')).find(item => {
+          const text = item.textContent.trim();
+          return /^1$/.test(text) && !item.classList.contains('extreme');
+        });
+        if (page1Item) {
+          const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+          clickable.click();
+          await waitForPageLoad(0, 5000);
+          // Re-extract from page 1 (we already got it, but this ensures we're synced)
+          extractPoolsFromCurrentPage();
+        }
+      }
+    }
+    
+    // Now navigate through all pages using next button
+    // If page size was changed to 100, we should only need 1-2 pages
+    while (pagesChecked < maxPagesToCheck && consecutiveFailures < maxConsecutiveFailures) {
+      const pagination = document.querySelector('.pagination');
+      if (!pagination) {
+        console.log('Pagination container disappeared');
+        break;
+      }
+      
+      const currentPageBefore = getCurrentPageNum();
+      const previousPoolCount = pools.length;
+      
+      // Find next button
+      const rightExtreme = pagination.querySelector('.item.extreme.right');
+      if (!rightExtreme) {
+        console.log('No next button found');
+        break;
+      }
+      
+      const clickable = rightExtreme.closest('.item') || rightExtreme.parentElement || rightExtreme;
+      const isDisabled = clickable.classList.contains('disabled') || 
+                        clickable.hasAttribute('disabled') ||
+                        clickable.style.pointerEvents === 'none' ||
+                        getComputedStyle(clickable).pointerEvents === 'none';
+      
+      if (isDisabled) {
+        console.log('Next button is disabled - reached last page');
+        break;
+      }
+      
+      // Click next button
+      console.log(`Clicking next button (currently on page ${currentPageBefore || 'unknown'})...`);
+      clickable.click();
+      
+      // Wait for page to load
+      const pageLoaded = await waitForPageLoad(previousPoolCount, 5000);
+      if (!pageLoaded) {
+        console.warn('Page load timeout - continuing anyway');
+      }
+      
+      // Verify we actually moved to a new page
+      const currentPageAfter = getCurrentPageNum();
+      if (currentPageAfter === currentPageBefore) {
+        consecutiveFailures++;
+        console.warn(`Still on same page (${currentPageAfter}) after clicking next. Failure count: ${consecutiveFailures}`);
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          console.log('Too many consecutive failures, stopping pagination');
+          break;
+        }
+        // Wait a bit longer and try again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      
+      consecutiveFailures = 0; // Reset on success
+      
+      // Extract pools from this page
+      const poolsOnPage = extractPoolsFromCurrentPage();
+      pagesChecked++;
+      console.log(`Extracted ${poolsOnPage} pools from page ${currentPageAfter} (${pools.length} total unique pools so far)`);
+      
+      // Small delay between pages
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    console.log(`Finished navigating through ${pagesChecked} pages`);
+    
+    // Restore original page size if we changed it
+    if (pageSizeChanged && pageSizeSelector && originalPageSize !== null) {
+      try {
+        console.log(`Restoring page size from 100 back to ${originalPageSize}...`);
+        
+        // Check if it's a standard select element
+        if (pageSizeSelector.tagName === 'SELECT') {
+          pageSizeSelector.value = originalPageSize;
+          
+          // Trigger change event
+          const changeEvent = new Event('change', { bubbles: true });
+          pageSizeSelector.dispatchEvent(changeEvent);
+          
+          // Also try input event
+          const inputEvent = new Event('input', { bubbles: true });
+          pageSizeSelector.dispatchEvent(inputEvent);
+        } else {
+          // It's a custom dropdown (like .size-per-page)
+          // Click to open the dropdown
+          pageSizeSelector.click();
+          
+          // Wait for dropdown to open
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Look for the original page size option (e.g., "10")
+          let originalOption = null;
+          
+          // Try to find the option with the original page size value
+          const allElements = document.querySelectorAll('div, span, button, a, [role="menuitem"], [role="option"]');
+          for (const elem of allElements) {
+            const text = elem.textContent.trim();
+            if (text === originalPageSize) {
+              const rect = elem.getBoundingClientRect();
+              const selectorRect = pageSizeSelector.getBoundingClientRect();
+              // Check if it's near the selector (likely the dropdown option)
+              if (rect.width > 0 && rect.height > 0 && // Element is visible
+                  Math.abs(rect.top - selectorRect.bottom) < 200 && 
+                  Math.abs(rect.left - selectorRect.left) < 100) {
+                originalOption = elem;
+                break;
+              }
+            }
+          }
+          
+          if (originalOption) {
+            console.log(`Found "${originalPageSize}" option, clicking it...`);
+            originalOption.click();
+          } else {
+            console.warn(`Could not find "${originalPageSize}" option in dropdown`);
+          }
+        }
+        
+        // Wait for page to reload with original page size
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log('Page size restored');
+        
+        // After restoring page size, we need to navigate back to the original page
+        // because changing page size likely reset us to page 1
+        if (currentPageNum > 1) {
+          console.log(`Navigating back to original page ${currentPageNum}...`);
+          const restoredPagination = document.querySelector('.pagination');
+          if (restoredPagination) {
+            const allPageItems = Array.from(restoredPagination.querySelectorAll('.item')).filter(item => {
+              const text = item.textContent.trim();
+              return /^\d+$/.test(text) && !item.classList.contains('extreme');
+            });
+            
+            const targetPageItem = allPageItems.find(item => {
+              const pageNum = parseInt(item.textContent.trim());
+              return pageNum === currentPageNum;
+            });
+            
+            if (targetPageItem) {
+              const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
+              clickable.click();
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              console.log(`Returned to page ${currentPageNum}`);
+            } else {
+              console.warn(`Could not find page ${currentPageNum} button after restoring page size`);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Error restoring page size:', error);
+      }
+    } else if (currentPageNum > 1) {
+      // If we didn't change page size, just return to original page normally
+      console.log(`Returning to page ${currentPageNum}...`);
+      const finalPagination = document.querySelector('.pagination');
+      if (finalPagination) {
+        const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
+          const text = item.textContent ? item.textContent.trim() : '';
+          return /^\d+$/.test(text) && !item.classList.contains('extreme');
+        });
+        
+        const targetPageItem = allPageItems.find(item => {
+          const pageNum = parseInt(item.textContent.trim());
+          return pageNum === currentPageNum;
+        });
+        
+        if (targetPageItem) {
+          const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
+          clickable.click();
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        } else {
+          // Try to go to page 1 and navigate from there
+          const page1Item = allPageItems.find(item => {
+            const pageNum = parseInt(item.textContent.trim());
+            return pageNum === 1;
+          });
+          if (page1Item) {
+            const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+            clickable.click();
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Navigate to target page if needed
+            if (currentPageNum > 1) {
+              const updatedPagination = document.querySelector('.pagination');
+              if (updatedPagination) {
+                const updatedPageItems = Array.from(updatedPagination.querySelectorAll('.item')).filter(item => {
+                  const text = item.textContent ? item.textContent.trim() : '';
+                  return /^\d+$/.test(text) && !item.classList.contains('extreme');
+                });
+                const targetItem = updatedPageItems.find(item => {
+                  const pageNum = parseInt(item.textContent.trim());
+                  return pageNum === currentPageNum;
+                });
+                if (targetItem) {
+                  const clickable = targetItem.closest('.item') || targetItem.parentElement || targetItem;
+                  clickable.click();
+                  await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`Extraction complete: Found ${pools.length} unique pools across all pages`);
   return pools;
 }
 
@@ -945,8 +2153,8 @@ async function extractPoolsFromAPI() {
 /**
  * Hybrid extraction using RPC and API
  */
-async function extractPoolsHybrid(deepScan = false) {
-  console.log(`Attempting hybrid extraction (RPC + API) with Deep Scan: ${deepScan}...`);
+async function extractPoolsHybrid() {
+  console.log('Attempting hybrid extraction (RPC + API)...');
   let apiPools = [];
   
   try {
@@ -966,7 +2174,7 @@ async function extractPoolsHybrid(deepScan = false) {
   
   // Always fetch from DOM to ensure we don't miss pools not in the API (e.g. vAMM/sAMM)
   console.log('Fetching from DOM to supplement/fallback...');
-  const domPools = await extractPoolsFromDOM(deepScan);
+  const domPools = await extractPoolsFromDOM();
   console.log(`DOM extraction: ${domPools.length} pools`);
   
   // Merge lists (prefer API data if available as it has precise weights)
@@ -1042,6 +2250,415 @@ async function extractPoolsHybrid(deepScan = false) {
   
   return mergedPools;
 }
+// --- From static-rewards-loader.js ---
+/**
+ * Load static rewards map as fallback
+ * This provides rewards for pools that don't have DOM data
+ */
+
+// Static rewards map (from analysis of multicall responses)
+// This is a fallback when DOM extraction or real-time interception doesn't have rewards
+const STATIC_REWARDS_MAP = {
+  "0x04a954bc8af9a1fdc2ce5f3192bdca369a4512cc": 169.05428592971938,
+  "0x0c128cd9ea013c0638b28df7e210e022376bcc38": 22047.912352010124,
+  "0x0e5aad7522acf208c5f691d3f20af0c26d1d669a": 17317.85528615543,
+  "0x1131d1e669f6652cffe404213bfd0cc6b4676b48": 389940.79738262977,
+  "0x14e4a5bed2e5e688ee1a5ca3a4914250d1abd573": 852862.2466530642,
+  "0x152e06cce8049f1e42ffd0c0cf842b9ffca6035b": 2091.057460441644,
+  "0x15c5133f63c4914d4e151cbf4babfc8f51707477": 26955.537717263433,
+  "0x15c79629b9e2508726385b013dd5f550db0d49d9": 186.5984288231345,
+  "0x202b3e7af2635bbde922582909df6ebccf244d2a": 75794.43954851283,
+  "0x2466f2d17689b734ed988eb0843aa2ac056c5c09": 53742.22098027629,
+  "0x2625e03748213f82485061ac17f22d84b5312ec0": 6142.375469146795,
+  "0x2eda50d933fcff98ff0bbd9913bae53f71fdd68a": 535.9757716546034,
+  "0x3afadc8477fc516dcd05259baee96ec586174ff4": 12151.194840770413,
+  "0x3e70ddb1b82c311e49f16deff3b3805c94cdfe26": 56938.35836230534,
+  "0x403822e6cfa57d10c32a4e910ed740f9ced8c615": 13739.159884146402,
+  "0x409985a488f7b1a79d964398d827b450a33a86a0": 418295.7473737611,
+  "0x419b7d20c1dabaa6fb333c07bf0a006bd6bf3600": 152859.16045231026,
+  "0x42712c828ccdc5034aeac5f2e1acfb72fcda5b25": 161980.20619363495,
+  "0x4a930a63b13e6683a204cb10ef20f68310231459": 11241975.569143604,
+  "0x4c33a727e3744009f7413d2d1fbbad77d7df207f": 8694334.887259468,
+  "0x4d5df15ff7dde069b2ff175f45c845e168b20cd5": 22161.33636200877,
+  "0x4f905251040d1b31cd7eff74ef0c91bbf08022c0": 111623.30887373125,
+  "0x5785c26501355206a7a136d50764d6a31816a9da": 218407.342694937,
+  "0x59faf1480cb7cd749ee517c2aa7a15a26c0fb9af": 224788.28967990316,
+  "0x5a758f607542c8a12aadc29f74dfba5f14df00b3": 13721.68118598134,
+  "0x612a0664a2c2b6d0b8e85c291181d9cff0b5dc60": 276479.1725076629,
+  "0x624e692595dfa46974179b39b9c23f664e9a23c3": 74183.56526763739,
+  "0x6e6be1750b883b324caaeb97cce819a7d025a817": 5580.507249920544,
+  "0x737f1cab9cd97c40bbe4d59c85b0d2c1fdbaa37d": 2690.979437982621,
+  "0x746472ebffe89b1ce1357f26d3e73fa1d4e3116c": 95729.74040695795,
+  "0x758909881a386e30e39490664f85f2247417c0de": 2144857.967039499,
+  "0x76eb2c0c8adabc6be513a1f3b6cc9191d017fac7": 4579.719961382134,
+  "0x78f5a53731564894a7e4fff827a88e5fbf9cfcb6": 4278.37477619742,
+  "0x85bec030b05da25871d2cf82f1e4442e7e044902": 3022952.4755633017,
+  "0x8abd9e4ab4132116de3c3531edbb628f1b221e5c": 716425.4213327002,
+  "0x8e798638b28d9e677b2c0fa500d93989acf5d717": 84361.4826470168,
+  "0x921ca54e1d32008c25b352bb75aa00593288f1b3": 2378.150181699723,
+  "0x932dc494e571c4588a7e4927aa1c5cfaaa044491": 12839.691112142482,
+  "0x955514594f1b43514156c1c9e7a89cbd4815c172": 99926.72607517657,
+  "0xaf7b503b9c1d0c7cacbfc984a91dea1a9f8b8fbf": 7797741.710089478,
+  "0xb46af12bbcd6540d63b8580601c0b149b2c6f8f5": 15518.316366840823,
+  "0xbbb931e832bf3c789bab467e4a6f6c1551791d3e": 239.37333983523197,
+  "0xc2582deaa593bf8ef800ee980609824d412b6cbd": 23404.39052847654,
+  "0xc3d792a7b51adeb521cd431ac75831d8c433801a": 23335059.442871414,
+  "0xd299699e69adc03fc65e14ec605286758facf1d8": 3380.8655545629254,
+  "0xe89550d1986afd3ea82f9193a24bf5198f77f111": 1960984.558367595,
+  "0xedcfa2d80cf06fb7642e956a1e95dbc37c75995b": 42503.84997948438,
+  "0xef94b376b0e9cb81287be8114a3c4e81aafa47a5": 91325.04640188717,
+  "0xf2b0f7482685d5cf1f40a3de4abfa2665052fa14": 52436767.89768887,
+  "0xfcbdd05f764702ec1cb56c6324a45d6472b51f74": 815688.3581432106,
+  "0xfff3a856e0f9644e360e4dfc99550b56238084f0": 15233.032941791034,
+};
+
+function getStaticReward(poolAddress) {
+  const key = poolAddress.toLowerCase();
+  return STATIC_REWARDS_MAP[key] || 0;
+}
+
+function applyStaticRewards(pools) {
+  let updated = 0;
+  for (const pool of pools) {
+    if (pool.pool_id && pool.total_rewards === 0) {
+      const reward = getStaticReward(pool.pool_id);
+      if (reward > 0) {
+        pool.total_rewards = reward;
+        updated++;
+      }
+    }
+  }
+  return updated;
+}
+
+// --- From multicall-decoder.js ---
+/**
+ * Improved Multicall3 Response Decoder
+ * Properly decodes aggregate() return data to match function calls to return values
+ * 
+ * Structure:
+ *   aggregate((address,bytes)[]) returns (uint256 blockNumber, (bool success, bytes returnData)[])
+ */
+
+const MULTICALL3_ADDRESS = '0xca11bde05977b3631167028862be2a173976ca11';
+
+/**
+ * Decode Multicall3 aggregate() request
+ * @param {string} requestHex - The hex calldata
+ * @returns {Array<{target: string, selector: string, args: string}>}
+ */
+function decodeMulticallRequest(requestHex) {
+  if (!requestHex || !requestHex.startsWith(AGGREGATE_SELECTOR)) {
+    return [];
+  }
+
+  // Remove selector
+  let hexData = requestHex.slice(10); // Remove "0x82ad56cb"
+  if (hexData.startsWith('0x')) {
+    hexData = hexData.slice(2);
+  }
+  hexData = hexData.toLowerCase();
+
+  try {
+    // Array encoding: offset (32 bytes) + length (32 bytes) + data
+    const offset = parseInt(hexData.slice(0, 64), 16);
+    const arrayStart = offset * 2; // offset is in bytes, hexData is in hex chars
+
+    if (arrayStart >= hexData.length) {
+      return [];
+    }
+
+    const length = parseInt(hexData.slice(arrayStart, arrayStart + 64), 16);
+    const calls = [];
+    let dataPos = arrayStart + 64;
+
+    for (let i = 0; i < length; i++) {
+      if (dataPos >= hexData.length) break;
+
+      // Each tuple: (address, bytes)
+      // Address is 32 bytes (right-aligned, last 20 bytes are the address)
+      const addrHex = hexData.slice(dataPos, dataPos + 64);
+      const target = '0x' + addrHex.slice(-40);
+      dataPos += 64;
+
+      // Bytes offset (points to where bytes data is stored)
+      const bytesOffset = parseInt(hexData.slice(dataPos, dataPos + 64), 16);
+      dataPos += 64;
+
+      // Bytes data is stored at: offset + bytesOffset
+      const bytesDataStart = (offset + bytesOffset) * 2;
+      if (bytesDataStart >= hexData.length) break;
+
+      // Get bytes length
+      const bytesLength = parseInt(hexData.slice(bytesDataStart, bytesDataStart + 64), 16);
+      const bytesDataPos = bytesDataStart + 64;
+
+      // Round up to 32-byte boundary
+      const paddedLength = Math.ceil(bytesLength / 32) * 32;
+      if (bytesDataPos + (paddedLength * 2) > hexData.length) break;
+
+      // Get bytes data
+      const bytesDataHex = hexData.slice(bytesDataPos, bytesDataPos + (bytesLength * 2));
+      const bytesData = '0x' + bytesDataHex;
+
+      // Extract selector (first 4 bytes = 8 hex chars)
+      const selector = bytesData.slice(0, 10);
+      const args = bytesData.slice(10);
+
+      calls.push({
+        index: i,
+        target,
+        selector,
+        args,
+        calldata: bytesData,
+      });
+    }
+
+    return calls;
+  } catch (e) {
+    console.warn('Error decoding multicall request:', e);
+    return [];
+  }
+}
+
+/**
+ * Decode Multicall3 aggregate() response
+ * @param {string} responseHex - The hex response
+ * @returns {{blockNumber: number, returns: Array<{success: boolean, returnData: string}>}}
+ */
+function decodeMulticallResponse(responseHex) {
+  if (!responseHex || responseHex === '0x') {
+    return { blockNumber: 0, returns: [] };
+  }
+
+  let hexData = responseHex;
+  if (hexData.startsWith('0x')) {
+    hexData = hexData.slice(2);
+  }
+  hexData = hexData.toLowerCase();
+
+  if (hexData.length < 64) {
+    return { blockNumber: 0, returns: [] };
+  }
+
+  try {
+    // Structure: (uint256 blockNumber, (bool success, bytes returnData)[])
+    // First 32 bytes: offset to blockNumber
+    const blockOffset = parseInt(hexData.slice(0, 64), 16);
+    const blockPos = blockOffset * 2;
+    const blockNumber = parseInt(hexData.slice(blockPos, blockPos + 64), 16);
+
+    // Next 32 bytes: offset to returnData array
+    const returnsOffset = parseInt(hexData.slice(64, 128), 16);
+    const returnsArrayStart = returnsOffset * 2;
+
+    if (returnsArrayStart >= hexData.length) {
+      return { blockNumber, returns: [] };
+    }
+
+    // Get array length
+    const returnsLength = parseInt(hexData.slice(returnsArrayStart, returnsArrayStart + 64), 16);
+    const returns = [];
+    let dataPos = returnsArrayStart + 64;
+
+    for (let i = 0; i < returnsLength; i++) {
+      if (dataPos >= hexData.length) break;
+
+      // Each element is a tuple: (bool success, bytes returnData)
+      // Get offset to this tuple
+      const tupleOffset = parseInt(hexData.slice(dataPos, dataPos + 64), 16);
+      const tupleStart = (returnsOffset + tupleOffset) * 2;
+      dataPos += 64;
+
+      if (tupleStart >= hexData.length) break;
+
+      // Decode tuple: (bool, bytes)
+      // Bool is 32 bytes (padded)
+      const successHex = hexData.slice(tupleStart, tupleStart + 64);
+      const success = parseInt(successHex, 16) !== 0;
+
+      // Bytes: offset (32 bytes) + length (32 bytes) + data
+      const bytesOffset = parseInt(hexData.slice(tupleStart + 64, tupleStart + 128), 16);
+      const bytesDataStart = tupleStart + (bytesOffset * 2);
+
+      if (bytesDataStart >= hexData.length) {
+        returns.push({ success, returnData: '0x' });
+        continue;
+      }
+
+      // Get length
+      const bytesLength = parseInt(hexData.slice(bytesDataStart, bytesDataStart + 64), 16);
+      const bytesDataPos = bytesDataStart + 64;
+
+      // Get data (padded to 32-byte boundary)
+      const paddedLength = Math.ceil(bytesLength / 32) * 32;
+      if (bytesDataPos + (paddedLength * 2) > hexData.length) {
+        returns.push({ success, returnData: '0x' });
+        continue;
+      }
+
+      const bytesDataHex = hexData.slice(bytesDataPos, bytesDataPos + (bytesLength * 2));
+      const returnData = '0x' + bytesDataHex;
+
+      returns.push({ success, returnData });
+    }
+
+    return { blockNumber, returns };
+  } catch (e) {
+    console.warn('Error decoding multicall response:', e);
+    return { blockNumber: 0, returns: [] };
+  }
+}
+
+/**
+ * Decode function return value based on selector
+ * @param {string} returnData - The hex return data
+ * @param {string} selector - The function selector
+ * @returns {any} Decoded value
+ */
+function decodeFunctionReturn(returnData, selector) {
+  if (!returnData || returnData === '0x') {
+    return null;
+  }
+
+  const funcSig = KNOWN_SELECTORS[selector];
+  if (!funcSig) {
+    return null;
+  }
+
+  try {
+    let hexData = returnData;
+    if (hexData.startsWith('0x')) {
+      hexData = hexData.slice(2);
+    }
+
+    if (funcSig === 'weights(address)') {
+      // Returns uint256
+      const value = BigInt('0x' + hexData.slice(0, 64));
+      return Number(value) / 1e18;
+    } else if (funcSig === 'getGauge(address)') {
+      // Returns address
+      const addr = '0x' + hexData.slice(-40);
+      if (addr === '0x' + '0'.repeat(40)) {
+        return null;
+      }
+      return addr;
+    } else if (funcSig === 'token0()' || funcSig === 'token1()') {
+      // Returns address
+      const addr = '0x' + hexData.slice(-40);
+      if (addr === '0x' + '0'.repeat(40)) {
+        return null;
+      }
+      return addr;
+    } else if (funcSig === 'fee()') {
+      // Returns uint24 (padded to uint256)
+      return parseInt(hexData.slice(0, 64), 16);
+    } else if (funcSig === 'liquidity()' || funcSig === 'totalSupply()') {
+      // Returns uint256
+      const value = BigInt('0x' + hexData.slice(0, 64));
+      return Number(value) / 1e18;
+    } else if (funcSig === 'tokens_per_week(uint256)') {
+      // Returns uint256
+      const value = BigInt('0x' + hexData.slice(0, 64));
+      return Number(value) / 1e18;
+    } else {
+      // Unknown function, return raw hex
+      return returnData;
+    }
+  } catch (e) {
+    console.warn(`Error decoding function return for ${funcSig}:`, e);
+    return null;
+  }
+}
+
+/**
+ * Match function calls to their return values
+ * @param {Array} requests - Decoded requests
+ * @param {Array} returns - Decoded returns
+ * @returns {Array<Object>} Matched calls with their return values
+ */
+function matchCallsToReturns(requests, returns) {
+  const matched = [];
+
+  for (let i = 0; i < Math.min(requests.length, returns.length); i++) {
+    const req = requests[i];
+    const ret = returns[i];
+
+    const funcName = KNOWN_SELECTORS[req.selector] || `unknown(${req.selector})`;
+    let decodedValue = null;
+
+    if (ret.success && ret.returnData) {
+      decodedValue = decodeFunctionReturn(ret.returnData, req.selector);
+    }
+
+    matched.push({
+      index: i,
+      target: req.target,
+      selector: req.selector,
+      function: funcName,
+      args: req.args,
+      success: ret.success,
+      returnData: ret.returnData,
+      decodedValue,
+    });
+  }
+
+  return matched;
+}
+
+/**
+ * Extract rewards from decoded multicall data
+ * Looks for large uint256 values that could be rewards
+ * @param {Array} matched - Matched calls from matchCallsToReturns
+ * @param {Set<string>} knownPools - Set of known pool addresses (lowercase, no 0x)
+ * @returns {Object} Map of pool address to reward value
+ */
+function extractRewardsFromDecoded(matched, knownPools) {
+  const rewards = {};
+
+  for (const call of matched) {
+    // Check if this call is for a known pool
+    const targetLower = call.target.toLowerCase();
+    const poolKey = targetLower.slice(2); // Remove 0x
+
+    if (!knownPools.has(poolKey)) {
+      continue;
+    }
+
+    // Check if return value is a large number (could be reward)
+    if (call.decodedValue !== null && typeof call.decodedValue === 'number') {
+      const value = call.decodedValue;
+      // Filter for reasonable reward range (100 to 100M USD)
+      if (value > 100 && value < 100000000) {
+        const poolAddr = targetLower;
+        if (!rewards[poolAddr] || value > rewards[poolAddr]) {
+          rewards[poolAddr] = value;
+        }
+      }
+    }
+
+    // Also check raw return data for large values
+    if (call.returnData && call.returnData !== '0x' && call.returnData.length >= 66) {
+      try {
+        const hexData = call.returnData.slice(2);
+        const value = BigInt('0x' + hexData.slice(0, 64));
+        const usdValue = Number(value) / 1e18;
+
+        if (usdValue > 100 && usdValue < 100000000) {
+          const poolAddr = targetLower;
+          if (!rewards[poolAddr] || usdValue > rewards[poolAddr]) {
+            rewards[poolAddr] = usdValue;
+          }
+        }
+      } catch (e) {
+        // Not a valid number
+      }
+    }
+  }
+
+  return rewards;
+}
+
 // Now include the main content script logic
 console.log('Blackhole DEX Tools: Content script loaded');
 
@@ -1214,6 +2831,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// Global rewards provider for early multicall interception
+let globalRewardsProvider = null;
+
 function injectApiDiscovery() {
   try {
     console.log('Blackhole DEX Tools: Injecting API discovery...');
@@ -1221,6 +2841,21 @@ function injectApiDiscovery() {
     script.src = chrome.runtime.getURL('lib/api-discovery.js');
     (document.head || document.documentElement).appendChild(script);
     script.onload = () => script.remove();
+    
+    // Set up multicall interception EARLY, before page loads
+    // This allows us to capture rewards from the site's initial multicall requests
+    if (typeof PoolDataProvider !== 'undefined' && typeof interceptMulticallResponses === 'function') {
+      try {
+        const provider = new PoolDataProvider();
+        globalRewardsProvider = provider.getRewardsProvider();
+        if (globalRewardsProvider) {
+          interceptMulticallResponses(globalRewardsProvider);
+          console.log('✓ Multicall interception enabled - capturing rewards from network requests');
+        }
+      } catch (e) {
+        console.warn('Failed to set up multicall interception:', e);
+      }
+    }
   } catch (error) {
     console.warn('Blackhole DEX Tools: Failed to inject API discovery script:', error);
   }
@@ -1282,9 +2917,9 @@ async function fetchPoolData(forceRefresh = false) {
     try {
       // Use hybrid extraction (RPC/API -> DOM fallback)
       if (typeof extractPoolsHybrid === 'function') {
-        pools = await extractPoolsHybrid(settings.deepScan);
+        pools = await extractPoolsHybrid();
       } else {
-        pools = await extractPoolsFromDOM(settings.deepScan);
+        pools = await extractPoolsFromDOM();
       }
       console.log(`Extracted ${pools.length} pools`);
       

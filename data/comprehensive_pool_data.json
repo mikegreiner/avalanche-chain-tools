@@ -1,0 +1,42 @@
+{
+  "0x9a6142ef0766915db02066f791d969c22eba1dca": {
+    "pool_address": "0x9a6142ef0766915db02066f791d969c22eba1dca",
+    "voter_data": {
+      "weight": 11086345.39438914
+    },
+    "pool_contract_data": {
+      "token0()": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "token1()": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "fee()": 7000,
+      "liquidity()": 41021418.723821394
+    },
+    "gauge_data": {},
+    "bribe_data": {}
+  },
+  "0x78f5a53731564894a7e4fff827a88e5fbf9cfcb6": {
+    "pool_address": "0x78f5a53731564894a7e4fff827a88e5fbf9cfcb6",
+    "voter_data": {
+      "weight": 346612.23407121794
+    },
+    "pool_contract_data": {
+      "token0()": "0x02d159a0c393b3a982c4acb3d03816a42d94f1ab",
+      "token1()": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "totalSupply()": 4278.37477619742
+    },
+    "gauge_data": {},
+    "bribe_data": {}
+  },
+  "0xedcfa2d80cf06fb7642e956a1e95dbc37c75995b": {
+    "pool_address": "0xedcfa2d80cf06fb7642e956a1e95dbc37c75995b",
+    "voter_data": {
+      "weight": 842981.5650729369
+    },
+    "pool_contract_data": {
+      "token0()": "0x4cb85e39d5622af604405077a589c3078f3a59b2",
+      "token1()": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "totalSupply()": 42503.84997948438
+    },
+    "gauge_data": {},
+    "bribe_data": {}
+  }
+}

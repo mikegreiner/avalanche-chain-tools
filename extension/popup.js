@@ -77,11 +77,6 @@ function setupListeners() {
     }
   });
 
-  document.getElementById('deepScan').addEventListener('change', async () => {
-    await autoSaveSettings();
-    // Deep scan setting change might require a refresh to take effect fully if we want to trigger it immediately
-    // For now just save the setting
-  });
   
   // Enable overlay checkbox
   document.getElementById('enableOverlay').addEventListener('change', async () => {
@@ -162,7 +157,6 @@ function populateForm(settings) {
   setVal('sortBy', settings.sortBy);
   
   if (settings.hideVamm !== undefined) document.getElementById('hideVamm').checked = settings.hideVamm;
-  if (settings.deepScan !== undefined) document.getElementById('deepScan').checked = settings.deepScan;
   if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
 }
 
@@ -347,7 +341,6 @@ async function loadSettings() {
     maxPoolPercentage: null,
     sortBy: 'auto',
     hideVamm: false,
-    deepScan: false,
     enableOverlay: true
   };
 }
@@ -360,7 +353,6 @@ async function autoSaveSettings() {
     maxPoolPercentage: parseFloatInput('maxPoolPercentage'),
     sortBy: document.getElementById('sortBy').value,
     hideVamm: document.getElementById('hideVamm').checked,
-    deepScan: document.getElementById('deepScan').checked,
     enableOverlay: document.getElementById('enableOverlay').checked
   };
   

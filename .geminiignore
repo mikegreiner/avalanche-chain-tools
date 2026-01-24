@@ -1,0 +1,41 @@
+# Exclude bulky dependencies and build artifacts
+node_modules/
+dist/
+build/
+target/
+vendor/
+__pycache__/
+
+# Project-specific data/temp directories
+output/
+cache/
+debug/
+tmp/
+
+# Exclude large data/logs
+*.log
+*.sqlite
+*.har
+*.mhtml
+/backups/
+/temp/
+implementation_source.json
+voter_source.json
+debug_pool_ids_page_source.html
+
+# Exclude hidden system/config files (to protect secrets)
+.env
+.terraform/
+.git/
+.idea/
+.vscode/
+
+# Exclude binary or non-text files that eat tokens
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.exe
+*.bin

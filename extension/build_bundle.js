@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const EXT_DIR = __dirname;
 const LIB_DIR = path.join(EXT_DIR, 'lib');
 
-function build() {
+async function build() {
     console.log('Building content-bundle.js...');
 
     // 1. Header
@@ -24,25 +24,61 @@ function build() {
 
 `;
 
-    // Helper to strip module keywords line by line
+    // Track declared constants and functions to avoid duplicates
+    const declaredConstants = new Set();
+    const declaredFunctions = new Set();
+    const skipConstants = ['VOTER_ADDRESS', 'RPC_URL', 'MULTICALL3_ADDRESS', 'AGGREGATE_SELECTOR', 'SELECTORS', 'API_URL'];
+    const skipFunctions = ['hexToBigInt', 'hexToAddress']; // Helper functions that appear in multiple files
+    
+    // Helper to strip module keywords line by line and handle duplicate constants
     const stripModules = (content) => {
         const lines = content.split('\n');
-        const resultLines = lines.map(line => {
-            let processed = line;
+        const resultLines = [];
+        let skipUntilSemicolon = false;
+        let skipUntilClosingBrace = false;
+        let braceDepth = 0;
+        
+        for (let i = 0; i < lines.length; i++) {
+            let processed = lines[i];
+            const originalLine = processed;
             
-            // Remove imports
+            // Skip lines that are part of a multi-line import/export
+            if (skipUntilSemicolon) {
+                // Check if this line completes the import/export
+                if (processed.includes('from') || processed.includes(';') || processed.trim() === '}') {
+                    skipUntilSemicolon = false;
+                }
+                continue;
+            }
+            
+            // Remove imports (including multi-line)
             if (processed.trim().startsWith('import ')) {
-                return null;
+                // Check if it's a multi-line import
+                if (processed.includes('{') && !processed.includes('}')) {
+                    skipUntilSemicolon = true;
+                }
+                continue;
             }
             
             // Remove export default
             if (processed.trim().startsWith('export default ')) {
-                return null;
+                continue;
             }
             
-            // Remove export { ... }
+            // Remove export { ... } (including multi-line)
             if (processed.trim().startsWith('export {')) {
-                return null;
+                if (!processed.includes('}')) {
+                    skipUntilSemicolon = true;
+                }
+                continue;
+            }
+            
+            // Remove lines that are just closing braces from imports/exports
+            if (processed.trim() === '}' && i > 0) {
+                const prevLine = lines[i - 1];
+                if (prevLine && (prevLine.includes('import') || prevLine.includes('export'))) {
+                    continue;
+                }
             }
             
             // Replace export function -> function
@@ -52,8 +88,75 @@ function build() {
             // Replace export class -> class
             processed = processed.replace('export class ', 'class ');
             
-            return processed;
-        }).filter(line => line !== null);
+            // Handle duplicate function declarations (but not class methods)
+            const functionMatch = processed.match(/^(function|async function)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/);
+            if (functionMatch && !processed.match(/^\s+/)) { // Only top-level functions, not class methods
+                const funcName = functionMatch[2];
+                if (skipFunctions.includes(funcName) && declaredFunctions.has(funcName)) {
+                    // Skip duplicate function - find the closing brace
+                    skipUntilClosingBrace = true;
+                    braceDepth = 0;
+                    // Count opening brace if on same line
+                    for (const char of processed) {
+                        if (char === '{') braceDepth++;
+                        if (char === '}') braceDepth--;
+                    }
+                    continue;
+                }
+                if (skipFunctions.includes(funcName)) {
+                    declaredFunctions.add(funcName);
+                }
+            }
+            
+            // Handle duplicate const declarations FIRST (before skip logic)
+            const constMatch = processed.match(/^(const|let|var)\s+([A-Z_]+)\s*=/);
+            if (constMatch) {
+                const constName = constMatch[2];
+                // If it's a duplicate constant we want to skip
+                if (skipConstants.includes(constName) && declaredConstants.has(constName)) {
+                    // Check if it's an object assignment (has { on same or next line)
+                    const hasBrace = processed.includes('{') || (i + 1 < lines.length && lines[i + 1].trim().startsWith('{'));
+                    if (hasBrace) {
+                        skipUntilClosingBrace = true;
+                        braceDepth = 0;
+                        // Count opening brace on this line
+                        for (const char of processed) {
+                            if (char === '{') braceDepth++;
+                            if (char === '}') braceDepth--;
+                        }
+                    } else {
+                        skipUntilSemicolon = true;
+                    }
+                    continue;
+                }
+                // Track constants we've seen
+                if (skipConstants.includes(constName)) {
+                    declaredConstants.add(constName);
+                }
+            }
+            
+            // Skip lines until we find the closing brace or semicolon
+            if (skipUntilClosingBrace) {
+                // Count braces
+                for (const char of processed) {
+                    if (char === '{') braceDepth++;
+                    if (char === '}') braceDepth--;
+                }
+                if (braceDepth === 0 && processed.includes('}')) {
+                    skipUntilClosingBrace = false;
+                }
+                continue;
+            }
+            
+            if (skipUntilSemicolon) {
+                if (processed.includes(';')) {
+                    skipUntilSemicolon = false;
+                }
+                continue;
+            }
+            
+            resultLines.push(processed);
+        }
         
         return resultLines.join('\n');
     };
@@ -70,7 +173,31 @@ ${stripModules(poolJs)}
 ${stripModules(rpcJs)}
 `;
 
-    // 2c. Include PoolDataProvider
+    // 2c. Include RpcPoolProvider (needed by PoolDataProvider)
+    let rpcPoolJs = fs.readFileSync(path.join(LIB_DIR, 'rpc-pool-provider.js'), 'utf8');
+    bundle += `// --- From rpc-pool-provider.js ---
+${stripModules(rpcPoolJs)}
+`;
+
+    // 2d. Include RpcRewardsProvider (needed by PoolDataProvider)
+    let rpcRewardsJs = fs.readFileSync(path.join(LIB_DIR, 'rpc-rewards-provider.js'), 'utf8');
+    bundle += `// --- From rpc-rewards-provider.js ---
+${stripModules(rpcRewardsJs)}
+`;
+
+    // 2e. Include RewardsExtractor (needed by RpcRewardsProvider)
+    let rewardsExtractorJs = fs.readFileSync(path.join(LIB_DIR, 'rewards-extractor.js'), 'utf8');
+    bundle += `// --- From rewards-extractor.js ---
+${stripModules(rewardsExtractorJs)}
+`;
+
+    // 2f. Include VammSammProvider (needed by PoolDataProvider)
+    let vammSammJs = fs.readFileSync(path.join(LIB_DIR, 'vamm-samm-provider.js'), 'utf8');
+    bundle += `// --- From vamm-samm-provider.js ---
+${stripModules(vammSammJs)}
+`;
+
+    // 2g. Include PoolDataProvider
     let providerJs = fs.readFileSync(path.join(LIB_DIR, 'pool-data-provider.js'), 'utf8');
     bundle += `// --- From pool-data-provider.js ---
 ${stripModules(providerJs)}
@@ -86,6 +213,18 @@ ${stripModules(recommenderJs)}
     let extractorJs = fs.readFileSync(path.join(LIB_DIR, 'pool-extractor.js'), 'utf8');
     bundle += `// --- From pool-extractor.js ---
 ${stripModules(extractorJs)}
+`;
+
+    // 4b. Include static-rewards-loader.js
+    let staticRewardsJs = fs.readFileSync(path.join(LIB_DIR, 'static-rewards-loader.js'), 'utf8');
+    bundle += `// --- From static-rewards-loader.js ---
+${stripModules(staticRewardsJs)}
+`;
+
+    // 4c. Include multicall-decoder.js
+    let multicallDecoderJs = fs.readFileSync(path.join(LIB_DIR, 'multicall-decoder.js'), 'utf8');
+    bundle += `// --- From multicall-decoder.js ---
+${stripModules(multicallDecoderJs)}
 `;
 
     // 5. Append main content logic
@@ -128,6 +267,51 @@ ${stripModules(extractorJs)}
     }
 
     fs.writeFileSync(path.join(EXT_DIR, 'content-bundle.js'), bundle);
+    
+    // Validate bundle
+    console.log('Validating bundle...');
+    
+    // 1. Syntax check
+    try {
+        const { execSync } = await import('child_process');
+        execSync(`node -c "${path.join(EXT_DIR, 'content-bundle.js')}"`, { stdio: 'pipe', encoding: 'utf8' });
+        console.log('  ✓ Syntax check passed');
+    } catch (e) {
+        const errorMsg = e.stdout?.toString() || e.stderr?.toString() || e.message;
+        if (errorMsg.includes('SyntaxError') || errorMsg.includes('Unexpected token')) {
+            console.error('  ❌ Syntax error:', errorMsg.split('\n')[0]);
+            process.exit(1);
+        }
+        // If it's a different error, continue
+    }
+    
+    // 2. Check for required classes
+    const requiredClasses = ['RpcPoolProvider', 'RpcRewardsProvider', 'RewardsExtractor', 'VammSammProvider', 'PoolDataProvider'];
+    const bundleContent = fs.readFileSync(path.join(EXT_DIR, 'content-bundle.js'), 'utf8');
+    const missing = [];
+    for (const className of requiredClasses) {
+        if (!new RegExp(`class\\s+${className}\\s*[({]`).test(bundleContent)) {
+            missing.push(className);
+        }
+    }
+    
+    if (missing.length > 0) {
+        console.error(`  ❌ Missing classes: ${missing.join(', ')}`);
+        process.exit(1);
+    }
+    console.log('  ✓ All required classes present');
+    
+    // 3. Check for duplicate constants
+    const constants = ['VOTER_ADDRESS', 'RPC_URL', 'SELECTORS'];
+    for (const constant of constants) {
+        const matches = bundleContent.match(new RegExp(`const\\s+${constant}\\s*=`, 'g'));
+        if (matches && matches.length > 1) {
+            console.error(`  ❌ Duplicate constant: ${constant} (found ${matches.length} times)`);
+            process.exit(1);
+        }
+    }
+    console.log('  ✓ No duplicate constants');
+    
     console.log('Successfully built and validated content-bundle.js');
 }
 

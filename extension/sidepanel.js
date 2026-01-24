@@ -13,6 +13,12 @@ let capturedRequests = [];
 document.addEventListener('DOMContentLoaded', async () => {
   const settings = await loadSettings();
   
+  // Show/hide API Discovery tab based on setting
+  const apiDiscoveryTab = document.querySelector('.api-discovery-tab');
+  if (apiDiscoveryTab) {
+    apiDiscoveryTab.style.display = settings.apiDiscoveryEnabled ? 'block' : 'none';
+  }
+  
   // Initialize Tabs
   setupTabs();
   
@@ -95,8 +101,17 @@ function setupListeners() {
     }
   });
 
-  document.getElementById('deepScan').addEventListener('change', async () => {
+
+  document.getElementById('apiDiscoveryEnabled').addEventListener('change', async () => {
     await autoSaveSettings();
+    // Show/hide API Discovery tab
+    const apiDiscoveryTab = document.querySelector('.api-discovery-tab');
+    const settings = await loadSettings();
+    if (apiDiscoveryTab) {
+      apiDiscoveryTab.style.display = settings.apiDiscoveryEnabled ? 'block' : 'none';
+    }
+    // Reload page to inject/remove API discovery script
+    showStatus('API Discovery setting changed. Reload the voting page for changes to take effect.', 'info');
   });
   
   // Enable overlay checkbox
@@ -215,8 +230,10 @@ function setupListeners() {
       capturedRequests = [];
       const list = document.getElementById('api-logs-list');
       if (list) {
-        list.innerHTML = '<div class="empty-state"><p>No network requests intercepted yet.</p></div>';
+        list.innerHTML = '<div class="empty-state"><p>No network requests intercepted yet.</p><p style="font-size: 11px; color: #888; margin-top: 4px;">Navigate to blackhole.xyz/vote to start capturing requests.</p></div>';
       }
+      updateApiStats();
+      renderApiLogs();
     });
   }
 
@@ -229,7 +246,26 @@ function setupListeners() {
         return;
       }
 
-      const blob = new Blob([JSON.stringify(capturedRequests, null, 2)], { type: 'application/json' });
+      // Enhanced export with analysis
+      const exportData = {
+        metadata: {
+          timestamp: new Date().toISOString(),
+          totalRequests: capturedRequests.length,
+          poolEndpoints: capturedRequests.filter(r => r.analysis?.isPoolRelated).length,
+          rpcCalls: capturedRequests.filter(r => r.analysis?.isRpcCall).length
+        },
+        requests: capturedRequests.map(req => ({
+          ...req,
+          summary: {
+            category: req.analysis?.category || 'other',
+            poolType: req.analysis?.poolType || null,
+            endpointType: req.analysis?.endpointType || null,
+            hasPoolData: req.analysis?.hasPoolData || false
+          }
+        }))
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -239,7 +275,30 @@ function setupListeners() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      showStatus('Logs downloaded', 'success');
+      showStatus('Logs downloaded with analysis', 'success');
+    });
+  }
+
+  // API Discovery filters
+  const apiSearchFilter = document.getElementById('api-filter-search');
+  const apiCategoryFilter = document.getElementById('api-filter-category');
+  const apiPoolTypeFilter = document.getElementById('api-filter-pool-type');
+  
+  if (apiSearchFilter) {
+    apiSearchFilter.addEventListener('input', () => {
+      renderApiLogs();
+    });
+  }
+  
+  if (apiCategoryFilter) {
+    apiCategoryFilter.addEventListener('change', () => {
+      renderApiLogs();
+    });
+  }
+  
+  if (apiPoolTypeFilter) {
+    apiPoolTypeFilter.addEventListener('change', () => {
+      renderApiLogs();
     });
   }
 
@@ -265,49 +324,197 @@ function setupListeners() {
   });
 }
 
-function addApiLogItem(data) {
-  capturedRequests.push(data);
+function updateApiStats() {
+  const stats = {
+    total: capturedRequests.length,
+    pools: capturedRequests.filter(r => r.analysis?.isPoolRelated || r.analysis?.isApiEndpoint).length,
+    rpc: capturedRequests.filter(r => r.analysis?.isRpcCall).length,
+    vamm: capturedRequests.filter(r => r.analysis?.poolType === 'vAMM' || r.analysis?.endpointType === 'vAMM').length,
+    samm: capturedRequests.filter(r => r.analysis?.poolType === 'sAMM' || r.analysis?.endpointType === 'sAMM').length
+  };
+
+  const statTotal = document.getElementById('stat-total');
+  const statPools = document.getElementById('stat-pools');
+  const statRpc = document.getElementById('stat-rpc');
+  const statVamm = document.getElementById('stat-vamm');
+  const statSamm = document.getElementById('stat-samm');
+
+  if (statTotal) statTotal.textContent = stats.total;
+  if (statPools) statPools.textContent = stats.pools;
+  if (statRpc) statRpc.textContent = stats.rpc;
+  if (statVamm) statVamm.textContent = stats.vamm;
+  if (statSamm) statSamm.textContent = stats.samm;
+}
+
+function renderApiLogs() {
   const container = document.getElementById('api-logs-list');
   if (!container) return;
 
-  // Remove empty state if present
-  const emptyState = container.querySelector('.empty-state');
-  if (emptyState) emptyState.remove();
+  // Get filter values
+  const searchTerm = (document.getElementById('api-filter-search')?.value || '').toLowerCase();
+  const categoryFilter = document.getElementById('api-filter-category')?.value || 'all';
+  const poolTypeFilter = document.getElementById('api-filter-pool-type')?.value || 'all';
 
-  // Create log item
+  // Filter requests
+  let filtered = capturedRequests;
+  
+  if (searchTerm) {
+    filtered = filtered.filter(req => 
+      req.url.toLowerCase().includes(searchTerm) ||
+      req.method.toLowerCase().includes(searchTerm) ||
+      (req.analysis?.rpcMethod && req.analysis.rpcMethod.toLowerCase().includes(searchTerm)) ||
+      (req.analysis?.contractAddress && req.analysis.contractAddress.toLowerCase().includes(searchTerm))
+    );
+  }
+  
+  if (categoryFilter !== 'all') {
+    filtered = filtered.filter(req => req.analysis?.category === categoryFilter);
+  }
+  
+  if (poolTypeFilter !== 'all') {
+    filtered = filtered.filter(req => 
+      req.analysis?.poolType === poolTypeFilter || 
+      req.analysis?.endpointType === poolTypeFilter
+    );
+  }
+
+  // Clear container
+  container.innerHTML = '';
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No requests match the current filters.</p></div>';
+    return;
+  }
+
+  // Render filtered requests (newest first)
+  filtered.reverse().forEach(data => {
+    const item = createApiLogItem(data);
+    container.appendChild(item);
+  });
+}
+
+function createApiLogItem(data) {
   const item = document.createElement('div');
-  item.className = `api-log-item ${data.method}`;
-  item.style.borderBottom = '1px solid #eee';
-  item.style.padding = '8px 0';
+  const analysis = data.analysis || {};
+  
+  // Determine styling based on analysis
+  let borderColor = '#333';
+  let bgColor = '#0a0a0a';
+  let badge = '';
+  
+  if (analysis.isPoolRelated) {
+    borderColor = '#4CAF50';
+    bgColor = '#0a1a0a';
+    badge = '🏊 POOL';
+  } else if (analysis.isRpcCall) {
+    borderColor = '#2196F3';
+    bgColor = '#0a0f1a';
+    badge = '🔗 RPC';
+  } else if (analysis.isApiEndpoint) {
+    borderColor = '#FF9800';
+    bgColor = '#1a0f0a';
+    badge = '🌐 API';
+  }
+  
+  if (analysis.poolType === 'vAMM') {
+    borderColor = '#FF9800';
+    badge = '⚡ vAMM';
+  } else if (analysis.poolType === 'sAMM') {
+    borderColor = '#9C27B0';
+    badge = '🔄 sAMM';
+  } else if (analysis.poolType === 'CL') {
+    borderColor = '#4CAF50';
+    badge = '📊 CL';
+  }
+
+  item.style.border = `1px solid ${borderColor}`;
+  item.style.borderRadius = '4px';
+  item.style.padding = '8px';
+  item.style.marginBottom = '8px';
+  item.style.background = bgColor;
   item.style.fontSize = '11px';
   
   const time = new Date(data.timestamp).toLocaleTimeString();
   
   let responseStr = '';
+  let responsePreview = '';
   try {
-    responseStr = typeof data.responseBody === 'object' 
-      ? JSON.stringify(data.responseBody, null, 2) 
-      : data.responseBody;
+    if (typeof data.responseBody === 'object' && data.responseBody !== null) {
+      responseStr = JSON.stringify(data.responseBody, null, 2);
+      // Try to extract pool count if it's an array
+      if (Array.isArray(data.responseBody)) {
+        responsePreview = `Array with ${data.responseBody.length} items`;
+      } else if (data.responseBody.pools && Array.isArray(data.responseBody.pools)) {
+        responsePreview = `Object with pools array (${data.responseBody.pools.length} pools)`;
+      } else {
+        responsePreview = `Object with ${Object.keys(data.responseBody).length} keys`;
+      }
+    } else {
+      responseStr = String(data.responseBody);
+      responsePreview = responseStr.substring(0, 200);
+    }
   } catch (e) {
     responseStr = '(Could not parse response)';
+    responsePreview = responseStr;
+  }
+
+  // Build RPC info if available
+  let rpcInfo = '';
+  if (analysis.isRpcCall) {
+    rpcInfo = '<div style="margin: 4px 0; padding: 4px; background: rgba(33, 150, 243, 0.1); border-radius: 2px; font-size: 10px;">';
+    if (analysis.rpcMethod) {
+      rpcInfo += `<strong>Method:</strong> ${analysis.rpcMethod}<br>`;
+    }
+    if (analysis.contractAddress) {
+      rpcInfo += `<strong>Contract:</strong> ${analysis.contractAddress}<br>`;
+    }
+    if (analysis.functionSelector) {
+      rpcInfo += `<strong>Selector:</strong> ${analysis.functionSelector}`;
+    }
+    rpcInfo += '</div>';
+  }
+
+  // Build endpoint info if available
+  let endpointInfo = '';
+  if (analysis.endpointType) {
+    endpointInfo = `<div style="margin: 4px 0; padding: 4px; background: rgba(255, 152, 0, 0.1); border-radius: 2px; font-size: 10px;">
+      <strong>Endpoint Type:</strong> ${analysis.endpointType}
+      ${analysis.hasPoolData ? ' <span style="color: #4CAF50;">✓ Has Pool Data</span>' : ''}
+    </div>`;
   }
 
   item.innerHTML = `
-    <div style="display: flex; justify-content: space-between; font-weight: bold; color: #555;">
-      <span>${time} [${data.source.toUpperCase()}] Status: ${data.status}</span>
-      <span>${data.method}</span>
+    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+      <div>
+        <span style="font-weight: bold; color: #ffd700;">${time}</span>
+        <span style="color: #888; margin-left: 8px;">[${data.source.toUpperCase()}]</span>
+        <span style="color: ${data.status >= 200 && data.status < 300 ? '#4CAF50' : data.status >= 400 ? '#f44336' : '#888'}; margin-left: 8px;">
+          ${data.status}
+        </span>
+        ${badge ? `<span style="margin-left: 8px; padding: 2px 6px; background: ${borderColor}; border-radius: 3px; font-size: 9px; font-weight: bold;">${badge}</span>` : ''}
+      </div>
+      <span style="color: #888; font-size: 10px;">${data.method}</span>
     </div>
-    <div style="word-break: break-all; color: #0366d6; margin: 4px 0;">${data.url}</div>
-    <div style="max-height: 100px; overflow-y: auto; background: #f8f8f8; padding: 4px; font-family: monospace; white-space: pre-wrap;">${responseStr.substring(0, 1000)}${responseStr.length > 1000 ? '...' : ''}</div>
+    <div style="word-break: break-all; color: #4CAF50; margin: 4px 0; font-size: 10px; font-family: monospace;">
+      ${data.url}
+    </div>
+    ${rpcInfo}
+    ${endpointInfo}
+    <details style="margin-top: 4px;">
+      <summary style="cursor: pointer; color: #888; font-size: 10px;">Response Preview</summary>
+      <div style="max-height: 200px; overflow-y: auto; background: #000; padding: 8px; margin-top: 4px; border-radius: 2px; font-family: monospace; white-space: pre-wrap; font-size: 9px; color: #ccc;">
+        ${responsePreview}${responseStr.length > 200 ? '\n... (truncated)' : ''}
+      </div>
+    </details>
   `;
 
-  // Prepend to show newest first
-  container.insertBefore(item, container.firstChild);
+  return item;
+}
 
-  // Limit to 50 items to prevent performance issues
-  if (container.children.length > 50) {
-    container.removeChild(container.lastChild);
-  }
+function addApiLogItem(data) {
+  capturedRequests.push(data);
+  updateApiStats();
+  renderApiLogs();
 }
 
 // Helper to get currently displayed pool IDs
@@ -356,7 +563,6 @@ function populateForm(settings) {
   setVal('settingsPoolNameFilter', settings.poolNameFilter);
   
   if (settings.hideVamm !== undefined) document.getElementById('hideVamm').checked = settings.hideVamm;
-  if (settings.deepScan !== undefined) document.getElementById('deepScan').checked = settings.deepScan;
   if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
 }
 
@@ -552,9 +758,9 @@ async function loadSettings() {
     maxPoolPercentage: null,
     sortBy: 'auto',
     hideVamm: false,
-    deepScan: false,
     enableOverlay: true,
-    poolNameFilter: null
+    poolNameFilter: null,
+    apiDiscoveryEnabled: false  // Default: off
   };
   return { ...defaults, ...(result.blackholeSettings || {}) };
 }
@@ -564,10 +770,10 @@ async function autoSaveSettings() {
     votingPower: parseFloatInput('votingPower'),
     topN: parseIntInput('topN', 10),
     minRewards: parseFloatInput('minRewards'),
+    apiDiscoveryEnabled: document.getElementById('apiDiscoveryEnabled')?.checked || false,
     maxPoolPercentage: parseFloatInput('maxPoolPercentage'),
     sortBy: document.getElementById('sortBy').value,
     hideVamm: document.getElementById('hideVamm').checked,
-    deepScan: document.getElementById('deepScan').checked,
     enableOverlay: document.getElementById('enableOverlay').checked,
     poolNameFilter: document.getElementById('settingsPoolNameFilter').value.trim() || null
   };
@@ -633,10 +839,6 @@ async function updateStatus() {
     html += `<span>No vAMM</span>`;
   }
 
-  // Deep Scan
-  if (settings.deepScan) {
-    html += `<span>Deep Scan</span>`;
-  }
   
   // Pool Name Filter
   if (settings.poolNameFilter) {
