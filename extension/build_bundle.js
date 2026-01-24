@@ -203,6 +203,12 @@ ${stripModules(vammSammJs)}
 ${stripModules(providerJs)}
 `;
 
+    // 2h. Include UI Manager
+    let uiManagerJs = fs.readFileSync(path.join(LIB_DIR, 'ui-manager.js'), 'utf8');
+    bundle += `// --- From ui-manager.js ---
+${stripModules(uiManagerJs)}
+`;
+
     // 3. Include pool-recommender.js
     let recommenderJs = fs.readFileSync(path.join(LIB_DIR, 'pool-recommender.js'), 'utf8');
     bundle += `// --- From pool-recommender.js ---

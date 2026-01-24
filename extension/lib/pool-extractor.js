@@ -447,9 +447,27 @@ export async function extractPoolsFromDOM() {
         await new Promise(resolve => setTimeout(resolve, 3000));
         console.log('Page size restored');
         
-        // After restoring page size, the site usually resets to Page 1.
-        // If we were originally on a different page, navigate back to it.
-        if (currentPageNum > 1) {
+        // Force return to top of Page 1 if that's where we started
+        if (currentPageNum === 1) {
+          console.log('Returning to Page 1 and resetting view...');
+          const restoredPagination = document.querySelector('.pagination');
+          if (restoredPagination) {
+            const page1Item = Array.from(restoredPagination.querySelectorAll('.item')).find(item => {
+              const text = item.textContent.trim();
+              return /^1$/.test(text) && !item.classList.contains('extreme');
+            });
+            
+            if (page1Item) {
+              const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+              clickable.click();
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+          // Scroll multiple times to ensure we beat any lazy-loading/rendering jumps
+          window.scrollTo(0, 0);
+          setTimeout(() => window.scrollTo(0, 0), 500);
+          setTimeout(() => window.scrollTo(0, 0), 1500);
+        } else if (currentPageNum > 1) {
           console.log(`Navigating back to original page ${currentPageNum}...`);
           const restoredPagination = document.querySelector('.pagination');
           if (restoredPagination) {
@@ -468,24 +486,33 @@ export async function extractPoolsFromDOM() {
               clickable.click();
               await new Promise(resolve => setTimeout(resolve, 2000));
               console.log(`Returned to page ${currentPageNum}`);
-            } else {
-              console.warn(`Could not find page ${currentPageNum} button after restoring page size`);
             }
           }
-        } else {
-          // If we were on page 1, ensure we are scrolled to the top
-          console.log('Ensuring view is at the top of Page 1...');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       } catch (error) {
         console.warn('Error restoring page size:', error);
       }
     } else {
       // If we didn't change page size, we need to manually return to the original page
-      // because our scraping loop navigated away from it.
-      if (currentPageNum > 1) {
+      if (currentPageNum === 1) {
+        console.log('Returning to Page 1...');
+        const finalPagination = document.querySelector('.pagination');
+        if (finalPagination) {
+           const page1Item = Array.from(finalPagination.querySelectorAll('.item')).find(item => {
+             const text = item.textContent.trim();
+             return /^1$/.test(text) && !item.classList.contains('extreme');
+           });
+           
+           if (page1Item) {
+             const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+             clickable.click();
+             await new Promise(resolve => setTimeout(resolve, 1500));
+           }
+        }
+        window.scrollTo(0, 0);
+        setTimeout(() => window.scrollTo(0, 0), 500);
+      } else if (currentPageNum > 1) {
         console.log(`Returning to page ${currentPageNum}...`);
-        // ... (existing logic to find and click page button) ...
         const finalPagination = document.querySelector('.pagination');
         if (finalPagination) {
           const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
@@ -502,30 +529,8 @@ export async function extractPoolsFromDOM() {
             const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
             clickable.click();
             await new Promise(resolve => setTimeout(resolve, 1500));
-          } else {
-             // Fallback logic if specific page button not found (e.g. use "First" or "Prev")
-             // For now, just logging warning
-             console.warn(`Could not find button for page ${currentPageNum}`);
           }
         }
-      } else {
-        // If we want to return to Page 1
-        console.log('Returning to Page 1...');
-        const finalPagination = document.querySelector('.pagination');
-        if (finalPagination) {
-           const page1Item = Array.from(finalPagination.querySelectorAll('.item')).find(item => {
-             const text = item.textContent.trim();
-             return /^1$/.test(text) && !item.classList.contains('extreme');
-           });
-           
-           if (page1Item) {
-             const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
-             clickable.click();
-             await new Promise(resolve => setTimeout(resolve, 1500));
-           }
-        }
-        // Always scroll to top when returning to Page 1
-        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
   }
