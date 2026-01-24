@@ -447,8 +447,8 @@ export async function extractPoolsFromDOM() {
         await new Promise(resolve => setTimeout(resolve, 3000));
         console.log('Page size restored');
         
-        // After restoring page size, we need to navigate back to the original page
-        // because changing page size likely reset us to page 1
+        // After restoring page size, the site usually resets to Page 1.
+        // If we were originally on a different page, navigate back to it.
         if (currentPageNum > 1) {
           console.log(`Navigating back to original page ${currentPageNum}...`);
           const restoredPagination = document.querySelector('.pagination');
@@ -472,61 +472,60 @@ export async function extractPoolsFromDOM() {
               console.warn(`Could not find page ${currentPageNum} button after restoring page size`);
             }
           }
+        } else {
+          // If we were on page 1, ensure we are scrolled to the top
+          console.log('Ensuring view is at the top of Page 1...');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       } catch (error) {
         console.warn('Error restoring page size:', error);
       }
-    } else if (currentPageNum > 1) {
-      // If we didn't change page size, just return to original page normally
-      console.log(`Returning to page ${currentPageNum}...`);
-      const finalPagination = document.querySelector('.pagination');
-      if (finalPagination) {
-        const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
-          const text = item.textContent ? item.textContent.trim() : '';
-          return /^\d+$/.test(text) && !item.classList.contains('extreme');
-        });
-        
-        const targetPageItem = allPageItems.find(item => {
-          const pageNum = parseInt(item.textContent.trim());
-          return pageNum === currentPageNum;
-        });
-        
-        if (targetPageItem) {
-          const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
-          clickable.click();
-          await new Promise(resolve => setTimeout(resolve, 1500));
-        } else {
-          // Try to go to page 1 and navigate from there
-          const page1Item = allPageItems.find(item => {
-            const pageNum = parseInt(item.textContent.trim());
-            return pageNum === 1;
+    } else {
+      // If we didn't change page size, we need to manually return to the original page
+      // because our scraping loop navigated away from it.
+      if (currentPageNum > 1) {
+        console.log(`Returning to page ${currentPageNum}...`);
+        // ... (existing logic to find and click page button) ...
+        const finalPagination = document.querySelector('.pagination');
+        if (finalPagination) {
+          const allPageItems = Array.from(finalPagination.querySelectorAll('.item')).filter(item => {
+            const text = item.textContent.trim();
+            return /^\d+$/.test(text) && !item.classList.contains('extreme');
           });
-          if (page1Item) {
-            const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+          
+          const targetPageItem = allPageItems.find(item => {
+            const pageNum = parseInt(item.textContent.trim());
+            return pageNum === currentPageNum;
+          });
+          
+          if (targetPageItem) {
+            const clickable = targetPageItem.closest('.item') || targetPageItem.parentElement || targetPageItem;
             clickable.click();
             await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            // Navigate to target page if needed
-            if (currentPageNum > 1) {
-              const updatedPagination = document.querySelector('.pagination');
-              if (updatedPagination) {
-                const updatedPageItems = Array.from(updatedPagination.querySelectorAll('.item')).filter(item => {
-                  const text = item.textContent ? item.textContent.trim() : '';
-                  return /^\d+$/.test(text) && !item.classList.contains('extreme');
-                });
-                const targetItem = updatedPageItems.find(item => {
-                  const pageNum = parseInt(item.textContent.trim());
-                  return pageNum === currentPageNum;
-                });
-                if (targetItem) {
-                  const clickable = targetItem.closest('.item') || targetItem.parentElement || targetItem;
-                  clickable.click();
-                  await new Promise(resolve => setTimeout(resolve, 1500));
-                }
-              }
-            }
+          } else {
+             // Fallback logic if specific page button not found (e.g. use "First" or "Prev")
+             // For now, just logging warning
+             console.warn(`Could not find button for page ${currentPageNum}`);
           }
         }
+      } else {
+        // If we want to return to Page 1
+        console.log('Returning to Page 1...');
+        const finalPagination = document.querySelector('.pagination');
+        if (finalPagination) {
+           const page1Item = Array.from(finalPagination.querySelectorAll('.item')).find(item => {
+             const text = item.textContent.trim();
+             return /^1$/.test(text) && !item.classList.contains('extreme');
+           });
+           
+           if (page1Item) {
+             const clickable = page1Item.closest('.item') || page1Item.parentElement || page1Item;
+             clickable.click();
+             await new Promise(resolve => setTimeout(resolve, 1500));
+           }
+        }
+        // Always scroll to top when returning to Page 1
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
   }
