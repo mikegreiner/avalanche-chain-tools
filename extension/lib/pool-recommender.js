@@ -25,7 +25,7 @@ function fnmatch(pattern, string) {
  * @param {Object} options - Recommendation options
  * @param {number} options.topN - Number of top pools to return
  * @param {number|null} options.userVotingPower - User's voting power in veBLACK
- * @param {boolean} options.hideVamm - Filter out vAMM pools
+ * @param {boolean} options.hideVamm - Filter out vAMM and sAMM pools (non-CL pools)
  * @param {number|null} options.minRewards - Minimum total rewards in USD
  * @param {number|null} options.maxPoolPercentage - Maximum percentage of pool voting power
  * @param {string|Array<string>|null} options.poolName - Shell-style wildcard pattern(s) to filter pools
@@ -49,9 +49,9 @@ export function recommendPools(pools, options = {}) {
 
   let filteredPools = [...pools];
 
-  // Filter out vAMM pools if requested
+  // Filter out vAMM/sAMM pools if requested (keep only CL pools)
   if (hideVamm) {
-    filteredPools = filteredPools.filter(p => p.pool_type !== 'vAMM');
+    filteredPools = filteredPools.filter(p => p.pool_type !== 'vAMM' && p.pool_type !== 'sAMM');
   }
 
   // Filter out pools below minimum rewards threshold

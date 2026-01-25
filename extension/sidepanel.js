@@ -952,9 +952,9 @@ async function updateStatus() {
   // Sort By
   html += `<span>Sort: ${settings.sortBy || 'auto'}</span>`;
   
-  // vAMM
+  // vAMM/sAMM
   if (settings.hideVamm) {
-    html += `<span>No vAMM</span>`;
+    html += `<span>CL only</span>`;
   }
 
   

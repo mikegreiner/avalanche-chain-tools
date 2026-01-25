@@ -2780,9 +2780,9 @@ function recommendPools(pools, options = {}) {
 
   let filteredPools = [...pools];
 
-  // Filter out vAMM pools if requested
+  // Filter out vAMM/sAMM pools if requested (keep only CL pools)
   if (hideVamm) {
-    filteredPools = filteredPools.filter(p => p.pool_type !== 'vAMM');
+    filteredPools = filteredPools.filter(p => p.pool_type !== 'vAMM' && p.pool_type !== 'sAMM');
   }
 
   // Filter out pools below minimum rewards threshold
@@ -4521,6 +4521,14 @@ async function fetchPoolData(forceRefresh = false) {
     console.log('Fetching pool data...');
     let pools = [];
     
+    // Get settings to check hideVamm preference
+    const settings = await new Promise(resolve => {
+      chrome.storage.sync.get('settings', result => {
+        resolve(result.settings || {});
+      });
+    });
+    const hideVamm = settings.hideVamm || false;
+    
     // Wait a bit more for React to fully render
     await new Promise(resolve => setTimeout(resolve, 2000));
     
@@ -4531,6 +4539,14 @@ async function fetchPoolData(forceRefresh = false) {
       } else {
         pools = await extractPoolsFromDOM();
       }
+      
+      // Filter out vAMM/sAMM pools early if hideVamm is set (saves processing time)
+      if (hideVamm && pools.length > 0) {
+        const beforeCount = pools.length;
+        pools = pools.filter(p => p.pool_type !== 'vAMM' && p.pool_type !== 'sAMM');
+        console.log(`Filtered vAMM/sAMM: ${beforeCount} → ${pools.length} pools (hideVamm=true)`);
+      }
+      
       console.log(`Extracted ${pools.length} pools`);
       
       // Debug: log first pool to see what we're getting (only once)
@@ -5343,8 +5359,8 @@ async function updateOverlay() {
       
       if (settings.hideVamm) {
         const before = testPools.length;
-        testPools = testPools.filter(p => p.pool_type !== 'vAMM');
-        console.log(`After hideVamm: ${testPools.length} (removed ${before - testPools.length})`);
+        testPools = testPools.filter(p => p.pool_type !== 'vAMM' && p.pool_type !== 'sAMM');
+        console.log(`After hideVamm: ${testPools.length} (removed ${before - testPools.length} vAMM/sAMM)`);
       }
       
       if (settings.minRewards !== null && settings.minRewards !== undefined) {
@@ -5446,8 +5462,8 @@ async function updateOverlay() {
       
       if (settings.hideVamm) {
         const before = testPools.length;
-        testPools = testPools.filter(p => p.pool_type !== 'vAMM');
-        filterSteps.push(`hideVamm: ${before} → ${testPools.length} (removed ${before - testPools.length})`);
+        testPools = testPools.filter(p => p.pool_type !== 'vAMM' && p.pool_type !== 'sAMM');
+        filterSteps.push(`hideVamm: ${before} → ${testPools.length} (removed ${before - testPools.length} vAMM/sAMM)`);
       }
       
       if (settings.minRewards !== null && settings.minRewards !== undefined) {
