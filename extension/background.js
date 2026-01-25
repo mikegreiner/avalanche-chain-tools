@@ -32,15 +32,16 @@ chrome.runtime.onInstalled.addListener((details) => {
     .catch((error) => console.error(error));
 });
 
-// Periodic pool data refresh (every 5 minutes when on voting page)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('blackhole.xyz/vote')) {
-    // Notify content script to refresh
-    chrome.tabs.sendMessage(tabId, { type: 'REFRESH_POOL_DATA' }).catch(() => {
-      // Content script might not be ready yet, ignore
-    });
-  }
-});
+// Removed automatic pool data refresh on page load
+// Users must manually trigger refresh via the side panel/popup refresh button
+// chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+//   if (changeInfo.status === 'complete' && tab.url && tab.url.includes('blackhole.xyz/vote')) {
+//     // Notify content script to refresh
+//     chrome.tabs.sendMessage(tabId, { type: 'REFRESH_POOL_DATA' }).catch(() => {
+//       // Content script might not be ready yet, ignore
+//     });
+//   }
+// });
 
 // Handle proxy requests to bypass CORS
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
