@@ -26,6 +26,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Update status info
   updateStatus();
+  
+  // Periodically check for stale data (every 30 seconds)
+  setInterval(async () => {
+    // Only check if we're on the recommendations tab
+    const recommendationsTab = document.querySelector('.tab[data-tab="recommendations"]');
+    if (recommendationsTab && recommendationsTab.classList.contains('active')) {
+      await updateStaleDataIndicator();
+    }
+  }, 30000);
 });
 
 function setupTabs() {
@@ -46,6 +55,8 @@ function setupTabs() {
       // specific actions when switching
       if (tab.dataset.tab === 'recommendations') {
         loadAndRenderRecommendations();
+        // Also update stale data indicator when switching to recommendations tab
+        updateStaleDataIndicator();
       }
     });
   });
@@ -103,6 +114,12 @@ function setupListeners() {
     btn.textContent = 'Refreshing...';
     btn.disabled = true;
     
+    // Immediately clear stale indicator since we're refreshing
+    const warningEl = document.getElementById('staleDataWarning');
+    if (warningEl) warningEl.style.display = 'none';
+    btn.classList.remove('refresh-stale');
+    btn.textContent = 'Refreshing...';
+    
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab && tab.url && tab.url.includes('blackhole.xyz/vote')) {
@@ -112,7 +129,24 @@ function setupListeners() {
           console.warn('Error sending refresh message:', msgErr);
         }
         
+        // Wait for storage to update (poll for timestamp change)
+        const initialTimestamp = (await chrome.storage.local.get(['poolDataTimestamp'])).poolDataTimestamp;
+        let attempts = 0;
+        const maxAttempts = 30; // 15 seconds max wait (30 * 500ms)
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // Check every 500ms
+          const current = await chrome.storage.local.get(['poolDataTimestamp']);
+          if (current.poolDataTimestamp && current.poolDataTimestamp !== initialTimestamp) {
+            // Timestamp updated, refresh is complete
+            break;
+          }
+          attempts++;
+        }
+        
         await loadAndRenderRecommendations();
+        // Update stale data indicator after refresh (should now show as fresh)
+        await updateStaleDataIndicator();
         btn.textContent = originalText;
         btn.disabled = false;
       } else {
@@ -172,6 +206,67 @@ async function sendMessageToContentScript(message) {
   }
 }
 
+/**
+ * Check if pool data is stale (out of sync with website)
+ * Data is considered stale if:
+ * - No timestamp exists
+ * - Timestamp is older than 5 minutes
+ * - We're on the voting page and it was recently loaded (likely fresh data on page)
+ */
+async function isPoolDataStale() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return false;
+    const isOnVotingPage = tab.url && tab.url.includes('blackhole.xyz/vote');
+    
+    const result = await chrome.storage.local.get(['poolDataTimestamp']);
+    const timestamp = result.poolDataTimestamp;
+    
+    if (!timestamp) {
+      return true; // No data = stale
+    }
+    
+    const now = Date.now();
+    const age = now - timestamp;
+    
+    // If we're on the voting page, use a more lenient threshold (10 minutes)
+    // since the user is actively viewing the page and can see if data is outdated
+    if (isOnVotingPage) {
+      const VOTING_PAGE_STALE_THRESHOLD = 10 * 60 * 1000; // 10 minutes
+      return age > VOTING_PAGE_STALE_THRESHOLD;
+    }
+    
+    // For other pages, use a stricter threshold (5 minutes)
+    const STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+    return age > STALE_THRESHOLD;
+  } catch (error) {
+    console.warn('Error checking stale data:', error);
+    return false; // Don't show warning on error
+  }
+}
+
+/**
+ * Update stale data warning visibility and refresh button styling
+ */
+async function updateStaleDataIndicator() {
+  const warningEl = document.getElementById('staleDataWarning');
+  const refreshBtn = document.getElementById('refreshDataBtn');
+  
+  if (!warningEl || !refreshBtn) return;
+  
+  const isStale = await isPoolDataStale();
+  
+  if (isStale) {
+    warningEl.style.display = 'block';
+    refreshBtn.classList.add('refresh-stale');
+    refreshBtn.textContent = '⚠️ Refresh';
+  } else {
+    warningEl.style.display = 'none';
+    refreshBtn.classList.remove('refresh-stale');
+    refreshBtn.textContent = 'Refresh';
+  }
+}
+
 async function loadAndRenderRecommendations() {
   const container = document.getElementById('recommendations-list');
   const lastUpdatedEl = document.getElementById('lastUpdated');
@@ -190,6 +285,9 @@ async function loadAndRenderRecommendations() {
     } else {
       lastUpdatedEl.textContent = 'No data';
     }
+    
+    // Check and update stale data indicator
+    await updateStaleDataIndicator();
     
     if (poolData.length === 0) {
       renderEmptyState(container);
