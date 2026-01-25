@@ -251,6 +251,40 @@ function setupListeners() {
   }
 
   // Action Buttons
+  document.getElementById('selectTopBtn').addEventListener('click', async () => {
+    await withOperationLock(async () => {
+      const count = parseInt(document.getElementById('selectTopInput').value) || 5;
+      // Get current recommendations and take the top N
+      const pools = getCurrentRecommendationIds().slice(0, count);
+      
+      if (pools.length > 0) {
+        const btn = document.getElementById('selectTopBtn');
+        const originalText = btn.textContent;
+        btn.textContent = 'Selecting...';
+        btn.disabled = true;
+        
+        try {
+          await sendMessageToContentScript({ 
+            type: 'SELECT_POOLS', 
+            poolIds: pools,
+            forceSelect: true  // Don't unselect already-selected pools
+          });
+          showStatus(`Selected top ${pools.length} pools`, 'success');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await loadAndRenderRecommendations();
+        } catch (e) {
+          console.error('Error selecting top pools:', e);
+          showStatus('Selection failed', 'error');
+        } finally {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      } else {
+        showStatus('No recommendations to select', 'error');
+      }
+    });
+  });
+
   document.getElementById('selectAllBtn').addEventListener('click', async () => {
     await withOperationLock(async () => {
       // Get current recommendations to select them all
@@ -897,24 +931,7 @@ async function loadAndRenderRecommendations() {
     
     html += '</div>';
     
-    // Add "Go to Page" button at bottom if needed, or rely on header
-    html += `
-       <div style="margin-top: 12px; text-align: center;">
-         <button id="goToVotePageBtn" class="btn btn-secondary btn-sm">Go to Voting Page</button>
-       </div>
-    `;
-    
     container.innerHTML = html;
-
-    // Re-attach listener for the new button
-    const goToVoteBtn = document.getElementById('goToVotePageBtn');
-    if (goToVoteBtn) {
-      goToVoteBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openVotingPage();
-      });
-    }
 
     // Refresh selection state for newly rendered pools
     setTimeout(() => {

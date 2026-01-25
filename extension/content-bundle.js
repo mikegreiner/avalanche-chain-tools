@@ -7550,13 +7550,31 @@ async function getSelectedPools() {
 
 // Split votes evenly across selected pools
 async function splitVotesEvenly() {
-  // Get all selected pools
-  let selectedPools = await getSelectedPools();
+  console.log('[SPLIT] Starting split votes operation...');
+
+  // 1. Get pools from Vote Panel (Primary Source)
+  let selectedPoolIdsSet = await getSelectedPoolsFromVotePanel(false); // false = keep open
   
-  if (selectedPools.length === 0) {
-    alert('No pools are currently selected. Please select pools first.');
+  // 2. Get pools from Page Scan (Secondary Source - catches pre-selected pools if panel load lags)
+  // ALWAYS merge both sources to be safe
+  try {
+    console.log('[SPLIT] merging with page scan...');
+    const pagePools = await getSelectedPools();
+    if (pagePools && pagePools.length > 0) {
+      pagePools.forEach(p => selectedPoolIdsSet.add(p.poolId.toLowerCase()));
+    }
+  } catch (e) {
+    console.warn('[SPLIT] Page scan failed:', e);
+  }
+  
+  if (selectedPoolIdsSet.size === 0) {
+    alert('No pools found in the voting panel. Please select pools first.');
     return;
   }
+
+  // Convert Set to Array of objects for compatibility
+  let selectedPools = Array.from(selectedPoolIdsSet).map(id => ({ poolId: id }));
+  console.log(`[SPLIT] Found ${selectedPools.length} total pools to split votes across`);
 
   // SORTING LOGIC: Sort selected pools by profitability/rewards so the best ones get rounding remainder
   try {
@@ -7566,13 +7584,11 @@ async function splitVotesEvenly() {
     const userVotingPower = settings.votingPower || null;
 
     if (poolData.length > 0) {
-      // Create a map for quick lookup
       const poolMap = new Map();
       poolData.forEach(data => {
         poolMap.set(data.pool_id?.toLowerCase(), new Pool(data));
       });
 
-      // Sort selectedPools based on metrics
       selectedPools.sort((a, b) => {
         const poolA = poolMap.get(a.poolId?.toLowerCase());
         const poolB = poolMap.get(b.poolId?.toLowerCase());
@@ -7580,236 +7596,174 @@ async function splitVotesEvenly() {
         if (!poolA) return 1;
         if (!poolB) return -1;
 
-        // Use profitability score or estimated rewards for sorting
         if (userVotingPower) {
           return poolB.estimateUserRewards(userVotingPower) - poolA.estimateUserRewards(userVotingPower);
         } else {
           return poolB.profitabilityScore() - poolA.profitabilityScore();
         }
       });
-      console.log('Sorted selected pools by metrics for vote distribution');
+      console.log('[SPLIT] Sorted selected pools by metrics for vote distribution');
     }
   } catch (err) {
-    console.warn('Could not sort pools by metrics, using default order:', err);
+    console.warn('[SPLIT] Could not sort pools by metrics, using default order:', err);
   }
   
-  // Calculate even percentage split (100% / number of pools)
-  const percentagePerPool = 100 / selectedPools.length;
-  const roundedPercentage = Math.round(percentagePerPool * 100) / 100; // Round to 2 decimal places
-  
-  console.log(`Splitting 100% voting power across ${selectedPools.length} pools: ~${roundedPercentage}% each`);
-  
-  // Try to find and open the vote dialog/modal
-  // Look for VOTE button and click it if dialog isn't already open
-  const voteButton = document.querySelector('button.btn.yellow-btn.vote-btn') ||
-                    document.querySelector('button[class*="vote-btn"]') ||
-                    Array.from(document.querySelectorAll('button')).find(btn => 
-                      btn.textContent && btn.textContent.trim().toUpperCase().includes('VOTE')
-                    );
-  
-  // Check if dialog is already open by looking for "VOTING" title or voting power inputs
-  const votingDialog = document.querySelector('[class*="modal"], [class*="dialog"], [class*="overlay"]');
-  const hasVotingTitle = votingDialog && (votingDialog.textContent || '').includes('VOTING');
-  const hasVotingInputs = document.querySelector('input[placeholder*="%" i], input[type="text"]') && 
-                          document.querySelector('input[type="text"]')?.closest('[class*="pool"], [class*="row"]');
-  
-  if (voteButton && !hasVotingTitle && !hasVotingInputs) {
-    voteButton.click();
-    // Wait for dialog to open
-    await new Promise(resolve => setTimeout(resolve, 1500));
-  }
-  
-  // First, find the voting dialog and all pool rows within it
-  const votingDialogs = Array.from(document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="overlay"]'))
-    .filter(dialog => dialog.textContent && dialog.textContent.includes('VOTING'));
-  
-  // If no voting dialog found, search entire document
-  let allPoolRows = [];
-  if (votingDialogs.length > 0) {
-    for (const dialog of votingDialogs) {
-      const rows = Array.from(dialog.querySelectorAll('*')).filter(el => {
-        // Look for elements that contain pool addresses and have voting power inputs
-        const hasPoolAddress = selectedPools.some(pool => 
-          el.innerHTML.includes(pool.poolId) || el.textContent.includes(pool.poolId)
-        );
-        const hasInput = el.querySelector('input[type="text"], input[type="number"]');
-        return hasPoolAddress && hasInput;
-      });
-      allPoolRows.push(...rows);
-    }
-  }
-  
-  // If still no rows found, search entire document
-  if (allPoolRows.length === 0) {
-    allPoolRows = Array.from(document.querySelectorAll('*')).filter(el => {
-      const hasPoolAddress = selectedPools.some(pool => 
-        el.innerHTML.includes(pool.poolId) || el.textContent.includes(pool.poolId)
-      );
-      const hasInput = el.querySelector('input[type="text"], input[type="number"]');
-      return hasPoolAddress && hasInput;
-    });
-  }
-  
-  console.log(`Found ${allPoolRows.length} potential pool rows in voting dialog`);
-  
-  // Match each selected pool to its row and find its input
-  const poolInputs = [];
-  const usedInputs = new Set(); // Track inputs we've already matched
-  
-  // Calculate percentages with smart rounding to distribute evenly
-  // Voting inputs only accept 1 decimal place, so we use 1 decimal precision
+  // Calculate even percentage split
   const basePercentage = 100 / selectedPools.length;
-  const percentages = [];
-  
-  // Round base percentage to 1 decimal place
   const baseRounded = Math.round(basePercentage * 10) / 10;
-  
-  // Calculate what the total would be if we used baseRounded for all
   const totalIfAllBase = baseRounded * selectedPools.length;
   const remainder = Math.round((100 - totalIfAllBase) * 10) / 10;
-  
-  // Distribute the remainder: adjust by 0.1 for first |remainder * 10| pools
   const poolsToAdjust = Math.round(Math.abs(remainder) * 10);
   const adjustment = remainder > 0 ? 0.1 : -0.1;
   
+  const percentages = [];
   for (let i = 0; i < selectedPools.length; i++) {
     let pct = baseRounded;
-    // Apply adjustment to first pools to account for rounding remainder
-    if (i < poolsToAdjust) {
-      pct += adjustment;
-    }
+    if (i < poolsToAdjust) pct += adjustment;
     percentages.push(Math.round(pct * 10) / 10);
   }
   
-  // Final check: ensure total is exactly 100% by adjusting the last pool
+  // Final check: ensure total is exactly 100%
   const total = percentages.reduce((sum, p) => sum + p, 0);
   if (Math.abs(total - 100) > 0.01) {
     const diff = 100 - total;
     percentages[percentages.length - 1] = Math.round((percentages[percentages.length - 1] + diff) * 10) / 10;
   }
   
+  console.log(`[SPLIT] Calculated distribution for ${selectedPools.length} pools. Sum: ${percentages.reduce((a,b)=>a+b,0)}%`);
+  
+  // Ensure voting dialog reference is fresh
+  const votingDialog = document.querySelector('.voting-modal, .sc-modal-overlay.show, [class*="modal"], [class*="dialog"]');
+  
+  if (!votingDialog) {
+    console.error('[SPLIT] Voting dialog not found even after getSelectedPoolsFromVotePanel');
+    return;
+  }
+
+  // Find the true scroll container
+  let scrollContainer = null;
+  const potentialScrollables = Array.from(votingDialog.querySelectorAll('div, ul, tbody, section'));
+  let maxScrollHeight = 0;
+  
+  for (const el of potentialScrollables) {
+    const style = window.getComputedStyle(el);
+    const overflowY = style.overflowY;
+    const isScrollable = (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+    
+    if (isScrollable && el.scrollHeight > maxScrollHeight) {
+      maxScrollHeight = el.scrollHeight;
+      scrollContainer = el;
+    }
+  }
+  
+  // Fallback if no specific scroll container found
+  if (!scrollContainer) {
+    scrollContainer = votingDialog.querySelector('.modal-body, [class*="body"], [class*="content"]') || votingDialog;
+  }
+  
+  console.log('[SPLIT] Using scroll container:', scrollContainer);
+
+  let filledCount = 0;
+  const usedInputs = new Set();
+  
+  console.log(`[SPLIT] Attempting to fill ${selectedPools.length} inputs...`);
+  
   for (let i = 0; i < selectedPools.length; i++) {
     const pool = selectedPools[i];
-    const percentageToAllocate = percentages[i];
+    const percentage = percentages[i];
     
-    // Find the row that contains this pool's address
-    let matchedRow = null;
-    for (const row of allPoolRows) {
-      if ((row.innerHTML.includes(pool.poolId) || row.textContent.includes(pool.poolId)) &&
-          !usedInputs.has(row)) {
-        matchedRow = row;
-        break;
+    let input = null;
+    let attempts = 0;
+    
+    // Try to find input, scrolling if necessary
+    // Increased attempts to 20 to handle even longer lists (e.g. 50 pools)
+    // Dynamic scroll step based on list position could be better, but linear scan works for now
+    while (!input && attempts < 20) {
+      // Find all elements that might contain the address (Case-Insensitive)
+      const target = pool.poolId.toLowerCase();
+      const potentialRows = Array.from(votingDialog.querySelectorAll('div, tr, li')).filter(el => {
+        const html = (el.innerHTML || '').toLowerCase();
+        const text = (el.textContent || '').toLowerCase();
+        return (html.includes(target) || text.includes(target)) && el.querySelector('input');
+      });
+      
+      // Sort by specificity (deepest element first)
+      potentialRows.sort((a, b) => (b.innerHTML.length < a.innerHTML.length ? 1 : -1));
+
+      for (const row of potentialRows) {
+        const rowInputs = row.querySelectorAll('input[type="text"], input[type="number"]');
+        for (const ri of rowInputs) {
+          if (!usedInputs.has(ri)) {
+            // Check if this input is actually for percentages
+            const parentText = (ri.parentElement.textContent || '') + (ri.closest('div')?.textContent || '');
+            if (parentText.includes('%') || parentText.includes('Voting') || ri.placeholder.includes('%')) {
+              input = ri;
+              break;
+            }
+          }
+        }
+        if (input) break;
       }
-    }
-    
-    if (!matchedRow) {
-      console.warn(`Could not find row for pool ${pool.poolId}`);
-      continue;
-    }
-    
-    // Find the voting power input in this row
-    let allocationInput = null;
-    const inputs = matchedRow.querySelectorAll('input[type="text"], input[type="number"]');
-    
-    for (const input of inputs) {
-      // Skip if we've already used this input
-      if (usedInputs.has(input)) continue;
       
-      // Check if this input is for voting power (has "%" nearby or "Voting Power" label)
-      const parent = input.parentElement;
-      const parentText = parent.textContent || '';
-      const siblings = Array.from(parent.children || []);
-      const hasPercentSymbol = siblings.some(sib => sib.textContent && sib.textContent.includes('%')) ||
-                              parentText.includes('%');
-      const hasVotingPowerLabel = parentText.includes('Voting Power');
-      
-      // Check nearby elements
-      const prevSibling = input.previousElementSibling;
-      const nextSibling = input.nextElementSibling;
-      const nearbyText = (prevSibling?.textContent || '') + (nextSibling?.textContent || '');
-      
-      if (hasPercentSymbol || hasVotingPowerLabel || nearbyText.includes('Voting Power') || nearbyText.includes('%')) {
-        allocationInput = input;
-        break;
-      }
-    }
-    
-    // Fallback: use the first unused input in the row
-    if (!allocationInput && inputs.length > 0) {
-      for (const input of inputs) {
-        if (!usedInputs.has(input)) {
-          allocationInput = input;
+      if (!input) {
+        // Try scrolling
+        if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+          // Dynamic scroll step: larger for first attempts, smaller for precision
+          const step = Math.max(150, scrollContainer.clientHeight / 1.5);
+          scrollContainer.scrollTop += step;
+          
+          // Wait for potential virtual DOM rendering
+          await new Promise(resolve => setTimeout(resolve, 350));
+          attempts++;
+        } else {
+          // Not scrollable or end reached
           break;
         }
       }
     }
     
-    if (allocationInput) {
-      poolInputs.push({
-        pool: pool,
-        input: allocationInput,
-        percentage: percentageToAllocate
-      });
-      usedInputs.add(allocationInput);
-      usedInputs.add(matchedRow);
-      console.log(`Matched pool ${pool.poolId} to input, will allocate ${percentageToAllocate}%`);
-    } else {
-      console.warn(`Could not find voting power input for pool ${pool.poolId} in matched row`);
-    }
-  }
-  
-  // Now fill all the inputs
-  let filledCount = 0;
-  console.log(`[SPLIT] Attempting to fill ${poolInputs.length} inputs...`);
-  
-  for (const poolInput of poolInputs) {
-    try {
-      console.log(`[SPLIT] Processing pool ${poolInput.pool.poolId}, allocating ${poolInput.percentage}%`);
-      
-      // Don't scroll - it's disruptive
-      // poolInput.input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Focus and set value (percentage, not absolute votes)
-      poolInput.input.focus();
-      poolInput.input.value = poolInput.percentage.toString();
-      
-      // Trigger input events to ensure React/UI updates
-      poolInput.input.dispatchEvent(new Event('input', { bubbles: true }));
-      poolInput.input.dispatchEvent(new Event('change', { bubbles: true }));
-      poolInput.input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-      poolInput.input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-      
-      // Also try setting value property directly (for React controlled components)
+    if (input) {
       try {
+        console.log(`[SPLIT] Setting ${pool.poolId} to ${percentage}%`);
+        input.focus();
+        
         const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
         if (valueSetter) {
-          valueSetter.call(poolInput.input, poolInput.percentage.toString());
-          poolInput.input.dispatchEvent(new Event('input', { bubbles: true }));
+          valueSetter.call(input, percentage.toString());
+        } else {
+          input.value = percentage.toString();
         }
-      } catch (setterError) {
-        console.warn('[SPLIT] Value setter error (non-critical):', setterError);
+        
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+        
+        usedInputs.add(input);
+        filledCount++;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      } catch (e) {
+        console.error(`[SPLIT] Error setting pool ${pool.poolId}:`, e);
       }
-      
-      filledCount++;
-      console.log(`[SPLIT] ✓ Allocated ${poolInput.percentage}% to pool ${poolInput.pool.poolId} (${filledCount}/${poolInputs.length})`);
-      
-      // Shorter delay between inputs (faster)
-      await new Promise(resolve => setTimeout(resolve, 50));
-    } catch (e) {
-      console.error(`[SPLIT] Error setting percentage for pool ${poolInput.pool.poolId}:`, e);
-      // Continue with other pools even if one fails
+    } else {
+      console.warn(`[SPLIT] Could not find input for pool ${pool.poolId} after ${attempts} scroll attempts`);
     }
   }
   
-  console.log(`[SPLIT] Finished: filled ${filledCount}/${poolInputs.length} inputs`);
+  console.log(`[SPLIT] Finished: filled ${filledCount}/${selectedPools.length} inputs`);
   
   // Show feedback
   const contentEl = document.getElementById('blackhole-tools-content');
   if (contentEl) {
     const originalHTML = contentEl.innerHTML;
     if (filledCount > 0) {
-      contentEl.innerHTML = `<p style="color: #32cd32; text-align: center; padding: 20px;">✓ Split 100% voting power across ${filledCount} pool(s)<br><small style="color: #999;">Check vote panel to verify</small></p>`;
+      const msg = filledCount === selectedPools.length 
+        ? `✓ Split 100% voting power across ${filledCount} pool(s)`
+        : `⚠️ Split votes incomplete: ${filledCount}/${selectedPools.length} pools filled`;
+        
+      const color = filledCount === selectedPools.length ? '#32cd32' : '#ff8c00';
+      
+      contentEl.innerHTML = `<p style="color: ${color}; text-align: center; padding: 20px;">${msg}<br><small style="color: #999;">Check vote panel to verify</small></p>`;
     } else {
       contentEl.innerHTML = `<p style="color: #ff8c00; text-align: center; padding: 20px;">⚠️ Could not find vote allocation inputs.<br><small>Make sure the voting dialog is open and pools are selected.</small></p>`;
     }
