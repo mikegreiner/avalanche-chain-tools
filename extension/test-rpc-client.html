@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Blackhole RPC Client Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #00ff00;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      background: #333;
+      color: #0f0;
+      border: 1px solid #0f0;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0f0;
+      color: #000;
+    }
+    #output {
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #0f0;
+      white-space: pre-wrap;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .success { color: #0f0; }
+    .error { color: #f00; }
+    .info { color: #ff0; }
+  </style>
+</head>
+<body>
+  <h1>Blackhole RPC Client Test</h1>
+  
+  <div>
+    <button onclick="testBlackPrice()">Test BLACK Price</button>
+    <button onclick="testTotalVotes()">Test Total Votes</button>
+    <button onclick="testSinglePool()">Test Single Pool</button>
+    <button onclick="testTop10Pools()">Test Top 10 Pools</button>
+    <button onclick="clearOutput()">Clear</button>
+  </div>
+  
+  <div id="output"></div>
+
+  <!-- Load libraries -->
+  <script src="blackhole-rpc-client.js"></script>
+  <script src="rpc-pool-provider.js"></script>
+  
+  <script>
+    const output = document.getElementById('output');
+    
+    function log(message, type = 'info') {
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      output.appendChild(line);
+      output.scrollTop = output.scrollHeight;
+    }
+    
+    function clearOutput() {
+      output.innerHTML = '';
+    }
+    
+    async function testBlackPrice() {
+      try {
+        log('Fetching BLACK price...', 'info');
+        const client = new BlackholeRpcClient();
+        const price = await client.getBlackPrice();
+        log(`✓ BLACK price: $${price.toFixed(5)}`, 'success');
+      } catch (error) {
+        log(`✗ Error: ${error.message}`, 'error');
+      }
+    }
+    
+    async function testTotalVotes() {
+      try {
+        log('Fetching total votes...', 'info');
+        const client = new BlackholeRpcClient();
+        const votes = await client.getTotalVotes();
+        log(`✓ Total votes: ${votes.toLocaleString()}`, 'success');
+      } catch (error) {
+        log(`✗ Error: ${error.message}`, 'error');
+      }
+    }
+    
+    async function testSinglePool() {
+      try {
+        const TEST_POOL = '0xa02ec3ba8d17887567672b2cdcaf525534636ea0';
+        log(`Testing pool ${TEST_POOL}...`, 'info');
+        
+        const client = new BlackholeRpcClient();
+        
+        // Get votes
+        log('  Fetching votes...', 'info');
+        const votes = await client.getPoolVotes(TEST_POOL);
+        log(`  ✓ Votes: ${votes.toLocaleString()}`, 'success');
+        
+        // Get gauge
+        log('  Fetching gauge...', 'info');
+        const gaugeAddr = await client.getGaugeForPool(TEST_POOL);
+        log(`  ✓ Gauge: ${gaugeAddr}`, 'success');
+        
+        if (gaugeAddr) {
+          log('  Fetching gauge data...', 'info');
+          const gaugeData = await client.getGaugeData(gaugeAddr);
+          log(`  ✓ Reward rate: ${gaugeData.rewardRate.toFixed(6)} BLACK/sec`, 'success');
+          log(`  ✓ Total supply: ${gaugeData.totalSupply.toFixed(4)} LP`, 'success');
+          
+          // Calculate weekly rewards
+          const weeklyBlack = gaugeData.rewardRate * 604800;
+          log(`  ✓ Weekly emissions: ${weeklyBlack.toLocaleString()} BLACK`, 'success');
+        }
+        
+        log('✓ Single pool test complete!', 'success');
+      } catch (error) {
+        log(`✗ Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+    
+    async function testTop10Pools() {
+      try {
+        log('='.repeat(60), 'info');
+        log('FETCHING TOP 10 POOLS BY VAPR', 'info');
+        log('='.repeat(60), 'info');
+        
+        const provider = new RpcPoolProvider();
+        
+        // Fetch all pools (limit to 20 for speed)
+        log('Fetching pool data...', 'info');
+        await provider.fetchAllPools({ limit: 20 });
+        
+        // Get top 10 by VAPR
+        const topPools = provider.getTopPoolsByVapr(10);
+        
+        log('', 'info');
+        log(`${'#'.padEnd(3)} ${'Pool Name'.padEnd(30)} ${'VAPR'.padEnd(10)} ${'Votes'.padEnd(15)} ${'TVL'.padEnd(15)}`, 'info');
+        log('-'.repeat(75), 'info');
+        
+        topPools.forEach((pool, i) => {
+          const formatted = provider.formatPoolForDisplay(pool);
+          const line = `${String(i + 1).padEnd(3)} ${pool.name.padEnd(30)} ${formatted.vapr.padEnd(10)} ${formatted.votes.padEnd(15)} ${formatted.tvl.padEnd(15)}`;
+          log(line, 'success');
+        });
+        
+        log('', 'info');
+        log('='.repeat(60), 'info');
+        
+        // Show stats
+        const stats = provider.getStats();
+        log(`Total Pools: ${stats.totalPools}`, 'info');
+        log(`Pools with Gauges: ${stats.poolsWithGauges}`, 'info');
+        log(`Total Votes: ${stats.totalVotes.toLocaleString()}`, 'info');
+        log(`Total TVL: $${stats.totalTvl.toLocaleString()}`, 'info');
+        log(`Avg VAPR: ${stats.avgVapr.toFixed(1)}%`, 'info');
+        log(`BLACK Price: $${stats.blackPrice.toFixed(5)}`, 'info');
+        
+        log('', 'info');
+        log('✓ Top 10 pools test complete!', 'success');
+        
+      } catch (error) {
+        log(`✗ Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+  </script>
+</body>
+</html>

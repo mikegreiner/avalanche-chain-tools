@@ -41,6 +41,7 @@ A browser extension that brings powerful pool analysis and voting tools directly
    - Adjust filters:
      - **Top N**: Number of recommendations (default: 10)
      - **Pool Name Filter**: Persistent filter (e.g., "WAVAX" to always only show WAVAX pools)
+     - **Hide vAMM/sAMM**: Filter out volatile/stable AMM pools to focus on concentrated liquidity (faster sync)
      - **Sort By**: Choose your ranking strategy (Auto, Reward, Profitability, Stability)
    - Settings auto-save instantly
 

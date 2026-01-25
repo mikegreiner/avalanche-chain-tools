@@ -59,3 +59,5 @@ config.ini
 *.tmp
 *.bak
 *.orig
+tmp/
+ai-tmp/
