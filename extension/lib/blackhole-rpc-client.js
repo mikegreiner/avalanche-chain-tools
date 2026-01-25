@@ -52,12 +52,13 @@ class BlackholeRpcClient {
       BLACK: '0xcd94a87696fac69edae3a70fe5725307ae1c43f6',
     };
 
-    // Approximate token prices (will be updated dynamically)
-    this.tokenPrices = {
-      WAVAX: 22.0,  // Updated periodically
-      USDC: 1.0,
-      USDt: 1.0,
-    };
+    // Token prices cache - will be fetched from DeFiLlama
+    // Keys are lowercase addresses
+    this.tokenPrices = {};
+    
+    // Token decimals cache - will be populated from metadata
+    // Keys are lowercase addresses
+    this.tokenDecimals = {};
   }
 
   /**
@@ -349,38 +350,22 @@ class BlackholeRpcClient {
         result.token1Fees = Number(this.decodeUint256(token1Result));
       }
 
-      // Calculate USD value (need to adjust for token decimals)
-      // Token0/Token1 could be any combination, so we check against known tokens
+      // Calculate USD value using cached prices and decimals
       const token0Lower = token0Address.toLowerCase();
       const token1Lower = token1Address.toLowerCase();
 
-      let token0USD = 0;
-      let token1USD = 0;
+      const token0Decimals = this.getTokenDecimals(token0Address);
+      const token1Decimals = this.getTokenDecimals(token1Address);
+      const token0Price = this.getTokenPrice(token0Address);
+      const token1Price = this.getTokenPrice(token1Address);
 
-      // Determine decimals and prices for each token
-      if (token0Lower === this.TOKENS.WAVAX.toLowerCase()) {
-        token0USD = (result.token0Fees / 1e18) * this.tokenPrices.WAVAX;
-      } else if (token0Lower === this.TOKENS.USDC.toLowerCase()) {
-        token0USD = result.token0Fees / 1e6;
-      } else if (token0Lower === this.TOKENS.USDt.toLowerCase()) {
-        token0USD = result.token0Fees / 1e6;
-      } else {
-        // Unknown token, assume 18 decimals and $0 value for now
-        token0USD = 0;
-      }
-
-      if (token1Lower === this.TOKENS.WAVAX.toLowerCase()) {
-        token1USD = (result.token1Fees / 1e18) * this.tokenPrices.WAVAX;
-      } else if (token1Lower === this.TOKENS.USDC.toLowerCase()) {
-        token1USD = result.token1Fees / 1e6;
-      } else if (token1Lower === this.TOKENS.USDt.toLowerCase()) {
-        token1USD = result.token1Fees / 1e6;
-      } else {
-        // Unknown token, assume 18 decimals and $0 value for now
-        token1USD = 0;
-      }
+      // Convert raw amounts to token units using decimals, then multiply by price
+      const token0USD = (result.token0Fees / Math.pow(10, token0Decimals)) * token0Price;
+      const token1USD = (result.token1Fees / Math.pow(10, token1Decimals)) * token1Price;
 
       result.totalFeesUSD = token0USD + token1USD;
+      result.token0USD = token0USD;
+      result.token1USD = token1USD;
 
     } catch (error) {
       console.warn('Error fetching epoch fees:', error);
@@ -457,17 +442,72 @@ class BlackholeRpcClient {
    */
   async getAvaxPrice() {
     try {
-      // Use DeFiLlama API for AVAX price
-      const wavaxAddr = this.TOKENS.WAVAX;
+      const wavaxAddr = this.TOKENS.WAVAX.toLowerCase();
       const response = await fetch(`${this.APIS.DEFILLAMA_PRICES}avax:${wavaxAddr}`);
       const data = await response.json();
       const price = data.coins?.[`avax:${wavaxAddr}`]?.price || 22.0;
-      this.tokenPrices.WAVAX = price;
+      this.tokenPrices[wavaxAddr] = price;
       return price;
     } catch (error) {
       console.warn('Failed to fetch AVAX price, using fallback:', error);
-      return this.tokenPrices.WAVAX;
+      return 22.0;
     }
+  }
+
+  /**
+   * Fetch prices for multiple tokens at once from DeFiLlama
+   * @param {string[]} addresses - Array of token addresses
+   * @returns {Promise<Object>} - Map of lowercase address to price
+   */
+  async fetchTokenPrices(addresses) {
+    if (!addresses || addresses.length === 0) return {};
+
+    try {
+      // DeFiLlama accepts comma-separated coins
+      const coins = addresses.map(addr => `avax:${addr.toLowerCase()}`).join(',');
+      const response = await fetch(`${this.APIS.DEFILLAMA_PRICES}${coins}`);
+      const data = await response.json();
+
+      // Parse response and update cache
+      for (const [key, info] of Object.entries(data.coins || {})) {
+        const addr = key.replace('avax:', '').toLowerCase();
+        this.tokenPrices[addr] = info.price || 0;
+      }
+
+      return this.tokenPrices;
+    } catch (error) {
+      console.warn('Failed to fetch token prices:', error);
+      return this.tokenPrices;
+    }
+  }
+
+  /**
+   * Get token price from cache, or return 0 if unknown
+   * @param {string} address - Token address
+   * @returns {number} - Token price in USD
+   */
+  getTokenPrice(address) {
+    const addr = address.toLowerCase();
+    return this.tokenPrices[addr] || 0;
+  }
+
+  /**
+   * Get token decimals from cache
+   * @param {string} address - Token address
+   * @returns {number} - Token decimals (default 18)
+   */
+  getTokenDecimals(address) {
+    const addr = address.toLowerCase();
+    return this.tokenDecimals[addr] || 18;
+  }
+
+  /**
+   * Set token decimals in cache
+   * @param {string} address - Token address
+   * @param {number} decimals - Token decimals
+   */
+  setTokenDecimals(address, decimals) {
+    this.tokenDecimals[address.toLowerCase()] = decimals;
   }
 
   // ============================================================================
@@ -534,25 +574,37 @@ class BlackholeRpcClient {
     if (metadata) {
       const t0 = metadata.token0 || {};
       const t1 = metadata.token1 || {};
-      const tickSpacing = metadata.tickSpacing || 0;
+      const tickSpacing = parseInt(metadata.tickSpacing || 0);
       
       // Determine pool type from tickSpacing
+      // CL1 = 0.01% fee, CL50 = 0.05%, CL100 = 0.1%, CL150 = 0.15%, CL200 = 0.5%
       let poolType = 'CL';
       if (tickSpacing === 1) poolType = 'CL1';
       else if (tickSpacing === 50) poolType = 'CL50';
+      else if (tickSpacing === 100) poolType = 'CL100';
+      else if (tickSpacing === 150) poolType = 'CL150';
       else if (tickSpacing === 200) poolType = 'CL200';
+      else if (tickSpacing > 0) poolType = `CL${tickSpacing}`;
       
       pool.token0 = {
         address: t0.id || '',
         symbol: t0.symbol || '?',
+        decimals: parseInt(t0.decimals || 18),
       };
       pool.token1 = {
         address: t1.id || '',
         symbol: t1.symbol || '?',
+        decimals: parseInt(t1.decimals || 18),
       };
+      
+      // Cache token decimals for fee calculation
+      if (t0.id) this.setTokenDecimals(t0.id, parseInt(t0.decimals || 18));
+      if (t1.id) this.setTokenDecimals(t1.id, parseInt(t1.decimals || 18));
+      
       pool.fee = parseInt(metadata.fee || 0);
       pool.name = `${poolType}-${t0.symbol}/${t1.symbol}`;
       pool.tvl = parseFloat(metadata.totalValueLockedUSD || 0);
+      pool.tickSpacing = tickSpacing;
     }
 
     // Get gauge data

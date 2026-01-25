@@ -42,21 +42,42 @@ class RpcPoolProvider {
       console.log('[RpcPoolProvider] Starting pool fetch...');
       const startTime = Date.now();
 
-      // Step 1: Fetch token prices
-      console.log('[RpcPoolProvider] Fetching token prices...');
-      this.blackPrice = await this.client.getBlackPrice();
-      const avaxPrice = await this.client.getAvaxPrice();
-      console.log(`[RpcPoolProvider] BLACK price: $${this.blackPrice.toFixed(5)}, AVAX price: $${avaxPrice.toFixed(2)}`);
-
-      // Step 2: Fetch total votes
-      console.log('[RpcPoolProvider] Fetching total votes...');
-      this.totalVotes = await this.client.getTotalVotes();
-      console.log(`[RpcPoolProvider] Total votes: ${this.totalVotes.toLocaleString()}`);
-
-      // Step 3: Fetch pool metadata from static API
+      // Step 1: Fetch pool metadata from static API (need this first for token list)
       console.log('[RpcPoolProvider] Fetching CL pool metadata...');
       const metadata = await this.client.fetchClPoolsMetadata();
       console.log(`[RpcPoolProvider] Found ${metadata.length} CL pools`);
+
+      // Step 2: Extract all unique token addresses and cache decimals
+      const tokenAddresses = new Set();
+      for (const pool of metadata) {
+        if (pool.token0?.id) {
+          tokenAddresses.add(pool.token0.id.toLowerCase());
+          this.client.setTokenDecimals(pool.token0.id, parseInt(pool.token0.decimals || 18));
+        }
+        if (pool.token1?.id) {
+          tokenAddresses.add(pool.token1.id.toLowerCase());
+          this.client.setTokenDecimals(pool.token1.id, parseInt(pool.token1.decimals || 18));
+        }
+      }
+      console.log(`[RpcPoolProvider] Found ${tokenAddresses.size} unique tokens`);
+
+      // Step 3: Fetch all token prices in one batch
+      console.log('[RpcPoolProvider] Fetching token prices from DeFiLlama...');
+      await this.client.fetchTokenPrices([...tokenAddresses]);
+      this.blackPrice = await this.client.getBlackPrice();
+      const avaxPrice = this.client.getTokenPrice(this.client.TOKENS.WAVAX);
+      
+      // Count how many tokens have prices
+      let pricedTokens = 0;
+      for (const addr of tokenAddresses) {
+        if (this.client.getTokenPrice(addr) > 0) pricedTokens++;
+      }
+      console.log(`[RpcPoolProvider] Got prices for ${pricedTokens}/${tokenAddresses.size} tokens, BLACK: $${this.blackPrice.toFixed(5)}, AVAX: $${avaxPrice.toFixed(2)}`);
+
+      // Step 4: Fetch total votes
+      console.log('[RpcPoolProvider] Fetching total votes...');
+      this.totalVotes = await this.client.getTotalVotes();
+      console.log(`[RpcPoolProvider] Total votes: ${this.totalVotes.toLocaleString()}`);
 
       // Step 4: Process pools (limit if requested)
       const poolsToProcess = metadata.slice(0, limit);
