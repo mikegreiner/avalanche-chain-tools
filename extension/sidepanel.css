@@ -199,6 +199,13 @@ body {
   box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
 }
 
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .btn-primary:hover {
   background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%);
   transform: translateY(-1px);

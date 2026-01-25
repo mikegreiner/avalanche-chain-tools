@@ -2756,7 +2756,7 @@ function fnmatch(pattern, string) {
  * @param {Object} options - Recommendation options
  * @param {number} options.topN - Number of top pools to return
  * @param {number|null} options.userVotingPower - User's voting power in veBLACK
- * @param {boolean} options.hideVamm - Filter out vAMM pools
+ * @param {boolean} options.hideVamm - Filter out vAMM and sAMM pools (non-CL pools)
  * @param {number|null} options.minRewards - Minimum total rewards in USD
  * @param {number|null} options.maxPoolPercentage - Maximum percentage of pool voting power
  * @param {string|Array<string>|null} options.poolName - Shell-style wildcard pattern(s) to filter pools
@@ -4306,9 +4306,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false });
     });
   } else if (message.type === 'GET_SELECTED_POOLS') {
-    // Use in-memory tracking instead of navigating pages
-    const selectedPools = Array.from(selectedPoolIdsSet).map(poolId => ({ poolId }));
-    sendResponse({ success: true, selectedPools });
+    // Get selected pools - use in-memory tracking (FAST!)
+    // Only use vote panel for initial sync if needed
+    (async () => {
+      try {
+        console.log('[GET_SELECTED] Getting selected pools...');
+        
+        // Strategy 1: Use in-memory tracking (instant, no UI disruption)
+        let selectedSet = new Set(selectedPoolIdsSet);
+        console.log(`[GET_SELECTED] In-memory tracking has ${selectedSet.size} pools`);
+        
+        // Strategy 2: If empty, check current page DOM (no vote panel!)
+        if (selectedSet.size === 0) {
+          console.log('[GET_SELECTED] In-memory empty, checking current page DOM...');
+          const currentPageCells = document.querySelectorAll('div.liquidity-pool-cell');
+          
+          for (const cell of currentPageCells) {
+            const clearLink = cell.querySelector('span.link.underline');
+            if (clearLink && clearLink.textContent.toLowerCase().includes('clear')) {
+              const innerHTML = cell.innerHTML || '';
+              const addressMatch = innerHTML.match(/0x[a-fA-F0-9]{40}/i);
+              if (addressMatch) {
+                selectedSet.add(addressMatch[0].toLowerCase());
+                selectedPoolIdsSet.add(addressMatch[0].toLowerCase());
+              }
+            }
+          }
+          console.log(`[GET_SELECTED] Current page found ${selectedSet.size} pools`);
+        }
+
+        // Return selected pools
+        const selectedPools = Array.from(selectedSet).map(poolId => ({ poolId }));
+        console.log(`[GET_SELECTED] Returning ${selectedPools.length} selected pools`);
+        sendResponse({ success: true, selectedPools });
+      } catch (error) {
+        console.error('[GET_SELECTED] Error getting selected pools:', error);
+        // Fallback to in-memory set
+        const selectedPools = Array.from(selectedPoolIdsSet).map(poolId => ({ poolId }));
+        sendResponse({ success: true, selectedPools });
+      }
+    })();
+    return true; // Keep channel open for async response
+  } else if (message.type === 'CHECK_POOLS_SELECTION') {
+    // Check selection state for specific pools via search
+    const poolIds = message.poolIds || [];
+
+    (async () => {
+      try {
+        const selectedSet = await discoverSelectedPools(poolIds);
+        const selectedPools = Array.from(selectedSet);
+        sendResponse({ success: true, selectedPools });
+      } catch (error) {
+        console.error('Error checking pool selection:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true; // Keep channel open for async response
   } else if (message.type === 'SHOW_OVERLAY') {
     // Show overlay if hidden
@@ -4352,20 +4404,110 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.type === 'SELECT_POOLS') {
     const poolIds = message.poolIds || [];
+    const forceSelect = message.forceSelect !== false; // Default true
+    
     // Process sequentially to avoid UI conflicts
     (async () => {
-      for (const id of poolIds) {
-        await selectSinglePool(id);
-        await new Promise(r => setTimeout(r, 100));
+      for (let i = 0; i < poolIds.length; i++) {
+        const poolId = poolIds[i];
+        const isLast = i === poolIds.length - 1;
+        
+        // Skip if already selected (when forceSelect=true, don't toggle off)
+        if (forceSelect && selectedPoolIdsSet.has(poolId.toLowerCase())) {
+          console.log(`[SELECT_POOLS] Pool ${poolId} already selected, skipping`);
+          continue;
+        }
+        
+        // Skip search clear for all but the last pool
+        await selectSinglePool(poolId, { skipSearchClear: !isLast });
+        await new Promise(r => setTimeout(r, 150)); // Slightly longer delay
       }
       updateOverlay();
       sendResponse({ success: true });
     })();
+    return true; // Keep channel open
   } else if (message.type === 'CLEAR_ALL_VOTES') {
-    clearAllSelectedPools().then((count) => {
-      updateOverlay();
-      sendResponse({ success: true, count });
-    });
+    (async () => {
+      try {
+        console.log('[CLEAR_ALL] Starting clear all operation...');
+        
+        // Strategy 1: Try using the "Clear Votes" button in vote panel (FASTEST!)
+        let clearedViaPanel = false;
+        try {
+          console.log('[CLEAR_ALL] Attempting to use "Clear Votes" button...');
+          clearedViaPanel = await clearAllVotesViaVotePanel();
+          
+          if (clearedViaPanel) {
+            console.log('[CLEAR_ALL] Successfully cleared via vote panel button!');
+            selectedPoolIdsSet.clear();
+            updateOverlay();
+            sendResponse({ success: true, method: 'votePanel' });
+            return;
+          }
+        } catch (votePanelError) {
+          console.warn('[CLEAR_ALL] Vote panel button method failed:', votePanelError);
+        }
+        
+        // Strategy 2: Get selected pools from vote panel and clear them individually
+        let discoveredPools = new Set();
+        try {
+          console.log('[CLEAR_ALL] Attempting to discover pools via vote panel...');
+          discoveredPools = await getSelectedPoolsFromVotePanel(true); // Close panel after
+          console.log(`[CLEAR_ALL] Vote panel discovery found ${discoveredPools.size} pools`);
+        } catch (discoveryError) {
+          console.warn('[CLEAR_ALL] Vote panel discovery failed:', discoveryError);
+        }
+        
+        // Strategy 3: If vote panel didn't find anything, check current page DOM
+        if (discoveredPools.size === 0) {
+          console.log('[CLEAR_ALL] Vote panel found nothing, checking current page...');
+          const currentPageCells = document.querySelectorAll('div.liquidity-pool-cell');
+          
+          for (const cell of currentPageCells) {
+            // Check if this pool is selected
+            const clearLink = cell.querySelector('span.link.underline');
+            if (clearLink && clearLink.textContent.toLowerCase().includes('clear')) {
+              // Extract pool ID
+              const innerHTML = cell.innerHTML || '';
+              const addressMatch = innerHTML.match(/0x[a-fA-F0-9]{40}/i);
+              if (addressMatch) {
+                const poolId = addressMatch[0].toLowerCase();
+                discoveredPools.add(poolId);
+              }
+            }
+          }
+          console.log(`[CLEAR_ALL] Current page method found ${discoveredPools.size} pools`);
+        }
+        
+        // Update our in-memory tracking with discovered pools
+        discoveredPools.forEach(poolId => selectedPoolIdsSet.add(poolId));
+        
+        console.log(`[CLEAR_ALL] Total pools to clear: ${discoveredPools.size}`);
+        
+        if (discoveredPools.size === 0) {
+          console.log('[CLEAR_ALL] No selected pools found');
+          sendResponse({ success: true, count: 0 });
+          return;
+        }
+        
+        // Use search-based clear with discovered pools
+        const clearedCount = await clearAllViaSearch(discoveredPools, (current, total, status) => {
+          console.log(`Clear progress: ${current}/${total} - ${status}`);
+        });
+
+        selectedPoolIdsSet.clear();
+        updateOverlay();
+        sendResponse({ success: true, count: clearedCount });
+      } catch (error) {
+        console.error('Clear all failed:', error);
+        // Fallback to old method
+        clearAllSelectedPools().then((count) => {
+          updateOverlay();
+          sendResponse({ success: true, count });
+        });
+      }
+    })();
+    return true; // Keep channel open for async response
   } else if (message.type === 'SPLIT_VOTES') {
     splitVotesEvenly().then(() => {
       updateOverlay();
@@ -6782,6 +6924,8 @@ async function clearAllSelectedPools() {
   const initialSelectedCount = getSelectedPoolCountFromVoteBox();
   console.log(`Initial selected pool count from vote box: ${initialSelectedCount}`);
   
+  return initialSelectedCount;
+  
   // Step 2: Navigate to page 1 and check all pages, clicking CLEAR immediately when found
   if (paginationContainer) {
     // Go to page 1
@@ -6967,6 +7111,237 @@ async function clearAllSelectedPools() {
     }, 2000);
   }
 }
+
+// ============================================================================
+// SEARCH-BASED POOL SELECTION - Fast pool discovery without page navigation
+// ============================================================================
+
+/**
+ * Get the search input element
+ */
+function getSearchInput() {
+  return document.querySelector('.search-container input.input, .search-bar-outer input.input');
+}
+
+/**
+ * Trigger search with all necessary events
+ */
+function triggerSearch(input, value) {
+  input.value = value;
+  input.focus();
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+  input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter' }));
+}
+
+/**
+ * Wait helper
+ */
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Check if pool is selected via search (fast, no page navigation)
+ * Note: Uses helper functions defined earlier: getSearchInput, triggerSearch, wait,
+ * findPoolCellById, isPoolSelectedOnCell
+ */
+async function checkPoolSelectionViaSearch(poolId) {
+  const searchInput = getSearchInput();
+  if (!searchInput) {
+    console.warn('Search input not found');
+    return false;
+  }
+
+  // Search for the pool
+  triggerSearch(searchInput, poolId);
+  await wait(400);
+
+  // Check if pool is selected
+  const cell = findPoolCellById(poolId);
+  if (!cell) {
+    console.warn(`Pool ${poolId} not found after search`);
+    return false;
+  }
+
+  const isSelected = isPoolSelectedOnCell(cell);
+  return isSelected;
+}
+
+/**
+ * Discover which pools from a list are currently selected
+ * Uses search to avoid page navigation
+ *
+ * @param {string[]} poolIds - Array of pool IDs to check
+ * @param {Function} progressCallback - Optional callback for progress updates
+ * @returns {Promise<Set<string>>} - Set of selected pool IDs
+ */
+async function discoverSelectedPools(poolIds, progressCallback = null) {
+  const searchInput = getSearchInput();
+  if (!searchInput) {
+    console.warn('Search input not found - cannot discover selected pools');
+    return new Set();
+  }
+
+  const selectedSet = new Set();
+  const total = poolIds.length;
+
+  console.log(`Discovering selection state for ${total} pools...`);
+
+  for (let i = 0; i < total; i++) {
+    const poolId = poolIds[i];
+
+    if (progressCallback) {
+      progressCallback(i + 1, total, `Checking ${poolId.slice(0, 10)}...`);
+    }
+
+    try {
+      const isSelected = await checkPoolSelectionViaSearch(poolId);
+      if (isSelected) {
+        selectedSet.add(poolId.toLowerCase());
+      }
+    } catch (error) {
+      console.warn(`Failed to check pool ${poolId}:`, error);
+    }
+  }
+
+  // Clear search
+  triggerSearch(searchInput, '');
+  await wait(300);
+
+  console.log(`Found ${selectedSet.size} selected pools out of ${total} checked`);
+  return selectedSet;
+}
+
+/**
+ * Clear all selected pools using search (no page navigation)
+ *
+ * @param {Set<string>} selectedPoolIds - Set of pool IDs to clear
+ * @param {Function} progressCallback - Optional callback for progress updates
+ */
+async function clearAllViaSearch(selectedPoolIds, progressCallback = null) {
+  const searchInput = getSearchInput();
+  if (!searchInput) {
+    throw new Error('Search input not found');
+  }
+
+  const poolIdsArray = Array.from(selectedPoolIds);
+  const total = poolIdsArray.length;
+  let cleared = 0;
+
+  console.log(`Clearing ${total} selected pools via search...`);
+
+  for (let i = 0; i < total; i++) {
+    const poolId = poolIdsArray[i];
+
+    if (progressCallback) {
+      progressCallback(i + 1, total, `Clearing ${poolId.slice(0, 10)}...`);
+    }
+
+    try {
+      // Search for pool
+      triggerSearch(searchInput, poolId);
+      await wait(400);
+
+      // Find cell
+      const cell = findPoolCellById(poolId);
+      if (!cell) {
+        console.warn(`Pool ${poolId} not found`);
+        continue;
+      }
+
+      // Find and click CLEAR link
+      const clearLink = cell.querySelector('span.link.underline');
+      if (clearLink && clearLink.textContent.toLowerCase().includes('clear')) {
+        clearLink.click();
+        cleared++;
+        await wait(150);
+      } else {
+        console.warn(`No CLEAR link found for ${poolId}`);
+      }
+    } catch (error) {
+      console.error(`Failed to clear pool ${poolId}:`, error);
+    }
+  }
+
+  // Clear search
+  triggerSearch(searchInput, '');
+  await wait(300);
+
+  console.log(`Cleared ${cleared}/${total} pools`);
+  return cleared;
+}
+
+/**
+ * Get selected pools from recommendations (fast)
+ * Only checks pools the user cares about, not all 100+ pools
+ */
+async function getSelectedPoolsInRecommendations() {
+  try {
+    // Get pool data and settings from storage
+    const result = await safeStorageGet(['poolData', 'blackholeSettings']);
+    const poolData = result.poolData || [];
+    const settings = result.blackholeSettings || {};
+
+    if (poolData.length === 0) {
+      console.warn('No pool data available');
+      return new Set();
+    }
+
+    // Create Pool instances
+    const pools = poolData.map(data => {
+      // Check if data is already a Pool instance
+      if (data instanceof Pool) {
+        return data;
+      }
+      return new Pool(data);
+    });
+
+    // Get recommended pools (typically top 10-20)
+    const recommendations = recommendPools(pools, {
+      topN: settings.topN || 20,  // Check a few more than displayed
+      userVotingPower: settings.votingPower,
+      hideVamm: settings.hideVamm,
+      minRewards: settings.minRewards,
+      maxPoolPercentage: settings.maxPoolPercentage,
+      poolName: settings.poolNameFilter,
+      sortBy: settings.sortBy || 'auto'
+    });
+
+    const recommendedIds = recommendations.map(p => p.pool_id);
+    console.log(`Checking selection state for ${recommendedIds.length} recommended pools`);
+
+    // Discover which are selected
+    const selectedSet = await discoverSelectedPools(recommendedIds, (current, total, status) => {
+      console.log(`Discovery progress: ${current}/${total} - ${status}`);
+    });
+
+    return selectedSet;
+  } catch (error) {
+    console.error('Error getting selected pools in recommendations:', error);
+    return new Set();
+  }
+}
+
+/**
+ * Notify sidepanel of selection state change
+ */
+function notifySelectionChanged(poolId, isSelected) {
+  try {
+    chrome.runtime.sendMessage({
+      type: 'POOL_SELECTION_CHANGED',
+      poolId: poolId,
+      isSelected: isSelected
+    });
+  } catch (error) {
+    console.warn('Failed to notify sidepanel:', error);
+  }
+}
+
+// ============================================================================
+// END SEARCH-BASED POOL SELECTION
+// ============================================================================
 
 // Get all currently selected pools (checks all pages if pagination exists)
 async function getSelectedPools() {
@@ -7385,11 +7760,15 @@ async function splitVotesEvenly() {
   
   // Now fill all the inputs
   let filledCount = 0;
+  console.log(`[SPLIT] Attempting to fill ${poolInputs.length} inputs...`);
+  
   for (const poolInput of poolInputs) {
     try {
-      // Scroll input into view
-      poolInput.input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log(`[SPLIT] Processing pool ${poolInput.pool.poolId}, allocating ${poolInput.percentage}%`);
+      
+      // Don't scroll - it's disruptive
+      // poolInput.input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // await new Promise(resolve => setTimeout(resolve, 100));
       
       // Focus and set value (percentage, not absolute votes)
       poolInput.input.focus();
@@ -7398,30 +7777,39 @@ async function splitVotesEvenly() {
       // Trigger input events to ensure React/UI updates
       poolInput.input.dispatchEvent(new Event('input', { bubbles: true }));
       poolInput.input.dispatchEvent(new Event('change', { bubbles: true }));
+      poolInput.input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+      poolInput.input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
       
       // Also try setting value property directly (for React controlled components)
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      if (valueSetter) {
-        valueSetter.call(poolInput.input, poolInput.percentage.toString());
-        poolInput.input.dispatchEvent(new Event('input', { bubbles: true }));
+      try {
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        if (valueSetter) {
+          valueSetter.call(poolInput.input, poolInput.percentage.toString());
+          poolInput.input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch (setterError) {
+        console.warn('[SPLIT] Value setter error (non-critical):', setterError);
       }
       
       filledCount++;
-      console.log(`✓ Allocated ${poolInput.percentage}% to pool ${poolInput.pool.poolId}`);
+      console.log(`[SPLIT] ✓ Allocated ${poolInput.percentage}% to pool ${poolInput.pool.poolId} (${filledCount}/${poolInputs.length})`);
       
-      // Small delay between inputs
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Shorter delay between inputs (faster)
+      await new Promise(resolve => setTimeout(resolve, 50));
     } catch (e) {
-      console.warn(`Error setting percentage for pool ${poolInput.pool.poolId}:`, e);
+      console.error(`[SPLIT] Error setting percentage for pool ${poolInput.pool.poolId}:`, e);
+      // Continue with other pools even if one fails
     }
   }
+  
+  console.log(`[SPLIT] Finished: filled ${filledCount}/${poolInputs.length} inputs`);
   
   // Show feedback
   const contentEl = document.getElementById('blackhole-tools-content');
   if (contentEl) {
     const originalHTML = contentEl.innerHTML;
     if (filledCount > 0) {
-      contentEl.innerHTML = `<p style="color: #32cd32; text-align: center; padding: 20px;">✓ Split 100% voting power across ${filledCount} pool(s)<br><small style="color: #999;">~${roundedPercentage}% per pool</small></p>`;
+      contentEl.innerHTML = `<p style="color: #32cd32; text-align: center; padding: 20px;">✓ Split 100% voting power across ${filledCount} pool(s)<br><small style="color: #999;">Check vote panel to verify</small></p>`;
     } else {
       contentEl.innerHTML = `<p style="color: #ff8c00; text-align: center; padding: 20px;">⚠️ Could not find vote allocation inputs.<br><small>Make sure the voting dialog is open and pools are selected.</small></p>`;
     }
@@ -7430,6 +7818,153 @@ async function splitVotesEvenly() {
       updateOverlay();
     }, 3000);
   }
+}
+
+/**
+ * Clear all votes using the "Clear Votes" button in the vote panel (FASTEST!)
+ * @returns {Promise<boolean>} True if successful, false otherwise
+ */
+async function clearAllVotesViaVotePanel() {
+  console.log('[VotePanel] Attempting to clear all votes via vote panel button...');
+  
+  // Check if modal is already open
+  let modal = document.querySelector('.voting-modal, .sc-modal-overlay.show');
+  let wasOpen = !!(modal && (modal.offsetParent !== null || window.getComputedStyle(modal).display !== 'none'));
+  
+  // Open the vote panel if it's not already open
+  if (!wasOpen) {
+    console.log('[VotePanel] Opening vote panel...');
+    await toggleVotePanel();
+    await new Promise(resolve => setTimeout(resolve, 500)); // Wait for modal to fully render
+    modal = document.querySelector('.voting-modal, .sc-modal-overlay.show');
+  }
+  
+  if (!modal) {
+    console.warn('[VotePanel] Could not find vote panel');
+    return false;
+  }
+  
+  // Look for "Clear Votes" button
+  // Structure: <div class="extra-func">...<div class="uppercase clickable">Clear Votes</div>...
+  const clearVotesButtons = Array.from(modal.querySelectorAll('.uppercase.clickable'));
+  const clearVotesButton = clearVotesButtons.find(btn => 
+    btn.textContent && btn.textContent.trim().toLowerCase() === 'clear votes'
+  );
+  
+  if (clearVotesButton) {
+    console.log('[VotePanel] Found "Clear Votes" button, clicking...');
+    clearVotesButton.click();
+    
+    // Wait for action to complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // ALWAYS close the panel (whether we opened it or not)
+    // User expects panel to be closed after "Clear All"
+    console.log('[VotePanel] Closing vote panel...');
+    await toggleVotePanel();
+    
+    console.log('[VotePanel] Successfully cleared all votes via vote panel');
+    return true;
+  }
+  
+  console.warn('[VotePanel] Could not find "Clear Votes" button');
+  
+  // Close the panel if we opened it
+  if (!wasOpen) {
+    await toggleVotePanel();
+  }
+  
+  return false;
+}
+
+/**
+ * Get selected pools from the vote panel (FAST - no page navigation!)
+ * This opens the vote modal, extracts pool IDs, then optionally closes it
+ * 
+ * @param {boolean} closeAfter - Whether to close the vote panel after extracting (default: true)
+ * @returns {Promise<Set<string>>} Set of selected pool IDs (lowercase)
+ */
+async function getSelectedPoolsFromVotePanel(closeAfter = true) {
+  console.log('[VotePanel] Getting selected pools from vote panel...');
+  
+  // Check if modal is already open
+  let modal = document.querySelector('.voting-modal, .sc-modal-overlay.show');
+  let wasOpen = !!(modal && (modal.offsetParent !== null || window.getComputedStyle(modal).display !== 'none'));
+  
+  // Open the vote panel if it's not already open
+  if (!wasOpen) {
+    console.log('[VotePanel] Opening vote panel...');
+    await toggleVotePanel();
+    await new Promise(resolve => setTimeout(resolve, 500)); // Wait for modal to fully render
+    modal = document.querySelector('.voting-modal, .sc-modal-overlay.show');
+  }
+  
+  if (!modal) {
+    console.warn('[VotePanel] Could not find vote panel');
+    return new Set();
+  }
+  
+  const selectedPoolIds = new Set();
+  
+  // Method 1: Look for pool-address-tooltip attributes (most reliable for blackhole.xyz)
+  // Format: data-tooltip-id="pool-address-tooltip-0xA02Ec3Ba8d17887567672b2CDCAF525534636Ea0"
+  const tooltipElements = modal.querySelectorAll('[data-tooltip-id^="pool-address-tooltip-"]');
+  console.log(`[VotePanel] Found ${tooltipElements.length} tooltip elements`);
+  
+  for (const element of tooltipElements) {
+    const tooltipId = element.getAttribute('data-tooltip-id');
+    if (tooltipId) {
+      // Extract address from tooltip ID: "pool-address-tooltip-0xABCD..."
+      const match = tooltipId.match(/pool-address-tooltip-(0x[a-fA-F0-9]{40})/i);
+      if (match && match[1]) {
+        selectedPoolIds.add(match[1].toLowerCase());
+        console.log('[VotePanel] Found pool from tooltip:', match[1]);
+      }
+    }
+  }
+  
+  // Method 2: Look for liquidity-pool-cell elements in the vote panel
+  if (selectedPoolIds.size === 0) {
+    console.log('[VotePanel] Method 1 found nothing, trying method 2 (pool cells)...');
+    const poolCells = modal.querySelectorAll('.liquidity-pool-cell');
+    console.log(`[VotePanel] Found ${poolCells.length} pool cells`);
+    
+    for (const cell of poolCells) {
+      // Try to find pool address in the cell HTML
+      const html = cell.innerHTML || '';
+      const addressMatch = html.match(/0x[a-fA-F0-9]{40}/i);
+      if (addressMatch) {
+        selectedPoolIds.add(addressMatch[0].toLowerCase());
+        console.log('[VotePanel] Found pool from cell:', addressMatch[0]);
+      }
+    }
+  }
+  
+  // Method 3: Search all modal HTML for addresses (fallback)
+  if (selectedPoolIds.size === 0) {
+    console.log('[VotePanel] Method 2 found nothing, trying method 3 (regex)...');
+    const modalHTML = modal.innerHTML || '';
+    const addressRegex = /0x[a-fA-F0-9]{40}/gi;
+    const matches = modalHTML.match(addressRegex);
+    
+    if (matches) {
+      // Deduplicate and add to set
+      matches.forEach(addr => {
+        selectedPoolIds.add(addr.toLowerCase());
+      });
+      console.log('[VotePanel] Found', matches.length, 'addresses via regex');
+    }
+  }
+  
+  console.log(`[VotePanel] Total discovered: ${selectedPoolIds.size} selected pools`);
+  
+  // Close the panel if requested and it wasn't already open
+  if (closeAfter && !wasOpen) {
+    console.log('[VotePanel] Closing vote panel...');
+    await toggleVotePanel();
+  }
+  
+  return selectedPoolIds;
 }
 
 // Toggle the in-page voting modal (show/hide)
@@ -7479,14 +8014,16 @@ async function toggleVotePanel() {
 }
 
 // Select or deselect a single pool by ID - FAST DIRECT APPROACH
-async function selectSinglePool(poolId) {
+async function selectSinglePool(poolId, options = {}) {
   if (!poolId) {
     console.warn('No pool ID provided');
     return;
   }
-  
+
+  const { skipSearchClear = false } = options;
+
   const normalizedPoolId = poolId.toLowerCase().trim();
-  console.log(`Selecting pool: ${poolId}`);
+  console.log(`Selecting pool: ${poolId}${skipSearchClear ? ' (batch mode)' : ''}`);
   
   // Ensure pools are scraped to memory
   await scrapeAllPoolsToMemory();
@@ -7634,21 +8171,39 @@ async function selectSinglePool(poolId) {
       // Update in-memory tracking
       selectedPoolIdsSet.delete(normalizedPoolId);
       poolData.isSelected = false;
+
+      // Notify sidepanel immediately
+      notifySelectionChanged(poolId, false);
+
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Clear search field
-      if (searchInput) {
-        searchInput.value = '';
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-        searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(resolve => setTimeout(resolve, 300)); // Wait for page to unfilter
+
+      // Clear search field unless in batch mode
+      if (!skipSearchClear) {
+        const currentSearchInput = document.querySelector('.search-container input.input, .search-bar-outer input.input');
+        if (currentSearchInput) {
+          try {
+            currentSearchInput.value = '';
+            currentSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            currentSearchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await new Promise(resolve => setTimeout(resolve, 300)); // Wait for page to unfilter
+          } catch (searchErr) {
+            console.warn('Error clearing search (non-critical):', searchErr);
+          }
+        }
       }
-      
-      // Update overlay immediately
-      updateOverlay();
+
+      // Update overlay immediately (don't block on errors)
+      updateOverlay().catch(err => console.warn('updateOverlay error (non-critical):', err));
     } catch (e) {
-      console.warn(`Error clicking CLEAR:`, e);
-      alert(`Error clearing pool ${poolId}. Please try manually.`);
+      console.error(`Error during pool deselection:`, e);
+      console.error(`Error details: ${e.message}, stack: ${e.stack}`);
+      // Don't show alert if the pool was actually deselected
+      const wasDeselected = !selectedPoolIdsSet.has(normalizedPoolId);
+      if (!wasDeselected) {
+        alert(`Error clearing pool ${poolId}. Please try manually.`);
+      } else {
+        console.log(`Pool ${poolId} was deselected despite error, continuing...`);
+      }
       return;
     }
   } else if (!finalIsSelected && selectButton) {
@@ -7658,21 +8213,39 @@ async function selectSinglePool(poolId) {
       // Update in-memory tracking
       selectedPoolIdsSet.add(normalizedPoolId);
       poolData.isSelected = true;
+
+      // Notify sidepanel immediately
+      notifySelectionChanged(poolId, true);
+
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Clear search field
-      if (searchInput) {
-        searchInput.value = '';
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-        searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(resolve => setTimeout(resolve, 300)); // Wait for page to unfilter
+
+      // Clear search field unless in batch mode
+      if (!skipSearchClear) {
+        const currentSearchInput = document.querySelector('.search-container input.input, .search-bar-outer input.input');
+        if (currentSearchInput) {
+          try {
+            currentSearchInput.value = '';
+            currentSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            currentSearchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await new Promise(resolve => setTimeout(resolve, 300)); // Wait for page to unfilter
+          } catch (searchErr) {
+            console.warn('Error clearing search (non-critical):', searchErr);
+          }
+        }
       }
-      
-      // Update overlay immediately
-      updateOverlay();
+
+      // Update overlay immediately (don't block on errors)
+      updateOverlay().catch(err => console.warn('updateOverlay error (non-critical):', err));
     } catch (e) {
-      console.warn(`Error clicking SELECT:`, e);
-      alert(`Error selecting pool ${poolId}. Please try manually.`);
+      console.error(`Error during pool selection:`, e);
+      console.error(`Error details: ${e.message}, stack: ${e.stack}`);
+      // Don't show alert if the pool was actually selected
+      const wasSelected = selectedPoolIdsSet.has(normalizedPoolId);
+      if (!wasSelected) {
+        alert(`Error selecting pool ${poolId}. Please try manually.`);
+      } else {
+        console.log(`Pool ${poolId} was selected despite error, continuing...`);
+      }
       return;
     }
   } else {

@@ -28,7 +28,7 @@ async function build() {
     const declaredConstants = new Set();
     const declaredFunctions = new Set();
     const skipConstants = ['VOTER_ADDRESS', 'RPC_URL', 'MULTICALL3_ADDRESS', 'AGGREGATE_SELECTOR', 'SELECTORS', 'API_URL', 'VAMM_SAMM_POOLS', 'KNOWN_VAMM_SAMM_POOLS'];
-    const skipFunctions = ['hexToBigInt', 'hexToAddress']; // Helper functions that appear in multiple files
+    const skipFunctions = ['hexToBigInt', 'hexToAddress', 'getSearchInput', 'triggerSearch', 'wait', 'findPoolCellById', 'extractPoolIdFromCell', 'isPoolSelectedOnCell']; // Helper functions that appear in multiple files
     
     // Helper to strip module keywords line by line and handle duplicate constants
     const stripModules = (content) => {

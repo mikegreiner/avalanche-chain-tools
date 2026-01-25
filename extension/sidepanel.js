@@ -10,6 +10,33 @@ import { recommendPools } from './lib/pool-recommender.js';
 let saveTimer = null;
 let capturedRequests = [];
 
+// Operation lock to prevent concurrent pool operations
+let operationInProgress = false;
+async function withOperationLock(operation) {
+  if (operationInProgress) {
+    showStatus('Operation in progress, please wait...', 'error');
+    return null;
+  }
+  
+  operationInProgress = true;
+  
+  // Disable all select buttons
+  document.querySelectorAll('.select-pool-btn').forEach(btn => {
+    btn.disabled = true;
+  });
+  
+  try {
+    return await operation();
+  } finally {
+    operationInProgress = false;
+    
+    // Re-enable all select buttons
+    document.querySelectorAll('.select-pool-btn').forEach(btn => {
+      btn.disabled = false;
+    });
+  }
+}
+
 // Load settings on popup open
 document.addEventListener('DOMContentLoaded', async () => {
   const settings = await loadSettings();
@@ -28,7 +55,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Setup listeners
   setupListeners();
-  
+
+  // Setup reactive updates for selection changes
+  setupReactiveUpdates();
+
   // Initialize RPC integration - fetch pool data if needed
   if (window.rpcIntegration) {
     console.log('[SidePanel] Initializing RPC integration...');
@@ -222,35 +252,92 @@ function setupListeners() {
 
   // Action Buttons
   document.getElementById('selectAllBtn').addEventListener('click', async () => {
-    // Get current recommendations to select them all
-    const pools = getCurrentRecommendationIds();
-    if (pools.length > 0) {
-      sendMessageToContentScript({ type: 'SELECT_POOLS', poolIds: pools });
-      showStatus(`Selecting ${pools.length} pools...`, 'success');
-    }
+    await withOperationLock(async () => {
+      // Get current recommendations to select them all
+      const pools = getCurrentRecommendationIds();
+      if (pools.length > 0) {
+        const btn = document.getElementById('selectAllBtn');
+        const originalText = btn.textContent;
+        btn.textContent = 'Selecting...';
+        btn.disabled = true;
+        
+        try {
+          await sendMessageToContentScript({ 
+            type: 'SELECT_POOLS', 
+            poolIds: pools,
+            forceSelect: true  // Don't unselect already-selected pools
+          });
+          showStatus(`Selected ${pools.length} pools`, 'success');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await loadAndRenderRecommendations();
+        } catch (e) {
+          console.error('Error selecting pools:', e);
+          showStatus('Selection failed', 'error');
+        } finally {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      }
+    });
   });
 
   document.getElementById('clearAllBtn').addEventListener('click', async () => {
-    showStatus('Clearing all votes...', 'success');
-    try {
-      await sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
-      // Wait slightly for page state to settle
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await loadAndRenderRecommendations();
-    } catch (e) {
-      console.error('Error clearing votes:', e);
-    }
+    await withOperationLock(async () => {
+      const btn = document.getElementById('clearAllBtn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Clearing...';
+      btn.disabled = true;
+      
+      try {
+        await sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
+        showStatus('All votes cleared', 'success');
+        // Wait slightly for page state to settle
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await loadAndRenderRecommendations();
+      } catch (e) {
+        console.error('Error clearing votes:', e);
+        showStatus('Clear failed', 'error');
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    });
   });
 
   document.getElementById('splitVotesBtn').addEventListener('click', async () => {
-    const settings = await loadSettings();
-    const poolIds = getCurrentRecommendationIds();
-    sendMessageToContentScript({ 
-      type: 'SPLIT_VOTES', 
-      poolIds: poolIds,
-      votingPower: settings.votingPower 
+    await withOperationLock(async () => {
+      const settings = await loadSettings();
+      
+      // Get currently selected pools from the page
+      const response = await sendMessageToContentScript({ type: 'GET_SELECTED_POOLS' });
+      const selectedCount = response && response.selectedPools ? response.selectedPools.length : 0;
+      
+      if (selectedCount === 0) {
+        showStatus('No pools selected', 'error');
+        return;
+      }
+      
+      const btn = document.getElementById('splitVotesBtn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Splitting...';
+      btn.disabled = true;
+      
+      try {
+        await sendMessageToContentScript({ 
+          type: 'SPLIT_VOTES',
+          votingPower: settings.votingPower 
+        });
+        showStatus(`Split votes across ${selectedCount} pools`, 'success');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await loadAndRenderRecommendations();
+      } catch (e) {
+        console.error('Error splitting votes:', e);
+        showStatus('Split votes failed', 'error');
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
     });
-    showStatus('Splitting votes...', 'success');
   });
 
   document.getElementById('voteBtn').addEventListener('click', async () => {
@@ -818,29 +905,49 @@ async function loadAndRenderRecommendations() {
     `;
     
     container.innerHTML = html;
-    
+
     // Re-attach listener for the new button
-    document.getElementById('goToVotePageBtn').addEventListener('click', openVotingPage);
+    const goToVoteBtn = document.getElementById('goToVotePageBtn');
+    if (goToVoteBtn) {
+      goToVoteBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openVotingPage();
+      });
+    }
+
+    // Refresh selection state for newly rendered pools
+    setTimeout(() => {
+      refreshSelectionState();
+    }, 100);
 
     // Attach listeners to "Select" buttons
     document.querySelectorAll('.select-pool-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
-        const poolId = e.target.dataset.id;
-        const isSelected = e.target.textContent === 'Deselect';
-        
-        e.target.textContent = isSelected ? 'Clearing...' : 'Selecting...';
-        e.target.disabled = true;
-        
-        try {
-          await sendMessageToContentScript({ type: 'SELECT_POOL', poolId: poolId });
-          // Wait slightly for the page to update
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await loadAndRenderRecommendations();
-        } catch (err) {
-          console.error('Error selecting pool:', err);
-          e.target.disabled = false;
-          e.target.textContent = isSelected ? 'Deselect' : 'Select';
+        if (operationInProgress) {
+          showStatus('Operation in progress, please wait...', 'error');
+          return;
         }
+        
+        await withOperationLock(async () => {
+          const poolId = e.target.dataset.id;
+          const isSelected = e.target.textContent === 'Deselect';
+          
+          e.target.textContent = isSelected ? 'Clearing...' : 'Selecting...';
+          e.target.disabled = true;
+          
+          try {
+            await sendMessageToContentScript({ type: 'SELECT_POOL', poolId: poolId });
+            // Wait slightly for the page to update
+            await new Promise(resolve => setTimeout(resolve, 800));
+            await loadAndRenderRecommendations();
+          } catch (err) {
+            console.error('Error selecting pool:', err);
+            showStatus(isSelected ? 'Deselect failed' : 'Select failed', 'error');
+            e.target.disabled = false;
+            e.target.textContent = isSelected ? 'Deselect' : 'Select';
+          }
+        });
       });
     });
     
@@ -864,6 +971,94 @@ function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+}
+
+/**
+ * Setup reactive updates for pool selection changes
+ * Listens for POOL_SELECTION_CHANGED messages from content script
+ */
+function setupReactiveUpdates() {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'POOL_SELECTION_CHANGED') {
+      console.log('[SidePanel] Pool selection changed:', message.poolId, message.isSelected);
+      updatePoolStyling(message.poolId, message.isSelected);
+      sendResponse({ success: true });
+    }
+  });
+
+  console.log('[SidePanel] Reactive updates initialized');
+}
+
+/**
+ * Update a single pool's styling in the sidepanel
+ * @param {string} poolId - Pool ID that changed
+ * @param {boolean} isSelected - New selection state
+ */
+function updatePoolStyling(poolId, isSelected) {
+  const normalizedId = poolId.toLowerCase().trim();
+  const poolItem = document.querySelector(`[data-pool-id="${normalizedId}"]`);
+
+  if (!poolItem) {
+    console.log(`Pool ${poolId} not in current recommendations, skipping style update`);
+    return;
+  }
+
+  console.log(`Updating pool ${poolId} styling: isSelected=${isSelected}`);
+
+  // Update the pool-selected class
+  poolItem.classList.toggle('pool-selected', isSelected);
+
+  // Update the button
+  const button = poolItem.querySelector('.select-pool-btn');
+  if (button) {
+    button.textContent = isSelected ? 'Deselect' : 'Select';
+    button.classList.toggle('btn-primary', isSelected);
+    button.classList.toggle('btn-secondary', !isSelected);
+    button.disabled = false;  // Re-enable in case it was disabled
+  }
+}
+
+/**
+ * Refresh selection state for currently visible recommendations
+ * Call this after recommendations are rendered
+ * 
+ * Uses GET_SELECTED_POOLS to query the in-memory selectedPoolIdsSet
+ * instead of expensive search-based discovery for each pool
+ */
+async function refreshSelectionState() {
+  console.log('[SidePanel] Refreshing selection state for visible recommendations...');
+
+  // Get all pool items currently displayed
+  const poolItems = document.querySelectorAll('.recommendation-item[data-pool-id]');
+  const poolIds = Array.from(poolItems).map(item => item.dataset.poolId);
+
+  if (poolIds.length === 0) {
+    console.log('[SidePanel] No pools to refresh');
+    return;
+  }
+
+  console.log(`[SidePanel] Checking selection state for ${poolIds.length} visible pools`);
+
+  // Query content script for in-memory selection state (instant, no search)
+  try {
+    const response = await sendMessageToContentScript({
+      type: 'GET_SELECTED_POOLS'
+    });
+
+    if (response && response.selectedPools) {
+      const selectedSet = new Set(response.selectedPools.map(p => p.poolId.toLowerCase()));
+
+      // Update styling for each pool
+      poolIds.forEach(poolId => {
+        const isSelected = selectedSet.has(poolId.toLowerCase());
+        updatePoolStyling(poolId, isSelected);
+      });
+
+      console.log(`[SidePanel] Updated styling for ${poolIds.length} pools, ${selectedSet.size} selected`);
+    }
+  } catch (error) {
+    console.error('[SidePanel] Failed to refresh selection state:', error);
+  }
 }
 
 // Reuse existing logic for saving settings
