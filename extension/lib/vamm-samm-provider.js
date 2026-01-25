@@ -17,12 +17,13 @@ const SELECTORS = {
   symbol: '0x95d89b41' // ERC20 symbol()
 };
 
-// Known pool addresses from discovery
-// In production, this could be loaded from vamm_samm_pools.json
-// For now, we'll use a subset and let DOM extraction fill in the rest
-const KNOWN_VAMM_SAMM_POOLS = [
-  // These will be populated from vamm_samm_pools.json or discovered dynamically
-];
+// Static vAMM/sAMM pool data from GAUGE_MANAGER enumeration
+// Generated: 2026-01-25 - 75 vAMM + 9 sAMM = 84 pools
+// To regenerate: python scripts/enumerate_vamm_samm_pools.py
+import { VAMM_SAMM_POOLS } from './vamm-samm-data.js';
+
+// Legacy constant for backward compatibility
+const KNOWN_VAMM_SAMM_POOLS = VAMM_SAMM_POOLS || [];
 
 // Helper to decode hex to BigInt
 function hexToBigInt(hex) {
@@ -98,16 +99,54 @@ export class VammSammProvider {
   constructor() {
     this.rpc = new RpcClient(RPC_URL);
     this.knownPools = new Map(); // address -> { type, weight, token0, token1 }
+    this.poolsLoaded = false;
   }
 
   /**
-   * Load known vAMM/sAMM pools from discovery data
-   * In production, this could load from vamm_samm_pools.json
+   * Load known vAMM/sAMM pools from static data
+   * @returns {Array} - Array of pool metadata objects
    */
   async loadKnownPools() {
-    // For now, return empty - pools will be discovered via DOM
-    // In future, could load from static file or fetch dynamically
-    return [];
+    if (this.poolsLoaded) {
+      return Array.from(this.knownPools.values());
+    }
+    
+    // Load from static data
+    for (const pool of KNOWN_VAMM_SAMM_POOLS) {
+      const t0 = pool.token0 || {};
+      const t1 = pool.token1 || {};
+      const name = `${pool.type}-${t0.symbol || '?'}/${t1.symbol || '?'}`;
+      
+      this.knownPools.set(pool.id.toLowerCase(), {
+        id: pool.id,
+        type: pool.type,
+        name: name,
+        token0: t0,
+        token1: t1,
+        gauge: pool.gauge
+      });
+    }
+    
+    this.poolsLoaded = true;
+    console.log(`[VammSammProvider] Loaded ${this.knownPools.size} vAMM/sAMM pools from static data`);
+    return Array.from(this.knownPools.values());
+  }
+  
+  /**
+   * Get pool addresses from static data
+   * @returns {Array<string>} - Array of pool addresses
+   */
+  getPoolAddresses() {
+    return KNOWN_VAMM_SAMM_POOLS.map(p => p.id.toLowerCase());
+  }
+  
+  /**
+   * Get pool metadata by address
+   * @param {string} address - Pool address
+   * @returns {Object|null} - Pool metadata or null
+   */
+  getPoolMetadata(address) {
+    return this.knownPools.get(address.toLowerCase()) || null;
   }
 
   /**
@@ -135,40 +174,54 @@ export class VammSammProvider {
 
   /**
    * Get vAMM/sAMM pools
-   * Returns pools with basic data (address, type, weight)
-   * Rewards/VAPR should be filled from DOM extraction
+   * Returns pools with data from static file + RPC weights
+   * @param {Array<string>} addresses - Optional addresses to filter (if empty, uses all known pools)
+   * @returns {Promise<Array<Pool>>} - Array of Pool objects
    */
-  async getPools(knownAddresses = []) {
-    if (knownAddresses.length === 0) {
-      // If no addresses provided, return empty
-      // Pools will be discovered via DOM extraction
+  async getPools(addresses = null) {
+    // Load known pools from static data
+    await this.loadKnownPools();
+    
+    // Determine which addresses to use
+    const poolAddresses = addresses && addresses.length > 0 
+      ? addresses 
+      : this.getPoolAddresses();
+    
+    if (poolAddresses.length === 0) {
       return [];
     }
 
-    console.log(`Fetching weights for ${knownAddresses.length} vAMM/sAMM pools`);
+    console.log(`[VammSammProvider] Fetching weights for ${poolAddresses.length} vAMM/sAMM pools`);
 
-    // Get weights
-    const weightsMap = await this.getPoolWeights(knownAddresses);
+    // Get weights from Voter contract
+    const weightsMap = await this.getPoolWeights(poolAddresses);
     const pools = [];
 
-    for (const addr of knownAddresses) {
-      const weightBigInt = weightsMap.get(addr.toLowerCase()) || 0n;
+    for (const addr of poolAddresses) {
+      const addrLower = addr.toLowerCase();
+      const weightBigInt = weightsMap.get(addrLower) || 0n;
       const currentVotes = Number(weightBigInt) / 1e18;
 
-      // Determine pool type (could be improved with better classification)
-      const poolInfo = this.knownPools.get(addr.toLowerCase());
-      const poolType = poolInfo?.type || 'vAMM'; // Default to vAMM
+      // Get pool metadata from static data
+      const poolInfo = this.knownPools.get(addrLower);
+      const poolType = poolInfo?.type || 'vAMM';
+      const t0 = poolInfo?.token0 || {};
+      const t1 = poolInfo?.token1 || {};
+      const name = poolInfo?.name || `${poolType}-${t0.symbol || '?'}/${t1.symbol || '?'}`;
 
-      // Create pool with basic data
-      // Rewards/VAPR will be filled from DOM extraction
+      // Create pool with data
+      // Note: Rewards/VAPR will be calculated via RPC fees fetching (similar to CL pools)
       pools.push(new Pool({
-        name: poolInfo?.name || `vAMM/sAMM Pool ${addr.slice(0, 8)}`,
+        name: name,
         pool_id: addr,
         pool_type: poolType,
-        fee_percentage: null, // vAMM/sAMM may not have standard fees
-        total_rewards: 0, // Will be filled from DOM
-        vapr: 0, // Will be filled from DOM
-        current_votes: currentVotes
+        fee_percentage: null, // vAMM/sAMM don't have standard fee tiers
+        total_rewards: 0, // Will be filled from RPC fee calculation
+        vapr: 0, // Will be calculated from fees/votes
+        current_votes: currentVotes,
+        token0: t0,
+        token1: t1,
+        gauge: poolInfo?.gauge
       }));
     }
 

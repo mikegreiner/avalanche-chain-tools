@@ -16,6 +16,7 @@ from web3 import Web3
 
 RPC_URL = "https://api.avax.network/ext/bc/C/rpc"
 CL_POOLS_URL = "https://resources.blackhole.xyz/cl-pools-list/cl-pools.json"
+VAMM_SAMM_FILE = "data/vamm_samm_pools_enumerated.json"
 DEFILLAMA_URL = "https://coins.llama.fi/prices/current/"
 
 # Contract addresses
@@ -102,6 +103,17 @@ class PoolDataFetcher:
         data = resp.json()
         return data.get("pools", data)
     
+    def fetch_vamm_samm_pools(self) -> list:
+        """Fetch vAMM/sAMM pool metadata from local file"""
+        import os
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), VAMM_SAMM_FILE)
+        if not os.path.exists(file_path):
+            print(f"  Warning: {VAMM_SAMM_FILE} not found. Run enumerate_vamm_samm_pools.py first.")
+            return []
+        with open(file_path) as f:
+            data = json.load(f)
+        return data.get("pools", [])
+    
     def get_total_votes(self) -> float:
         result = self.call(VOTER, self.selector("totalWeight()"))
         return self.decode_uint(result) / 1e18 if result else 0
@@ -160,12 +172,18 @@ class PoolDataFetcher:
         """Get complete data for a pool"""
         pool_addr = pool_meta["id"]
         
-        # Build name from tickSpacing
+        # Determine pool type and build name
         t0 = pool_meta.get("token0", {})
         t1 = pool_meta.get("token1", {})
-        tick_spacing = int(pool_meta.get("tickSpacing", 0))
         
-        pool_type = f"CL{tick_spacing}" if tick_spacing > 0 else "CL"
+        if pool_meta.get("type") in ("vAMM", "sAMM"):
+            # vAMM/sAMM pool format
+            pool_type = pool_meta["type"]
+        else:
+            # CL pool format - use tickSpacing
+            tick_spacing = int(pool_meta.get("tickSpacing", 0))
+            pool_type = f"CL{tick_spacing}" if tick_spacing > 0 else "CL"
+        
         name = f"{pool_type}-{t0.get('symbol', '?')}/{t1.get('symbol', '?')}"
         
         # Token addresses for this pool
@@ -245,10 +263,16 @@ def main():
     
     fetcher = PoolDataFetcher()
     
-    # Step 1: Fetch pool metadata
-    print("Fetching CL pool metadata...")
-    pools_meta = fetcher.fetch_cl_pools()
-    print(f"  Found {len(pools_meta)} pools")
+    # Step 1: Fetch pool metadata (CL + vAMM/sAMM)
+    print("Fetching pool metadata...")
+    cl_pools = fetcher.fetch_cl_pools()
+    print(f"  CL pools: {len(cl_pools)}")
+    
+    vamm_samm_pools = fetcher.fetch_vamm_samm_pools()
+    print(f"  vAMM/sAMM pools: {len(vamm_samm_pools)}")
+    
+    pools_meta = cl_pools + vamm_samm_pools
+    print(f"  Total: {len(pools_meta)} pools")
     
     # Step 2: Collect all token addresses and fetch prices
     print("Fetching token prices from DeFiLlama...")

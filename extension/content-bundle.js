@@ -277,209 +277,275 @@ class RpcClient {
 
 // --- From rpc-pool-provider.js ---
 /**
- * RPC-based Pool Data Provider
- * Gets pool data directly from blockchain via RPC calls
- * Fast and reliable - no DOM dependency for basic data
+ * RpcPoolProvider.js
+ * 
+ * High-level pool data provider using RPC calls instead of DOM scraping.
+ * Provides the same interface as existing pool providers but 20x faster.
  */
 
-
-const VOTER_ADDRESS = '0xe30d0c8532721551a51a9fec7fb233759964d9e3';
-const RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
-
-const SELECTORS = {
-  weights: '0xa7cac846',
-  token0: '0x0dfe1681',
-  token1: '0xd21220a7',
-  fee: '0xddca3f43',
-  liquidity: '0x1a686502',
-  totalSupply: '0x18160ddd',
-};
-
-// Helper to decode hex to BigInt
-function hexToBigInt(hex) {
-  if (!hex || hex === '0x') return 0n;
-  return BigInt(hex);
-}
-
-// Helper to get address from hex
-function hexToAddress(hex) {
-  if (!hex || hex === '0x') return null;
-  return '0x' + hex.slice(-40).toLowerCase();
-}
+console.log('[RPC] RpcPoolProvider.js loading...');
 
 class RpcPoolProvider {
   constructor() {
-    this.rpc = new RpcClient(RPC_URL);
-    this.poolCache = new Map(); // address -> pool data
+    this.client = new BlackholeRpcClient();
+    this.pools = [];
+    this.totalVotes = 0;
+    this.blackPrice = 0;
+    this.lastFetchTimestamp = 0;
+    this.isFetching = false;
   }
 
   /**
-   * Get pool weight (current_votes) from voter contract
+   * Fetch all pool data
+   * @param {Object} options - Fetch options
+   * @param {boolean} options.includeGauges - Whether to fetch gauge data (slower)
+   * @param {number} options.limit - Max number of pools to fetch
+   * @returns {Promise<Array>} - Array of pool objects
    */
-  async getPoolWeight(poolAddress) {
-    try {
-      const cleanAddr = poolAddress.replace('0x', '').toLowerCase().padStart(64, '0');
-      const data = SELECTORS.weights + cleanAddr;
-      const result = await this.rpc.ethCall(VOTER_ADDRESS, data);
-      return Number(hexToBigInt(result)) / 1e18;
-    } catch (e) {
-      console.warn(`Failed to get weight for ${poolAddress}:`, e);
-      return 0;
-    }
-  }
+  async fetchAllPools(options = {}) {
+    const { includeGauges = true, limit = 100 } = options;
 
-  /**
-   * Get pool metadata (tokens, fee, liquidity) from pool contract
-   */
-  async getPoolMetadata(poolAddress) {
-    const metadata = {
-      token0: null,
-      token1: null,
-      fee: null,
-      liquidity: null,
-      totalSupply: null,
-    };
-
-    try {
-      // Get token0
-      const token0Result = await this.rpc.ethCall(poolAddress, SELECTORS.token0);
-      metadata.token0 = hexToAddress(token0Result);
-
-      // Get token1
-      const token1Result = await this.rpc.ethCall(poolAddress, SELECTORS.token1);
-      metadata.token1 = hexToAddress(token1Result);
-
-      // Get fee (for CL pools)
-      try {
-        const feeResult = await this.rpc.ethCall(poolAddress, SELECTORS.fee);
-        const fee = Number(hexToBigInt(feeResult));
-        if (fee > 0 && fee < 100000) {
-          metadata.fee = fee;
-        }
-      } catch (e) {
-        // Fee not available (vAMM/sAMM pools)
+    if (this.isFetching) {
+      console.log('Already fetching pools, waiting...');
+      // Wait for current fetch to complete
+      while (this.isFetching) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
+      return this.pools;
+    }
 
-      // Get liquidity or totalSupply
-      try {
-        const liqResult = await this.rpc.ethCall(poolAddress, SELECTORS.liquidity);
-        const liquidity = Number(hexToBigInt(liqResult)) / 1e18;
-        if (liquidity > 0) {
-          metadata.liquidity = liquidity;
+    this.isFetching = true;
+
+    try {
+      console.log('[RpcPoolProvider] Starting pool fetch...');
+      const startTime = Date.now();
+
+      // Step 1: Fetch pool metadata from static API (need this first for token list)
+      console.log('[RpcPoolProvider] Fetching CL pool metadata...');
+      const metadata = await this.client.fetchClPoolsMetadata();
+      console.log(`[RpcPoolProvider] Found ${metadata.length} CL pools`);
+
+      // Step 2: Extract all unique token addresses and cache decimals
+      const tokenAddresses = new Set();
+      for (const pool of metadata) {
+        if (pool.token0?.id) {
+          tokenAddresses.add(pool.token0.id.toLowerCase());
+          this.client.setTokenDecimals(pool.token0.id, parseInt(pool.token0.decimals || 18));
         }
-      } catch (e) {
-        // Try totalSupply instead
-        try {
-          const supplyResult = await this.rpc.ethCall(poolAddress, SELECTORS.totalSupply);
-          const supply = Number(hexToBigInt(supplyResult)) / 1e18;
-          if (supply > 0) {
-            metadata.totalSupply = supply;
+        if (pool.token1?.id) {
+          tokenAddresses.add(pool.token1.id.toLowerCase());
+          this.client.setTokenDecimals(pool.token1.id, parseInt(pool.token1.decimals || 18));
+        }
+      }
+      console.log(`[RpcPoolProvider] Found ${tokenAddresses.size} unique tokens`);
+
+      // Step 3: Fetch all token prices in one batch
+      console.log('[RpcPoolProvider] Fetching token prices from DeFiLlama...');
+      await this.client.fetchTokenPrices([...tokenAddresses]);
+      this.blackPrice = await this.client.getBlackPrice();
+      const avaxPrice = this.client.getTokenPrice(this.client.TOKENS.WAVAX);
+      
+      // Count how many tokens have prices
+      let pricedTokens = 0;
+      for (const addr of tokenAddresses) {
+        if (this.client.getTokenPrice(addr) > 0) pricedTokens++;
+      }
+      console.log(`[RpcPoolProvider] Got prices for ${pricedTokens}/${tokenAddresses.size} tokens, BLACK: $${this.blackPrice.toFixed(5)}, AVAX: $${avaxPrice.toFixed(2)}`);
+
+      // Step 4: Fetch total votes
+      console.log('[RpcPoolProvider] Fetching total votes...');
+      this.totalVotes = await this.client.getTotalVotes();
+      console.log(`[RpcPoolProvider] Total votes: ${this.totalVotes.toLocaleString()}`);
+
+      // Step 4: Process pools (limit if requested)
+      const poolsToProcess = metadata.slice(0, limit);
+      this.pools = [];
+
+      console.log(`[RpcPoolProvider] Processing ${poolsToProcess.length} pools...`);
+
+      // Batch process pools for better performance
+      const batchSize = 10;
+      for (let i = 0; i < poolsToProcess.length; i += batchSize) {
+        const batch = poolsToProcess.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (meta) => {
+          try {
+            const pool = await this.client.buildPoolData(
+              meta.id,
+              meta,
+              this.blackPrice
+            );
+            
+            // Calculate vote share
+            pool.voteShare = this.totalVotes > 0 
+              ? (pool.votes / this.totalVotes) * 100 
+              : 0;
+            
+            return pool;
+          } catch (error) {
+            console.error(`Failed to process pool ${meta.id}:`, error);
+            return null;
           }
-        } catch (e2) {
-          // Neither available
-        }
-      }
-    } catch (e) {
-      console.warn(`Failed to get metadata for ${poolAddress}:`, e);
-    }
+        });
 
-    return metadata;
+        const results = await Promise.all(batchPromises);
+        this.pools.push(...results.filter(p => p !== null));
+
+        console.log(`[RpcPoolProvider] Processed ${Math.min(i + batchSize, poolsToProcess.length)}/${poolsToProcess.length} pools`);
+      }
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[RpcPoolProvider] ✓ Fetched ${this.pools.length} pools in ${elapsed}ms`);
+
+      this.lastFetchTimestamp = Date.now();
+      return this.pools;
+
+    } catch (error) {
+      console.error('[RpcPoolProvider] Fetch failed:', error);
+      throw error;
+    } finally {
+      this.isFetching = false;
+    }
   }
 
   /**
-   * Get complete pool data via RPC
-   * Returns Pool object with all available RPC data
+   * Get pools sorted by a specific field
+   * @param {string} sortBy - Field to sort by (vapr, votes, tvl)
+   * @param {boolean} ascending - Sort direction
+   * @returns {Array} - Sorted pools
    */
-  async getPoolData(poolAddress, poolType = null) {
-    // Check cache
-    if (this.poolCache.has(poolAddress.toLowerCase())) {
-      return this.poolCache.get(poolAddress.toLowerCase());
-    }
-
-    // Get weight and metadata in parallel
-    const [weight, metadata] = await Promise.all([
-      this.getPoolWeight(poolAddress),
-      this.getPoolMetadata(poolAddress),
-    ]);
-
-    // Determine pool type if not provided
-    if (!poolType) {
-      if (metadata.fee) {
-        // CL pool
-        if (metadata.fee === 100) poolType = 'CL1';
-        else if (metadata.fee === 500) poolType = 'CL200';
-        else poolType = 'CL200';
-      } else {
-        // vAMM or sAMM (can't distinguish without more data)
-        poolType = 'vAMM'; // Default
-      }
-    }
-
-    // Create pool name from tokens (if available)
-    let name = `Pool ${poolAddress.slice(0, 8)}`;
-    if (metadata.token0 && metadata.token1) {
-      // We'd need token symbols, but for now use addresses
-      name = `${poolType || 'Pool'}-${metadata.token0.slice(0, 6)}/${metadata.token1.slice(0, 6)}`;
-    }
-
-    // Determine fee percentage
-    let feePercentage = null;
-    if (metadata.fee) {
-      if (metadata.fee === 100) feePercentage = '0.01%';
-      else if (metadata.fee === 500) feePercentage = '0.05%';
-      else feePercentage = `${metadata.fee / 10000}%`;
-    }
-
-    const pool = new Pool({
-      name: name,
-      pool_id: poolAddress,
-      pool_type: poolType,
-      fee_percentage: feePercentage,
-      total_rewards: 0, // Not available via RPC yet
-      vapr: 0, // Not available via RPC yet
-      current_votes: weight,
+  getSortedPools(sortBy = 'vapr', ascending = false) {
+    const sorted = [...this.pools].sort((a, b) => {
+      const aVal = a[sortBy] || 0;
+      const bVal = b[sortBy] || 0;
+      return ascending ? aVal - bVal : bVal - aVal;
     });
-
-    // Cache result
-    this.poolCache.set(poolAddress.toLowerCase(), pool);
-
-    return pool;
+    return sorted;
   }
 
   /**
-   * Get pool data for multiple pools (batched)
+   * Get top N pools by VAPR
+   * @param {number} count - Number of pools to return
+   * @returns {Array} - Top pools
    */
-  async getPoolsData(poolAddresses, poolTypes = {}) {
-    const pools = [];
-
-    // Process in batches to avoid overwhelming RPC
-    const batchSize = 10;
-    for (let i = 0; i < poolAddresses.length; i += batchSize) {
-      const batch = poolAddresses.slice(i, i + batchSize);
-      const batchPromises = batch.map(addr =>
-        this.getPoolData(addr, poolTypes[addr.toLowerCase()])
-      );
-      const batchResults = await Promise.all(batchPromises);
-      pools.push(...batchResults);
-    }
-
-    return pools;
+  getTopPoolsByVapr(count = 10) {
+    return this.getSortedPools('vapr', false).slice(0, count);
   }
 
   /**
-   * Load pools from discovered pool list
-   * Can load from static JSON or fetch dynamically
+   * Get top N pools by votes
+   * @param {number} count - Number of pools to return
+   * @returns {Array} - Top pools
    */
-  async loadDiscoveredPools() {
-    // Option 1: Load from static file (if bundled)
-    // Option 2: Use discovered addresses from previous analysis
-    // Option 3: Fetch dynamically (future)
+  getTopPoolsByVotes(count = 10) {
+    return this.getSortedPools('votes', false).slice(0, count);
+  }
 
-    // For now, return empty - will be populated by caller
-    // In production, could load from vamm_samm_pools.json or similar
-    return [];
+  /**
+   * Find pool by address
+   * @param {string} address - Pool address
+   * @returns {Object|null} - Pool object or null
+   */
+  findPoolByAddress(address) {
+    const addrLower = address.toLowerCase();
+    return this.pools.find(p => p.address.toLowerCase() === addrLower) || null;
+  }
+
+  /**
+   * Search pools by name or address
+   * @param {string} query - Search query
+   * @returns {Array} - Matching pools
+   */
+  searchPools(query) {
+    const queryLower = query.toLowerCase();
+    return this.pools.filter(p => 
+      p.name.toLowerCase().includes(queryLower) ||
+      p.address.toLowerCase().includes(queryLower) ||
+      p.token0.symbol.toLowerCase().includes(queryLower) ||
+      p.token1.symbol.toLowerCase().includes(queryLower)
+    );
+  }
+
+  /**
+   * Check if data is stale
+   * @param {number} maxAgeMs - Max age in milliseconds
+   * @returns {boolean} - True if data is stale
+   */
+  isStale(maxAgeMs = 300000) { // Default 5 minutes
+    return Date.now() - this.lastFetchTimestamp > maxAgeMs;
+  }
+
+  /**
+   * Get pool statistics
+   * @returns {Object} - Stats object
+   */
+  getStats() {
+    const poolsWithGauges = this.pools.filter(p => p.gauge !== null).length;
+    const poolsWithVotes = this.pools.filter(p => p.votes > 0).length;
+    const avgVapr = this.pools.length > 0
+      ? this.pools.reduce((sum, p) => sum + p.vapr, 0) / this.pools.length
+      : 0;
+    const totalTvl = this.pools.reduce((sum, p) => sum + p.tvl, 0);
+
+    return {
+      totalPools: this.pools.length,
+      poolsWithGauges,
+      poolsWithVotes,
+      totalVotes: this.totalVotes,
+      totalTvl,
+      avgVapr,
+      blackPrice: this.blackPrice,
+      lastFetch: new Date(this.lastFetchTimestamp).toISOString(),
+    };
+  }
+
+  /**
+   * Format pool data for display
+   * @param {Object} pool - Pool object
+   * @returns {Object} - Formatted data
+   */
+  formatPoolForDisplay(pool) {
+    return {
+      address: pool.address,
+      name: pool.name,
+      tvl: `$${pool.tvl.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      votes: pool.votes > 1e6 
+        ? `${(pool.votes / 1e6).toFixed(2)}M`
+        : pool.votes.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+      voteShare: `${pool.voteShare.toFixed(2)}%`,
+      vapr: `${pool.vapr.toFixed(1)}%`,
+      weeklyRewards: `$${pool.weeklyRewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      hasGauge: pool.gauge !== null,
+    };
+  }
+
+  /**
+   * Export pools to JSON
+   * @returns {string} - JSON string
+   */
+  exportToJson() {
+    return JSON.stringify({
+      timestamp: new Date(this.lastFetchTimestamp).toISOString(),
+      blackPrice: this.blackPrice,
+      totalVotes: this.totalVotes,
+      pools: this.pools,
+      stats: this.getStats(),
+    }, null, 2);
+  }
+
+  /**
+   * Clear cached data
+   */
+  clearCache() {
+    this.pools = [];
+    this.totalVotes = 0;
+    this.blackPrice = 0;
+    this.lastFetchTimestamp = 0;
+    console.log('[RpcPoolProvider] Cache cleared');
   }
 }
+
+console.log('[RPC] RpcPoolProvider loaded successfully, class available:', typeof RpcPoolProvider !== 'undefined');
 
 // --- From rpc-rewards-provider.js ---
 /**
@@ -489,6 +555,8 @@ class RpcPoolProvider {
  */
 
 
+const RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
+const MULTICALL3_ADDRESS = '0xca11bde05977b3631167028862be2a173976ca11';
 const AGGREGATE_SELECTOR = '0x82ad56cb';
 
 class RpcRewardsProvider {
@@ -810,6 +878,1365 @@ class RewardsExtractor {
   }
 }
 
+// --- From vamm-samm-data.js ---
+/**
+ * vAMM/sAMM Pool Data
+ * 
+ * Static pool data for vAMM (volatile AMM) and sAMM (stable AMM) pools.
+ * Generated from GAUGE_MANAGER enumeration.
+ * 
+ * Generated: 2026-01-25T06:23:10.696128+00:00
+ * vAMM pools: 75
+ * sAMM pools: 9
+ */
+
+const VAMM_SAMM_POOLS = [
+  {
+    "id": "0x495b296c3fc52283fd9565b421386d36f628d55e",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x6aa38edd7f32a28b7b2c2dc86fc5b0bf2ae61579",
+      "symbol": "CHAMP",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x6de3cf0586b964761ad6b6e9c2feaabe5802a528"
+  },
+  {
+    "id": "0x9d848cf080c46b92b797218835ae7e89e04c1515",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+      "symbol": "SUPER",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x3ca186d289242cc0ee292c74ab5f7ed2747ebcce"
+  },
+  {
+    "id": "0x5a758f607542c8a12aadc29f74dfba5f14df00b3",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xacfb898cff266e53278cc0124fc2c7c94c8cb9a5",
+      "symbol": "NOCHILL",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xb49c396d693f6bd06a124c59ff24d360d8cbcf56"
+  },
+  {
+    "id": "0x0e5aad7522acf208c5f691d3f20af0c26d1d669a",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+      "symbol": "fBOMB",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xf8fcd596cdabf21dbde29052fdf06a72b85ae697"
+  },
+  {
+    "id": "0x921ca54e1d32008c25b352bb75aa00593288f1b3",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+      "symbol": "fBOMB",
+      "decimals": "18"
+    },
+    "gauge": "0xb4543cb100fff235280e74b748764d45ea1a5a97"
+  },
+  {
+    "id": "0x9d8a9fdf8890942e2b2364b843116bee8920a506",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9b9fd410d5f01a6a60acf4678a5a99d8027fa5a7",
+      "symbol": "MYTH",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x5c51be155d9f63aa17a9f2cedc452b4ade28fde6"
+  },
+  {
+    "id": "0x152e06cce8049f1e42ffd0c0cf842b9ffca6035b",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9b3a8159e119eb09822115ae08ee1526849e1116",
+      "symbol": "MMA",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x4f0fa660d9a6747a135411cbdd6e57d81fcecc94"
+  },
+  {
+    "id": "0x7c0781874f5f0e78a920b7a8c840813c69c6e746",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+      "symbol": "BTC.b",
+      "decimals": "8"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x08b68f884c2d323cdc5f15804569888c4c0ce83e"
+  },
+  {
+    "id": "0x737f1cab9cd97c40bbe4d59c85b0d2c1fdbaa37d",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x1cff2d0e05b2635480c9e87043434988d9594fce"
+  },
+  {
+    "id": "0x2625e03748213f82485061ac17f22d84b5312ec0",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x79bbf4508b1391af3a0f4b30bb5fc4aa9ab0e07c",
+      "symbol": "Anon",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x5f4810694a639e084b4470a895396c4bb8eeba1b"
+  },
+  {
+    "id": "0x409985a488f7b1a79d964398d827b450a33a86a0",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x8729438eb15e2c8b576fcc6aecda6a148776c0f5",
+      "symbol": "QI",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x9d2a42743cb5baaab1ede8a6f0a777e4c1ffc052"
+  },
+  {
+    "id": "0x7c1db2f875dcbeb509757dc0f442312a7425e56e",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x46b9144771cb3195d66e4eda643a7493fadcaf9d",
+      "symbol": "BLS",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0xd6d083d2f9b4c9c0e4672c33973683ff2ee75bff"
+  },
+  {
+    "id": "0x202b3e7af2635bbde922582909df6ebccf244d2a",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xffff003a6bad9b743d658048742935fffe2b6ed7",
+      "symbol": "KET",
+      "decimals": "18"
+    },
+    "gauge": "0x2f48e25f8381b6b2828127542804e8c7f29181bc"
+  },
+  {
+    "id": "0x758909881a386e30e39490664f85f2247417c0de",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x34a528da3b2ea5c6ad1796eba756445d1299a577",
+      "symbol": "ID",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x884853411a52f0e09d282466609c3660b98f62fd"
+  },
+  {
+    "id": "0x6d75a6fa7c7d95051b62f2858113634e63420ba0",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x26debd39d5ed069770406fca10a0e4f8d2c743eb",
+      "symbol": "GUN",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0xbab6926da761a6376f15b16f9d740f4927340136"
+  },
+  {
+    "id": "0x04a954bc8af9a1fdc2ce5f3192bdca369a4512cc",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x432d38f83a50ec77c409d086e97448794cf76dcf",
+      "symbol": "HERESY",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xdf45c39e247fcd2dcd7697b42016337547f3aa0e"
+  },
+  {
+    "id": "0x419b7d20c1dabaa6fb333c07bf0a006bd6bf3600",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9209e7ebd056d72c5996220e99df6049253debcf",
+      "symbol": "MEOW",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x20dec7b989b6972d96ceaad820ed0440c0009513"
+  },
+  {
+    "id": "0x4c33a727e3744009f7413d2d1fbbad77d7df207f",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x420fca0121dc28039145009570975747295f2329",
+      "symbol": "COQ",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x063acccd367a4269077be9f89f2866dedd5bf462"
+  },
+  {
+    "id": "0x4f905251040d1b31cd7eff74ef0c91bbf08022c0",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x6f43ff77a9c0cf552b5b653268fbfe26a052429b",
+      "symbol": "LAMBO",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xced0e15dfa87806c0bdc5d88023220381c392273"
+  },
+  {
+    "id": "0x1131d1e669f6652cffe404213bfd0cc6b4676b48",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb8d7710f7d8349a506b75dd184f05777c82dad0c",
+      "symbol": "ARENA",
+      "decimals": "18"
+    },
+    "gauge": "0x3a88eb1133b4f85160126ba7c2ba3d75f39e2957"
+  },
+  {
+    "id": "0x6be0fa795883493bdc0fff1eb7d13abe64079ec6",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x2b2c81e08f1af8835a78bb2a90ae924ace0ea4be",
+      "symbol": "sAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xdc7f54f96a110b09aa2e4af8eef01c104617e799"
+  },
+  {
+    "id": "0x3afadc8477fc516dcd05259baee96ec586174ff4",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x153374c6d6786b6ca2c4bc96f9c3a471428f2bc7",
+      "symbol": "WILD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xd42a7e2016960966a278ac2027bb86853b3ad796"
+  },
+  {
+    "id": "0x624e692595dfa46974179b39b9c23f664e9a23c3",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5ddc8d968a94cf95cfeb7379f8372d858b9c797d",
+      "symbol": "WOLFI",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x982a5c48b210c11d0ff56ffd630d40c74ebe5680"
+  },
+  {
+    "id": "0x955514594f1b43514156c1c9e7a89cbd4815c172",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb02f37a282c028958de65711158422199a61e9ae",
+      "symbol": "SFUND",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x37179b4dad8f8f02a2582b4a239b9cd1304f344c"
+  },
+  {
+    "id": "0x4a930a63b13e6683a204cb10ef20f68310231459",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+      "symbol": "SUPER",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x349fc3d5ef17524f69f68ba8ff50a947479989eb"
+  },
+  {
+    "id": "0x0d9fd6dd9b1ff55fb0a9bb0e5f1b6a2d65b741a3",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x7ebc43b2f0aa6f15b0050d504313814345bc08fb"
+  },
+  {
+    "id": "0x14e4a5bed2e5e688ee1a5ca3a4914250d1abd573",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x5a8b3e88383767f477bd016e86c0d8de2a6ae82c"
+  },
+  {
+    "id": "0x15c79629b9e2508726385b013dd5f550db0d49d9",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x59414b3089ce2af0010e7523dea7e2b35d776ec7",
+      "symbol": "YAK",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x7d59d7844bd36af53ae3b81ec7c904f8ab64658e"
+  },
+  {
+    "id": "0x8b8961133d63d8c5f7b84bdc359d1c04f99a9cfb",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x13af0fe9eb35e91758b467f95cbc78e16fdd8b6b",
+      "symbol": "BYTES",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x6843a1d9e3209be90429650de83d5d57fc7c19b3"
+  },
+  {
+    "id": "0x932dc494e571c4588a7e4927aa1c5cfaaa044491",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5a3534720a4f29fa0dc53ce474db88973a95f65c",
+      "symbol": "UNDEAD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xb868d718554a55a01bc517cd7ba7234eee2b886b"
+  },
+  {
+    "id": "0xbf71d22c5092df34bd0b29b4ef717c3aa4d551f9",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5a3534720a4f29fa0dc53ce474db88973a95f65c",
+      "symbol": "UNDEAD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x05235a49bf810a37a9e3fb9f7972e83f25bd5828"
+  },
+  {
+    "id": "0xaf7b503b9c1d0c7cacbfc984a91dea1a9f8b8fbf",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x6aa38edd7f32a28b7b2c2dc86fc5b0bf2ae61579",
+      "symbol": "CHAMP",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x72a0f2cbb0788900faab7b4cc12861607b8037fc"
+  },
+  {
+    "id": "0xc636951478ca5d543dcd26186c39f001d7fb4d1c",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x6edac263561da41ade155a992759260fafb87b43",
+      "symbol": "VERTAI",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0xe1e46e0588e59cccb1637fc809e6504a79367f35"
+  },
+  {
+    "id": "0xef94b376b0e9cb81287be8114a3c4e81aafa47a5",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x13af0fe9eb35e91758b467f95cbc78e16fdd8b6b",
+      "symbol": "BYTES",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x5e6f53b6b9cba6981709d2b4ec5bebc02276a481"
+  },
+  {
+    "id": "0x4d5df15ff7dde069b2ff175f45c845e168b20cd5",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+      "symbol": "fBOMB",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x964302d3cb785f96e4b897bd9fe79e99a00d1783"
+  },
+  {
+    "id": "0x403822e6cfa57d10c32a4e910ed740f9ced8c615",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+      "symbol": "fBOMB",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x05de8d02562eea9c2b1e717d38f8a04f046f6027"
+  },
+  {
+    "id": "0xc3d792a7b51adeb521cd431ac75831d8c433801a",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x34a528da3b2ea5c6ad1796eba756445d1299a577",
+      "symbol": "ID",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x2038c450e5f2a2de77c04b02b153351b7674284c"
+  },
+  {
+    "id": "0x36bece6964782fc1652a8e9a25e6b8756a37323e",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x00000000efe302beaa2b3e6e1b18d08d69a9012a",
+      "symbol": "AUSD",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xf80feda1cd078e8f58399b1f7b36fa3b0ab95137"
+  },
+  {
+    "id": "0x1dcec3446261334e9bdcb5f4b6e334fd72473d03",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x67ea3abd5cee0b99d743155051c191b09135f93c",
+      "symbol": "AXD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x1f0fa6ec7edb8d589fff51b362039b392b117dbd"
+  },
+  {
+    "id": "0xf2b0f7482685d5cf1f40a3de4abfa2665052fa14",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xa659d083b677d6bffe1cb704e1473b896727be6d",
+      "symbol": "PEPE",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x2754d3d85e42050389cb6752945bcfcf905a1a40"
+  },
+  {
+    "id": "0xd2f97b0a08452c8aa4386123c8a32133c2fa6a12",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xeb2729257280580694a06c499cb8c622e74215c8",
+      "symbol": "MOG",
+      "decimals": "18"
+    },
+    "gauge": "0x75c3f4d074f6215cac264f480f21d0ef2ec42276"
+  },
+  {
+    "id": "0x8e798638b28d9e677b2c0fa500d93989acf5d717",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x6f911b6b39bcc665a463129c94b5380a4387b7eb",
+      "symbol": "SPX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0xcf9786220d859df6a352cbd96d1be40716de0cc1"
+  },
+  {
+    "id": "0x5785c26501355206a7a136d50764d6a31816a9da",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9b3a8159e119eb09822115ae08ee1526849e1116",
+      "symbol": "MMA",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x58fa451d1f31f35b1955d6f98a31e85fc987c530"
+  },
+  {
+    "id": "0x6e6be1750b883b324caaeb97cce819a7d025a817",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x79bbf4508b1391af3a0f4b30bb5fc4aa9ab0e07c",
+      "symbol": "Anon",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x495b8951bcc6e6bdfc43f2958d4a14f066ba773f"
+  },
+  {
+    "id": "0x2eda50d933fcff98ff0bbd9913bae53f71fdd68a",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0x6aa38edd7f32a28b7b2c2dc86fc5b0bf2ae61579",
+      "symbol": "CHAMP",
+      "decimals": "18"
+    },
+    "gauge": "0xe7f6f295dd23e206f69217f515228a156049e4d9"
+  },
+  {
+    "id": "0xe89550d1986afd3ea82f9193a24bf5198f77f111",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xffff003a6bad9b743d658048742935fffe2b6ed7",
+      "symbol": "KET",
+      "decimals": "18"
+    },
+    "gauge": "0xd204666717ec1aba10fff3910cc7f8e242f2b9cb"
+  },
+  {
+    "id": "0x42712c828ccdc5034aeac5f2e1acfb72fcda5b25",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb8d7710f7d8349a506b75dd184f05777c82dad0c",
+      "symbol": "ARENA",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x6a1d3c245e810846bcf584f89445072150c59d5f"
+  },
+  {
+    "id": "0x8abd9e4ab4132116de3c3531edbb628f1b221e5c",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5ddc8d968a94cf95cfeb7379f8372d858b9c797d",
+      "symbol": "WOLFI",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0xd9a899ad9af3ab11da200eb6f3f98e49085a0bd5"
+  },
+  {
+    "id": "0x612a0664a2c2b6d0b8e85c291181d9cff0b5dc60",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9209e7ebd056d72c5996220e99df6049253debcf",
+      "symbol": "MEOW",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x6e3b2cfd102608ade520d5dbcc4789c4473dcea8"
+  },
+  {
+    "id": "0x2466f2d17689b734ed988eb0843aa2ac056c5c09",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x153374c6d6786b6ca2c4bc96f9c3a471428f2bc7",
+      "symbol": "WILD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x71c1d10984fccdb59e40e49c9b158d6ba3fb5923"
+  },
+  {
+    "id": "0xc2582deaa593bf8ef800ee980609824d412b6cbd",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9b9fd410d5f01a6a60acf4678a5a99d8027fa5a7",
+      "symbol": "MYTH",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x6fbdb1ae00c6fe858ab70926ad344adf86261449"
+  },
+  {
+    "id": "0x746472ebffe89b1ce1357f26d3e73fa1d4e3116c",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x46b9144771cb3195d66e4eda643a7493fadcaf9d",
+      "symbol": "BLS",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x4745aa58b5e0613353a5a38d841371b8791d7179"
+  },
+  {
+    "id": "0x85bec030b05da25871d2cf82f1e4442e7e044902",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x420fca0121dc28039145009570975747295f2329",
+      "symbol": "COQ",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x97ae5e272a1f015a0d6798c48fd912f336a62e7c"
+  },
+  {
+    "id": "0xbbb931e832bf3c789bab467e4a6f6c1551791d3e",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+      "symbol": "SUPER",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "gauge": "0x650b141adb8b842f4e88dcb19320b80842da5d29"
+  },
+  {
+    "id": "0x15c5133f63c4914d4e151cbf4babfc8f51707477",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+      "symbol": "SUPER",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x292bce3049c1860b5928a3f24ae77f15b53f462c"
+  },
+  {
+    "id": "0xaf8208b27692e0b41f2e32d1f13054c3b0fa310a",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x09fa58228bb791ea355c90da1e4783452b9bd8c3",
+      "symbol": "SUPER",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+      "symbol": "BTC.b",
+      "decimals": "8"
+    },
+    "gauge": "0x5f1693e45b295964f2860c9893bb1fa0500fa3e4"
+  },
+  {
+    "id": "0x0c128cd9ea013c0638b28df7e210e022376bcc38",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x0dfe4ca9b14a43aeabd60ab6cf946b0d0089b89d"
+  },
+  {
+    "id": "0x3e70ddb1b82c311e49f16deff3b3805c94cdfe26",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x48f88a3fe843ccb0b5003e70b4192c1d7448bef0",
+      "symbol": "CAI",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x9a61155382d3c91287ddd7f00812b0b0643fc3ca"
+  },
+  {
+    "id": "0x5d9579592f328bd486de991d96859ecc97a81ddd",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xf197ffc28c23e0309b5559e7a166f2c6164c80aa",
+      "symbol": "MXNB",
+      "decimals": "6"
+    },
+    "gauge": "0x8b2170456d17e00ee4775840d430d46679427de8"
+  },
+  {
+    "id": "0x78f5a53731564894a7e4fff827a88e5fbf9cfcb6",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x02d159a0c393b3a982c4acb3d03816a42d94f1ab",
+      "symbol": "GCROC",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x51cbdd137d39af1b4bfe8cdd78a81ba5b33d9d43"
+  },
+  {
+    "id": "0xde8d1e2385836f18788da140641a79110eecab36",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xf8b22737cbfea137f9b2737d1dab2a8a21608cee",
+      "symbol": "TRADER",
+      "decimals": "18"
+    },
+    "gauge": "0x6ee54998505677d8f155ac083943129db2ec3326"
+  },
+  {
+    "id": "0xfff3a856e0f9644e360e4dfc99550b56238084f0",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0x8e48d9f6d73e9805df87dcf63f7b35ae04079713",
+      "symbol": "KIGU",
+      "decimals": "18"
+    },
+    "gauge": "0xf47c916ceb9aa7541753aebb5d47daf5700e6fb3"
+  },
+  {
+    "id": "0x03eb46b34129a77ac7a115e87da19ae91d66019c",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x451532f1c9eb7e4dc2d493db52b682c0acf6f5ef",
+      "symbol": "SUZ",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0xb126d152bb7c5e1d2f0536b2fd12d95fa52bf43c"
+  },
+  {
+    "id": "0x59faf1480cb7cd749ee517c2aa7a15a26c0fb9af",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x451532f1c9eb7e4dc2d493db52b682c0acf6f5ef",
+      "symbol": "SUZ",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xd4d76f0932dfa7ae49241f11fcd2f47e464f9ab1"
+  },
+  {
+    "id": "0xfcbdd05f764702ec1cb56c6324a45d6472b51f74",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xeec951bfdeb358371a19512c6c33cdd840d47db0",
+      "symbol": "MOANI",
+      "decimals": "18"
+    },
+    "gauge": "0x0fd4841580653fa7ae1c91dd31b006a8dd377086"
+  },
+  {
+    "id": "0x64d05ecc2cdc3e80d45bd1b25b0e8a7f7bf15cfc",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+      "symbol": "USDt",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x3b75286ad8a042ea5fbd5ded1e4624fd54d3ae40"
+  },
+  {
+    "id": "0x503e7d44fffda3b23bcd38fcb93d3dc795643874",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x133879524ddb38582cf0b93d10adb789601ff397",
+      "symbol": "BORNE",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0xd451373fef5ac77ce5e25d20e31635e7448dcec7"
+  },
+  {
+    "id": "0x552e01991a4086fa290a4b826c33dde78e3d9966",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x700103766c23fb8da956caf94c756b90106eeb41",
+      "symbol": "WLFI",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x944103c072ccdbdcef5eca20249cbe38f6b6986c"
+  },
+  {
+    "id": "0xae93b851e2e526a46ab91bb9b045f0d41d45bd4e",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x152b9d0fdc40c096757f570a51e494bd4b943e50",
+      "symbol": "BTC.b",
+      "decimals": "8"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0xe7834672020af111b612b34963d3535d6bf2673f"
+  },
+  {
+    "id": "0xb46af12bbcd6540d63b8580601c0b149b2c6f8f5",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x8e48d9f6d73e9805df87dcf63f7b35ae04079713",
+      "symbol": "KIGU",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x0b7be117e4e7662f3d6755cdfc4518868fb24155"
+  },
+  {
+    "id": "0x535e3dce46ff44cfa66e8d72cd24a508579feaed",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x634608ed64c61ca9e741f8095193c0bfa0fa19cc",
+      "symbol": "SOL",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xa703cb651d77ef7c6b6bdf3c876452df2cfed746"
+  },
+  {
+    "id": "0xdb0ef0808b53219beed7ff5dca8da99d009d69a0",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x5c09a9ce08c4b332ef1cc5f7cadb1158c32767ce",
+      "symbol": "fBOMB",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+      "symbol": "USDt",
+      "decimals": "6"
+    },
+    "gauge": "0x4986c056e569b2556af0b18981ab617b5f7058a6"
+  },
+  {
+    "id": "0x14c0c65e70ec101f8c4aabc97c4f29211e32f221",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x297731eb3cab3834525fc9ea061fd71d8f4645c9",
+      "symbol": "BLAZE",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x3d6f436015e4303c0b794cb68028adbbb7d4ea76"
+  },
+  {
+    "id": "0x132a80e5cec87eca9137333f2ecfcb7572b45d56",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0x2775d5105276781b4b85ba6ea6a6653beed1dd32",
+      "symbol": "XAUt0",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0xafcef7ffe301708555afe2d9b816fb9a84be6cde"
+  },
+  {
+    "id": "0xf81c84fc05baed862eeeb8ccdc0c6d4882f76c7b",
+    "type": "vAMM",
+    "stable": false,
+    "token0": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xca58b8ad4a83d9e456ca88dab228803714074e23",
+      "symbol": "ARTERY",
+      "decimals": "18"
+    },
+    "gauge": "0xb20850b5be54a47c20e81d1171ee1cf8cc6ae63e"
+  },
+  {
+    "id": "0x65f83ccacabaac4ed2f80289a02df4d35d744ae8",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xc891eb4cbdeff6e073e859e987815ed1505c2acd",
+      "symbol": "EURC",
+      "decimals": "6"
+    },
+    "gauge": "0xcb76d9bc96368f3dc137c94e23beee489ee9eb87"
+  },
+  {
+    "id": "0x4f80724e5f2d2af81cb2a1eeb2cc049ab2a33089",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0x06d47f3fb376649c3a9dafe069b3d6e35572219e",
+      "symbol": "savUSD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x5f91c81eb2b133b6e599200abb61f0504ee783d2"
+  },
+  {
+    "id": "0xcd44913b74bee551af32a5cde2151821b6fcf04e",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0x3d75f2bb8abcdbd1e27443cb5cbce8a668046c81",
+      "symbol": "HLP0",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0xb3d2427dea7678528248b462499761328135c97e"
+  },
+  {
+    "id": "0xd299699e69adc03fc65e14ec605286758facf1d8",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xdf788ad40181894da035b827cdf55c523bf52f67",
+      "symbol": "rsAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0x004e0337745c446784cfc3f5b8e5a11a147f3ff3"
+  },
+  {
+    "id": "0xedcfa2d80cf06fb7642e956a1e95dbc37c75995b",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0x4cb85e39d5622af604405077a589c3078f3a59b2",
+      "symbol": "CROC",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "symbol": "WAVAX",
+      "decimals": "18"
+    },
+    "gauge": "0xa329a89cd68ddde18c7b5ce5247319124e9f5576"
+  },
+  {
+    "id": "0x5c2e48c07f27f6250e7a1709d12d01b6b92205ba",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "symbol": "WETH.e",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xcd94a87696fac69edae3a70fe5725307ae1c43f6",
+      "symbol": "BLACK",
+      "decimals": "18"
+    },
+    "gauge": "0x1cccecd6768b297764a93177539165314aee9521"
+  },
+  {
+    "id": "0xc26e546b632348e76ebbd2811f4458a32ea29b7a",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0x180af87b47bf272b2df59dccf2d76a6eafa625bf",
+      "symbol": "reUSD",
+      "decimals": "18"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x228b1fedc62b770e073037d3ab0ca3068c146ed1"
+  },
+  {
+    "id": "0xdc9ec8f6aca746f13253f14e79647265737bbb35",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xf197ffc28c23e0309b5559e7a166f2c6164c80aa",
+      "symbol": "MXNB",
+      "decimals": "6"
+    },
+    "gauge": "0x517635a9bf71ea022a984ebe1e8647089de51c08"
+  },
+  {
+    "id": "0xd3c446d7a9f2031873a32b0310567b8a3206352b",
+    "type": "sAMM",
+    "stable": true,
+    "token0": {
+      "id": "0xb2f85b7ab3c2b6f62df06de6ae7d09c010a5096e",
+      "symbol": "XSGD",
+      "decimals": "6"
+    },
+    "token1": {
+      "id": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "symbol": "USDC",
+      "decimals": "6"
+    },
+    "gauge": "0x8eefa333d86a639221ca7fe4b980581dfee5c2fc"
+  }
+];
+
 // --- From vamm-samm-provider.js ---
 /**
  * vAMM/sAMM Pool Data Provider
@@ -818,18 +2245,28 @@ class RewardsExtractor {
  */
 
 
+const VOTER_ADDRESS = '0xe30d0c8532721551a51a9fec7fb233759964d9e3';
 
+// Static vAMM/sAMM pool data from GAUGE_MANAGER enumeration
+// Generated: 2026-01-25 - 75 vAMM + 9 sAMM = 84 pools
+// To regenerate: python scripts/enumerate_vamm_samm_pools.py
 
-// Known pool addresses from discovery
-// In production, this could be loaded from vamm_samm_pools.json
-// For now, we'll use a subset and let DOM extraction fill in the rest
-const KNOWN_VAMM_SAMM_POOLS = [
-  // These will be populated from vamm_samm_pools.json or discovered dynamically
-];
+// Legacy constant for backward compatibility
+const KNOWN_VAMM_SAMM_POOLS = VAMM_SAMM_POOLS || [];
 
 // Helper to decode hex to BigInt
+function hexToBigInt(hex) {
+  if (!hex || hex === '0x') return 0n;
+  return BigInt(hex);
+}
 
 // Helper to get address from hex result
+function hexToAddress(hex) {
+  if (!hex || hex === '0x') return null;
+  // Last 40 chars (20 bytes) = address
+  const addr = '0x' + hex.slice(-40).toLowerCase();
+  return addr;
+}
 
 /**
  * Get token symbol from contract
@@ -891,16 +2328,54 @@ class VammSammProvider {
   constructor() {
     this.rpc = new RpcClient(RPC_URL);
     this.knownPools = new Map(); // address -> { type, weight, token0, token1 }
+    this.poolsLoaded = false;
   }
 
   /**
-   * Load known vAMM/sAMM pools from discovery data
-   * In production, this could load from vamm_samm_pools.json
+   * Load known vAMM/sAMM pools from static data
+   * @returns {Array} - Array of pool metadata objects
    */
   async loadKnownPools() {
-    // For now, return empty - pools will be discovered via DOM
-    // In future, could load from static file or fetch dynamically
-    return [];
+    if (this.poolsLoaded) {
+      return Array.from(this.knownPools.values());
+    }
+    
+    // Load from static data
+    for (const pool of KNOWN_VAMM_SAMM_POOLS) {
+      const t0 = pool.token0 || {};
+      const t1 = pool.token1 || {};
+      const name = `${pool.type}-${t0.symbol || '?'}/${t1.symbol || '?'}`;
+      
+      this.knownPools.set(pool.id.toLowerCase(), {
+        id: pool.id,
+        type: pool.type,
+        name: name,
+        token0: t0,
+        token1: t1,
+        gauge: pool.gauge
+      });
+    }
+    
+    this.poolsLoaded = true;
+    console.log(`[VammSammProvider] Loaded ${this.knownPools.size} vAMM/sAMM pools from static data`);
+    return Array.from(this.knownPools.values());
+  }
+  
+  /**
+   * Get pool addresses from static data
+   * @returns {Array<string>} - Array of pool addresses
+   */
+  getPoolAddresses() {
+    return KNOWN_VAMM_SAMM_POOLS.map(p => p.id.toLowerCase());
+  }
+  
+  /**
+   * Get pool metadata by address
+   * @param {string} address - Pool address
+   * @returns {Object|null} - Pool metadata or null
+   */
+  getPoolMetadata(address) {
+    return this.knownPools.get(address.toLowerCase()) || null;
   }
 
   /**
@@ -928,40 +2403,54 @@ class VammSammProvider {
 
   /**
    * Get vAMM/sAMM pools
-   * Returns pools with basic data (address, type, weight)
-   * Rewards/VAPR should be filled from DOM extraction
+   * Returns pools with data from static file + RPC weights
+   * @param {Array<string>} addresses - Optional addresses to filter (if empty, uses all known pools)
+   * @returns {Promise<Array<Pool>>} - Array of Pool objects
    */
-  async getPools(knownAddresses = []) {
-    if (knownAddresses.length === 0) {
-      // If no addresses provided, return empty
-      // Pools will be discovered via DOM extraction
+  async getPools(addresses = null) {
+    // Load known pools from static data
+    await this.loadKnownPools();
+    
+    // Determine which addresses to use
+    const poolAddresses = addresses && addresses.length > 0 
+      ? addresses 
+      : this.getPoolAddresses();
+    
+    if (poolAddresses.length === 0) {
       return [];
     }
 
-    console.log(`Fetching weights for ${knownAddresses.length} vAMM/sAMM pools`);
+    console.log(`[VammSammProvider] Fetching weights for ${poolAddresses.length} vAMM/sAMM pools`);
 
-    // Get weights
-    const weightsMap = await this.getPoolWeights(knownAddresses);
+    // Get weights from Voter contract
+    const weightsMap = await this.getPoolWeights(poolAddresses);
     const pools = [];
 
-    for (const addr of knownAddresses) {
-      const weightBigInt = weightsMap.get(addr.toLowerCase()) || 0n;
+    for (const addr of poolAddresses) {
+      const addrLower = addr.toLowerCase();
+      const weightBigInt = weightsMap.get(addrLower) || 0n;
       const currentVotes = Number(weightBigInt) / 1e18;
 
-      // Determine pool type (could be improved with better classification)
-      const poolInfo = this.knownPools.get(addr.toLowerCase());
-      const poolType = poolInfo?.type || 'vAMM'; // Default to vAMM
+      // Get pool metadata from static data
+      const poolInfo = this.knownPools.get(addrLower);
+      const poolType = poolInfo?.type || 'vAMM';
+      const t0 = poolInfo?.token0 || {};
+      const t1 = poolInfo?.token1 || {};
+      const name = poolInfo?.name || `${poolType}-${t0.symbol || '?'}/${t1.symbol || '?'}`;
 
-      // Create pool with basic data
-      // Rewards/VAPR will be filled from DOM extraction
+      // Create pool with data
+      // Note: Rewards/VAPR will be calculated via RPC fees fetching (similar to CL pools)
       pools.push(new Pool({
-        name: poolInfo?.name || `vAMM/sAMM Pool ${addr.slice(0, 8)}`,
+        name: name,
         pool_id: addr,
         pool_type: poolType,
-        fee_percentage: null, // vAMM/sAMM may not have standard fees
-        total_rewards: 0, // Will be filled from DOM
-        vapr: 0, // Will be filled from DOM
-        current_votes: currentVotes
+        fee_percentage: null, // vAMM/sAMM don't have standard fee tiers
+        total_rewards: 0, // Will be filled from RPC fee calculation
+        vapr: 0, // Will be calculated from fees/votes
+        current_votes: currentVotes,
+        token0: t0,
+        token1: t1,
+        gauge: poolInfo?.gauge
       }));
     }
 
@@ -999,6 +2488,12 @@ class VammSammProvider {
 
 const API_URL = 'https://resources.blackhole.xyz/cl-pools-list/cl-pools.json';
 
+const SELECTORS = {
+  weights: '0xa7cac846',
+  totalWeight: '0x96c82e57',
+  token0: '0x0dfe1681',
+  token1: '0xd21220a7'
+};
 
 // Helper to decode hex to BigInt
 
@@ -2390,7 +3885,19 @@ function applyStaticRewards(pools) {
  *   aggregate((address,bytes)[]) returns (uint256 blockNumber, (bool success, bytes returnData)[])
  */
 
-const MULTICALL3_ADDRESS = '0xca11bde05977b3631167028862be2a173976ca11';
+
+// Known function selectors
+const KNOWN_SELECTORS = {
+  '0xa7cac846': 'weights(address)',
+  '0xcc56b2c5': 'getGauge(address)',
+  '0x0dfe1681': 'token0()',
+  '0xd21220a7': 'token1()',
+  '0xddca3f43': 'fee()',
+  '0x1a686502': 'liquidity()',
+  '0x18160ddd': 'totalSupply()',
+  '0xedf59997': 'tokens_per_week(uint256)',
+  '0x7116c60c': 'totalSupplyAtT(uint256)',
+};
 
 /**
  * Decode Multicall3 aggregate() request

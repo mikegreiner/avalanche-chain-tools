@@ -28,6 +28,9 @@ class BlackholeRpcClient {
       // DeFiLlama price API (no rate limits, more reliable than CoinGecko)
       DEFILLAMA_PRICES: 'https://coins.llama.fi/prices/current/',
     };
+    
+    // vAMM/sAMM pools data (will be loaded from bundled data or extension storage)
+    this.vammSammPools = null;
 
     // RPC endpoint
     this.RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
@@ -408,6 +411,37 @@ class BlackholeRpcClient {
   }
 
   /**
+   * Set vAMM/sAMM pools data (loaded from bundled file or extension storage)
+   * @param {Array} pools - Array of vAMM/sAMM pool metadata
+   */
+  setVammSammPools(pools) {
+    this.vammSammPools = pools;
+    console.log(`[RPC] Loaded ${pools?.length || 0} vAMM/sAMM pools`);
+  }
+
+  /**
+   * Get vAMM/sAMM pools metadata
+   * @returns {Array} - Array of pool metadata objects
+   */
+  getVammSammPools() {
+    return this.vammSammPools || [];
+  }
+
+  /**
+   * Fetch all pools metadata (CL + vAMM/sAMM)
+   * @param {boolean} useCache - Whether to use cached data
+   * @returns {Promise<Array>} - Array of all pool metadata objects
+   */
+  async fetchAllPoolsMetadata(useCache = true) {
+    const clPools = await this.fetchClPoolsMetadata(useCache);
+    const vammSammPools = this.getVammSammPools();
+    
+    console.log(`[RPC] Total pools: ${clPools.length} CL + ${vammSammPools.length} vAMM/sAMM = ${clPools.length + vammSammPools.length}`);
+    
+    return [...clPools, ...vammSammPools];
+  }
+
+  /**
    * Get BLACK token price in USD
    * @param {boolean} useCache - Whether to use cached price
    * @returns {Promise<number>} - BLACK price in USD
@@ -575,17 +609,26 @@ class BlackholeRpcClient {
     if (metadata) {
       const t0 = metadata.token0 || {};
       const t1 = metadata.token1 || {};
-      const tickSpacing = parseInt(metadata.tickSpacing || 0);
       
-      // Determine pool type from tickSpacing
-      // CL1 = 0.01% fee, CL50 = 0.05%, CL100 = 0.1%, CL150 = 0.15%, CL200 = 0.5%
-      let poolType = 'CL';
-      if (tickSpacing === 1) poolType = 'CL1';
-      else if (tickSpacing === 50) poolType = 'CL50';
-      else if (tickSpacing === 100) poolType = 'CL100';
-      else if (tickSpacing === 150) poolType = 'CL150';
-      else if (tickSpacing === 200) poolType = 'CL200';
-      else if (tickSpacing > 0) poolType = `CL${tickSpacing}`;
+      // Determine pool type - vAMM/sAMM pools have explicit type, CL pools use tickSpacing
+      let poolType;
+      let tickSpacing = 0;
+      
+      if (metadata.type === 'vAMM' || metadata.type === 'sAMM') {
+        // vAMM/sAMM pool format
+        poolType = metadata.type;
+      } else {
+        // CL pool format - use tickSpacing
+        tickSpacing = parseInt(metadata.tickSpacing || 0);
+        // CL1 = 0.01% fee, CL50 = 0.05%, CL100 = 0.1%, CL150 = 0.15%, CL200 = 0.5%
+        if (tickSpacing === 1) poolType = 'CL1';
+        else if (tickSpacing === 50) poolType = 'CL50';
+        else if (tickSpacing === 100) poolType = 'CL100';
+        else if (tickSpacing === 150) poolType = 'CL150';
+        else if (tickSpacing === 200) poolType = 'CL200';
+        else if (tickSpacing > 0) poolType = `CL${tickSpacing}`;
+        else poolType = 'CL';
+      }
       
       pool.token0 = {
         address: t0.id || '',
@@ -606,6 +649,7 @@ class BlackholeRpcClient {
       pool.name = `${poolType}-${t0.symbol}/${t1.symbol}`;
       pool.tvl = parseFloat(metadata.totalValueLockedUSD || 0);
       pool.tickSpacing = tickSpacing;
+      pool.poolType = poolType;
     }
 
     // Get gauge data
@@ -640,11 +684,6 @@ class BlackholeRpcClient {
 
     return pool;
   }
-}
-
-// Export for use in extension
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = BlackholeRpcClient;
 }
 
 console.log('[RPC] BlackholeRpcClient loaded successfully, class available:', typeof BlackholeRpcClient !== 'undefined');

@@ -27,7 +27,7 @@ async function build() {
     // Track declared constants and functions to avoid duplicates
     const declaredConstants = new Set();
     const declaredFunctions = new Set();
-    const skipConstants = ['VOTER_ADDRESS', 'RPC_URL', 'MULTICALL3_ADDRESS', 'AGGREGATE_SELECTOR', 'SELECTORS', 'API_URL'];
+    const skipConstants = ['VOTER_ADDRESS', 'RPC_URL', 'MULTICALL3_ADDRESS', 'AGGREGATE_SELECTOR', 'SELECTORS', 'API_URL', 'VAMM_SAMM_POOLS', 'KNOWN_VAMM_SAMM_POOLS'];
     const skipFunctions = ['hexToBigInt', 'hexToAddress']; // Helper functions that appear in multiple files
     
     // Helper to strip module keywords line by line and handle duplicate constants
@@ -109,7 +109,8 @@ async function build() {
             }
             
             // Handle duplicate const declarations FIRST (before skip logic)
-            const constMatch = processed.match(/^(const|let|var)\s+([A-Z_]+)\s*=/);
+            // Pattern matches UPPER_CASE constants (with optional digits)
+            const constMatch = processed.match(/^(const|let|var)\s+([A-Z][A-Z0-9_]*)\s*=/);
             if (constMatch) {
                 const constName = constMatch[2];
                 // If it's a duplicate constant we want to skip
@@ -191,19 +192,25 @@ ${stripModules(rpcRewardsJs)}
 ${stripModules(rewardsExtractorJs)}
 `;
 
-    // 2f. Include VammSammProvider (needed by PoolDataProvider)
+    // 2f. Include vAMM/sAMM static data
+    let vammSammDataJs = fs.readFileSync(path.join(LIB_DIR, 'vamm-samm-data.js'), 'utf8');
+    bundle += `// --- From vamm-samm-data.js ---
+${stripModules(vammSammDataJs)}
+`;
+
+    // 2g. Include VammSammProvider (needs vamm-samm-data.js)
     let vammSammJs = fs.readFileSync(path.join(LIB_DIR, 'vamm-samm-provider.js'), 'utf8');
     bundle += `// --- From vamm-samm-provider.js ---
 ${stripModules(vammSammJs)}
 `;
 
-    // 2g. Include PoolDataProvider
+    // 2h. Include PoolDataProvider
     let providerJs = fs.readFileSync(path.join(LIB_DIR, 'pool-data-provider.js'), 'utf8');
     bundle += `// --- From pool-data-provider.js ---
 ${stripModules(providerJs)}
 `;
 
-    // 2h. Include UI Manager
+    // 2i. Include UI Manager
     let uiManagerJs = fs.readFileSync(path.join(LIB_DIR, 'ui-manager.js'), 'utf8');
     bundle += `// --- From ui-manager.js ---
 ${stripModules(uiManagerJs)}
