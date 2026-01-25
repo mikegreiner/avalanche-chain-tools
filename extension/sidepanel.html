@@ -218,6 +218,12 @@
     <div id="status" class="status hidden"></div>
   </div>
 
+  <!-- RPC Integration Scripts - Load before module -->
+  <script src="lib/blackhole-rpc-client.js"></script>
+  <script src="lib/rpc-pool-provider.js"></script>
+  <script src="lib/rpc-integration.js"></script>
+  
+  <!-- Main script as module -->
   <script type="module" src="sidepanel.js"></script>
 </body>
 </html>

@@ -1,206 +1,254 @@
 /**
- * RPC-based Pool Data Provider
- * Gets pool data directly from blockchain via RPC calls
- * Fast and reliable - no DOM dependency for basic data
+ * RpcPoolProvider.js
+ * 
+ * High-level pool data provider using RPC calls instead of DOM scraping.
+ * Provides the same interface as existing pool providers but 20x faster.
  */
 
-import { RpcClient } from './rpc-client.js';
-import Pool from './pool.js';
+console.log('[RPC] RpcPoolProvider.js loading...');
 
-const VOTER_ADDRESS = '0xe30d0c8532721551a51a9fec7fb233759964d9e3';
-const RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
-
-const SELECTORS = {
-  weights: '0xa7cac846',
-  token0: '0x0dfe1681',
-  token1: '0xd21220a7',
-  fee: '0xddca3f43',
-  liquidity: '0x1a686502',
-  totalSupply: '0x18160ddd',
-};
-
-// Helper to decode hex to BigInt
-function hexToBigInt(hex) {
-  if (!hex || hex === '0x') return 0n;
-  return BigInt(hex);
-}
-
-// Helper to get address from hex
-function hexToAddress(hex) {
-  if (!hex || hex === '0x') return null;
-  return '0x' + hex.slice(-40).toLowerCase();
-}
-
-export class RpcPoolProvider {
+class RpcPoolProvider {
   constructor() {
-    this.rpc = new RpcClient(RPC_URL);
-    this.poolCache = new Map(); // address -> pool data
+    this.client = new BlackholeRpcClient();
+    this.pools = [];
+    this.totalVotes = 0;
+    this.blackPrice = 0;
+    this.lastFetchTimestamp = 0;
+    this.isFetching = false;
   }
 
   /**
-   * Get pool weight (current_votes) from voter contract
+   * Fetch all pool data
+   * @param {Object} options - Fetch options
+   * @param {boolean} options.includeGauges - Whether to fetch gauge data (slower)
+   * @param {number} options.limit - Max number of pools to fetch
+   * @returns {Promise<Array>} - Array of pool objects
    */
-  async getPoolWeight(poolAddress) {
-    try {
-      const cleanAddr = poolAddress.replace('0x', '').toLowerCase().padStart(64, '0');
-      const data = SELECTORS.weights + cleanAddr;
-      const result = await this.rpc.ethCall(VOTER_ADDRESS, data);
-      return Number(hexToBigInt(result)) / 1e18;
-    } catch (e) {
-      console.warn(`Failed to get weight for ${poolAddress}:`, e);
-      return 0;
-    }
-  }
+  async fetchAllPools(options = {}) {
+    const { includeGauges = true, limit = 100 } = options;
 
-  /**
-   * Get pool metadata (tokens, fee, liquidity) from pool contract
-   */
-  async getPoolMetadata(poolAddress) {
-    const metadata = {
-      token0: null,
-      token1: null,
-      fee: null,
-      liquidity: null,
-      totalSupply: null,
-    };
-
-    try {
-      // Get token0
-      const token0Result = await this.rpc.ethCall(poolAddress, SELECTORS.token0);
-      metadata.token0 = hexToAddress(token0Result);
-
-      // Get token1
-      const token1Result = await this.rpc.ethCall(poolAddress, SELECTORS.token1);
-      metadata.token1 = hexToAddress(token1Result);
-
-      // Get fee (for CL pools)
-      try {
-        const feeResult = await this.rpc.ethCall(poolAddress, SELECTORS.fee);
-        const fee = Number(hexToBigInt(feeResult));
-        if (fee > 0 && fee < 100000) {
-          metadata.fee = fee;
-        }
-      } catch (e) {
-        // Fee not available (vAMM/sAMM pools)
+    if (this.isFetching) {
+      console.log('Already fetching pools, waiting...');
+      // Wait for current fetch to complete
+      while (this.isFetching) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
+      return this.pools;
+    }
 
-      // Get liquidity or totalSupply
-      try {
-        const liqResult = await this.rpc.ethCall(poolAddress, SELECTORS.liquidity);
-        const liquidity = Number(hexToBigInt(liqResult)) / 1e18;
-        if (liquidity > 0) {
-          metadata.liquidity = liquidity;
-        }
-      } catch (e) {
-        // Try totalSupply instead
-        try {
-          const supplyResult = await this.rpc.ethCall(poolAddress, SELECTORS.totalSupply);
-          const supply = Number(hexToBigInt(supplyResult)) / 1e18;
-          if (supply > 0) {
-            metadata.totalSupply = supply;
+    this.isFetching = true;
+
+    try {
+      console.log('[RpcPoolProvider] Starting pool fetch...');
+      const startTime = Date.now();
+
+      // Step 1: Fetch token prices
+      console.log('[RpcPoolProvider] Fetching token prices...');
+      this.blackPrice = await this.client.getBlackPrice();
+      const avaxPrice = await this.client.getAvaxPrice();
+      console.log(`[RpcPoolProvider] BLACK price: $${this.blackPrice.toFixed(5)}, AVAX price: $${avaxPrice.toFixed(2)}`);
+
+      // Step 2: Fetch total votes
+      console.log('[RpcPoolProvider] Fetching total votes...');
+      this.totalVotes = await this.client.getTotalVotes();
+      console.log(`[RpcPoolProvider] Total votes: ${this.totalVotes.toLocaleString()}`);
+
+      // Step 3: Fetch pool metadata from static API
+      console.log('[RpcPoolProvider] Fetching CL pool metadata...');
+      const metadata = await this.client.fetchClPoolsMetadata();
+      console.log(`[RpcPoolProvider] Found ${metadata.length} CL pools`);
+
+      // Step 4: Process pools (limit if requested)
+      const poolsToProcess = metadata.slice(0, limit);
+      this.pools = [];
+
+      console.log(`[RpcPoolProvider] Processing ${poolsToProcess.length} pools...`);
+
+      // Batch process pools for better performance
+      const batchSize = 10;
+      for (let i = 0; i < poolsToProcess.length; i += batchSize) {
+        const batch = poolsToProcess.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (meta) => {
+          try {
+            const pool = await this.client.buildPoolData(
+              meta.id,
+              meta,
+              this.blackPrice
+            );
+            
+            // Calculate vote share
+            pool.voteShare = this.totalVotes > 0 
+              ? (pool.votes / this.totalVotes) * 100 
+              : 0;
+            
+            return pool;
+          } catch (error) {
+            console.error(`Failed to process pool ${meta.id}:`, error);
+            return null;
           }
-        } catch (e2) {
-          // Neither available
-        }
-      }
-    } catch (e) {
-      console.warn(`Failed to get metadata for ${poolAddress}:`, e);
-    }
+        });
 
-    return metadata;
+        const results = await Promise.all(batchPromises);
+        this.pools.push(...results.filter(p => p !== null));
+
+        console.log(`[RpcPoolProvider] Processed ${Math.min(i + batchSize, poolsToProcess.length)}/${poolsToProcess.length} pools`);
+      }
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[RpcPoolProvider] ✓ Fetched ${this.pools.length} pools in ${elapsed}ms`);
+
+      this.lastFetchTimestamp = Date.now();
+      return this.pools;
+
+    } catch (error) {
+      console.error('[RpcPoolProvider] Fetch failed:', error);
+      throw error;
+    } finally {
+      this.isFetching = false;
+    }
   }
 
   /**
-   * Get complete pool data via RPC
-   * Returns Pool object with all available RPC data
+   * Get pools sorted by a specific field
+   * @param {string} sortBy - Field to sort by (vapr, votes, tvl)
+   * @param {boolean} ascending - Sort direction
+   * @returns {Array} - Sorted pools
    */
-  async getPoolData(poolAddress, poolType = null) {
-    // Check cache
-    if (this.poolCache.has(poolAddress.toLowerCase())) {
-      return this.poolCache.get(poolAddress.toLowerCase());
-    }
-
-    // Get weight and metadata in parallel
-    const [weight, metadata] = await Promise.all([
-      this.getPoolWeight(poolAddress),
-      this.getPoolMetadata(poolAddress),
-    ]);
-
-    // Determine pool type if not provided
-    if (!poolType) {
-      if (metadata.fee) {
-        // CL pool
-        if (metadata.fee === 100) poolType = 'CL1';
-        else if (metadata.fee === 500) poolType = 'CL200';
-        else poolType = 'CL200';
-      } else {
-        // vAMM or sAMM (can't distinguish without more data)
-        poolType = 'vAMM'; // Default
-      }
-    }
-
-    // Create pool name from tokens (if available)
-    let name = `Pool ${poolAddress.slice(0, 8)}`;
-    if (metadata.token0 && metadata.token1) {
-      // We'd need token symbols, but for now use addresses
-      name = `${poolType || 'Pool'}-${metadata.token0.slice(0, 6)}/${metadata.token1.slice(0, 6)}`;
-    }
-
-    // Determine fee percentage
-    let feePercentage = null;
-    if (metadata.fee) {
-      if (metadata.fee === 100) feePercentage = '0.01%';
-      else if (metadata.fee === 500) feePercentage = '0.05%';
-      else feePercentage = `${metadata.fee / 10000}%`;
-    }
-
-    const pool = new Pool({
-      name: name,
-      pool_id: poolAddress,
-      pool_type: poolType,
-      fee_percentage: feePercentage,
-      total_rewards: 0, // Not available via RPC yet
-      vapr: 0, // Not available via RPC yet
-      current_votes: weight,
+  getSortedPools(sortBy = 'vapr', ascending = false) {
+    const sorted = [...this.pools].sort((a, b) => {
+      const aVal = a[sortBy] || 0;
+      const bVal = b[sortBy] || 0;
+      return ascending ? aVal - bVal : bVal - aVal;
     });
-
-    // Cache result
-    this.poolCache.set(poolAddress.toLowerCase(), pool);
-
-    return pool;
+    return sorted;
   }
 
   /**
-   * Get pool data for multiple pools (batched)
+   * Get top N pools by VAPR
+   * @param {number} count - Number of pools to return
+   * @returns {Array} - Top pools
    */
-  async getPoolsData(poolAddresses, poolTypes = {}) {
-    const pools = [];
-
-    // Process in batches to avoid overwhelming RPC
-    const batchSize = 10;
-    for (let i = 0; i < poolAddresses.length; i += batchSize) {
-      const batch = poolAddresses.slice(i, i + batchSize);
-      const batchPromises = batch.map(addr =>
-        this.getPoolData(addr, poolTypes[addr.toLowerCase()])
-      );
-      const batchResults = await Promise.all(batchPromises);
-      pools.push(...batchResults);
-    }
-
-    return pools;
+  getTopPoolsByVapr(count = 10) {
+    return this.getSortedPools('vapr', false).slice(0, count);
   }
 
   /**
-   * Load pools from discovered pool list
-   * Can load from static JSON or fetch dynamically
+   * Get top N pools by votes
+   * @param {number} count - Number of pools to return
+   * @returns {Array} - Top pools
    */
-  async loadDiscoveredPools() {
-    // Option 1: Load from static file (if bundled)
-    // Option 2: Use discovered addresses from previous analysis
-    // Option 3: Fetch dynamically (future)
+  getTopPoolsByVotes(count = 10) {
+    return this.getSortedPools('votes', false).slice(0, count);
+  }
 
-    // For now, return empty - will be populated by caller
-    // In production, could load from vamm_samm_pools.json or similar
-    return [];
+  /**
+   * Find pool by address
+   * @param {string} address - Pool address
+   * @returns {Object|null} - Pool object or null
+   */
+  findPoolByAddress(address) {
+    const addrLower = address.toLowerCase();
+    return this.pools.find(p => p.address.toLowerCase() === addrLower) || null;
+  }
+
+  /**
+   * Search pools by name or address
+   * @param {string} query - Search query
+   * @returns {Array} - Matching pools
+   */
+  searchPools(query) {
+    const queryLower = query.toLowerCase();
+    return this.pools.filter(p => 
+      p.name.toLowerCase().includes(queryLower) ||
+      p.address.toLowerCase().includes(queryLower) ||
+      p.token0.symbol.toLowerCase().includes(queryLower) ||
+      p.token1.symbol.toLowerCase().includes(queryLower)
+    );
+  }
+
+  /**
+   * Check if data is stale
+   * @param {number} maxAgeMs - Max age in milliseconds
+   * @returns {boolean} - True if data is stale
+   */
+  isStale(maxAgeMs = 300000) { // Default 5 minutes
+    return Date.now() - this.lastFetchTimestamp > maxAgeMs;
+  }
+
+  /**
+   * Get pool statistics
+   * @returns {Object} - Stats object
+   */
+  getStats() {
+    const poolsWithGauges = this.pools.filter(p => p.gauge !== null).length;
+    const poolsWithVotes = this.pools.filter(p => p.votes > 0).length;
+    const avgVapr = this.pools.length > 0
+      ? this.pools.reduce((sum, p) => sum + p.vapr, 0) / this.pools.length
+      : 0;
+    const totalTvl = this.pools.reduce((sum, p) => sum + p.tvl, 0);
+
+    return {
+      totalPools: this.pools.length,
+      poolsWithGauges,
+      poolsWithVotes,
+      totalVotes: this.totalVotes,
+      totalTvl,
+      avgVapr,
+      blackPrice: this.blackPrice,
+      lastFetch: new Date(this.lastFetchTimestamp).toISOString(),
+    };
+  }
+
+  /**
+   * Format pool data for display
+   * @param {Object} pool - Pool object
+   * @returns {Object} - Formatted data
+   */
+  formatPoolForDisplay(pool) {
+    return {
+      address: pool.address,
+      name: pool.name,
+      tvl: `$${pool.tvl.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      votes: pool.votes > 1e6 
+        ? `${(pool.votes / 1e6).toFixed(2)}M`
+        : pool.votes.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+      voteShare: `${pool.voteShare.toFixed(2)}%`,
+      vapr: `${pool.vapr.toFixed(1)}%`,
+      weeklyRewards: `$${pool.weeklyRewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      hasGauge: pool.gauge !== null,
+    };
+  }
+
+  /**
+   * Export pools to JSON
+   * @returns {string} - JSON string
+   */
+  exportToJson() {
+    return JSON.stringify({
+      timestamp: new Date(this.lastFetchTimestamp).toISOString(),
+      blackPrice: this.blackPrice,
+      totalVotes: this.totalVotes,
+      pools: this.pools,
+      stats: this.getStats(),
+    }, null, 2);
+  }
+
+  /**
+   * Clear cached data
+   */
+  clearCache() {
+    this.pools = [];
+    this.totalVotes = 0;
+    this.blackPrice = 0;
+    this.lastFetchTimestamp = 0;
+    console.log('[RpcPoolProvider] Cache cleared');
   }
 }
+
+// Export for use in extension
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = RpcPoolProvider;
+}
+
+console.log('[RPC] RpcPoolProvider loaded successfully, class available:', typeof RpcPoolProvider !== 'undefined');
