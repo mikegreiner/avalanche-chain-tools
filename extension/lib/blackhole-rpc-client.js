@@ -297,16 +297,17 @@ class BlackholeRpcClient {
   }
 
   /**
-   * Get the previous epoch start timestamp
-   * Note: Bribe contracts appear to use Thursday 00:00 UTC epoch boundaries
-   * (close to the actual epoch flip which is ~1 hour after Wednesday voting deadline)
-   * @returns {number} - Unix timestamp of previous epoch start
+   * Get the current epoch start timestamp
+   * The site shows ongoing/current epoch fees (accumulated so far this week),
+   * not the previous completed epoch.
+   * Epoch boundaries are Thursday 00:00 UTC (Unix week boundary)
+   * @returns {number} - Unix timestamp of current epoch start
    */
-  getPreviousEpochStart() {
+  getCurrentEpochStart() {
     const now = Math.floor(Date.now() / 1000);
     // Unix week starts on Thursday 00:00 UTC (Jan 1, 1970 was a Thursday)
     const currentEpochStart = Math.floor(now / this.SECONDS_PER_WEEK) * this.SECONDS_PER_WEEK;
-    return currentEpochStart - this.SECONDS_PER_WEEK;
+    return currentEpochStart;
   }
 
   /**
@@ -329,8 +330,8 @@ class BlackholeRpcClient {
         return result;
       }
 
-      // Get previous epoch timestamp
-      const epochStart = this.getPreviousEpochStart();
+      // Get current epoch timestamp (site shows ongoing week's fees)
+      const epochStart = this.getCurrentEpochStart();
       const epochParam = epochStart.toString(16).padStart(64, '0');
 
       // Get token0 rewards for epoch
