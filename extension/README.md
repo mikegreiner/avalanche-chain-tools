@@ -69,8 +69,11 @@ A browser extension that brings powerful pool analysis and voting tools directly
 - **Select All**: Select all currently visible recommendations
 - **Clear All**: Deselect all pools across all pages (auto-scrolls to top)
 - **Split Votes**: Automatically calculate and fill in even percentages
-- **Smart Vote Button**: Finds and clicks the vote button for you### Action Buttons: Added "Vote", "Select All", "Clear All", and "Split Votes" buttons directly to the side panel
-  - **Vote Button**: Smart "Vote" button finds the main page button or modal confirmation button automatically
+- **RPC Direct Mode** (New):
+  - Fetches pool data 20x faster using direct RPC calls
+  - Interact with your wallet directly from the sidebar
+  - Bypasses slow website UI for pool selection and voting
+  - Shows epoch countdown timer
 
 ## 🛠️ Development
 

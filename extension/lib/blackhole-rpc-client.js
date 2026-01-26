@@ -14,7 +14,7 @@ class BlackholeRpcClient {
   constructor() {
     // Contract addresses
     this.CONTRACTS = {
-      VOTER: '0xe30d0c8532721551a51a9fec7fb233759964d9e3',
+      VOTER: '0xE30D0C8532721551a51a9FeC7FB233759964d9e3',
       GAUGE_MANAGER: '0x59aa177312Ff6Bdf39C8Af6F46dAe217bf76CBf6',
       PAIR_FACTORY: '0xfe926062fb99ca5653080d6c14fe945ad68c265c',
       EPOCH_MANAGER: '0x3935f7e11e33e676b6108f6e86ab8578d8e32d43',
@@ -97,6 +97,12 @@ class BlackholeRpcClient {
       'tokenRewardsPerEpoch(address,uint256)': '0x92777b29',
       'rewardsListLength()': '0xe6886396',
       'rewards(uint256)': '0xf301af42',
+      // veBLACK NFT selectors
+      'balanceOf(address)': '0x70a08231',
+      'tokenOfOwnerByIndex(address,uint256)': '0x2f745c59',
+      'balanceOfNFT(uint256)': '0xe7e242d4', // Correct selector
+      'locked(uint256)': '0xb45a3c0e',       // Correct selector
+      'ownerOf(uint256)': '0x6352211e',
     };
 
     const selector = selectors[signature];
@@ -116,6 +122,7 @@ class BlackholeRpcClient {
    */
   async ethCall(to, data) {
     try {
+      // console.log(`[RPC] eth_call to=${to} data=${data.substring(0, 10)}...`);
       const response = await fetch(this.RPC_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,13 +136,18 @@ class BlackholeRpcClient {
 
       const result = await response.json();
       if (result.error) {
-        console.warn('eth_call error:', result.error);
+        console.warn(`[RPC] eth_call error for ${to}:`, result.error);
+        return null;
+      }
+
+      if (result.result === undefined) {
+        console.warn(`[RPC] Unexpected response (no result):`, result);
         return null;
       }
 
       return result.result;
     } catch (error) {
-      console.error('RPC call failed:', error);
+      console.error('[RPC] Call failed:', error);
       return null;
     }
   }
@@ -311,6 +323,14 @@ class BlackholeRpcClient {
     // Unix week starts on Thursday 00:00 UTC (Jan 1, 1970 was a Thursday)
     const currentEpochStart = Math.floor(now / this.SECONDS_PER_WEEK) * this.SECONDS_PER_WEEK;
     return currentEpochStart;
+  }
+
+  /**
+   * Get the start timestamp of the next epoch (which is the end of the current one)
+   * @returns {number} - Unix timestamp
+   */
+  getNextEpochStart() {
+    return this.getCurrentEpochStart() + this.SECONDS_PER_WEEK;
   }
 
   /**

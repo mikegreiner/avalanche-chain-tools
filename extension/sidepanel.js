@@ -68,7 +68,29 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('[SidePanel] RPC initialization failed:', error);
     }
   }
-  
+
+  // Initialize RPC Voting
+  console.log('[SidePanel] Checking RPC voting prerequisites:', {
+    hasRpcVoting: !!window.rpcVoting,
+    hasRpcIntegration: !!window.rpcIntegration,
+    hasRpcClient: !!(window.rpcIntegration && (window.rpcIntegration.getRpcClient?.() || window.rpcIntegration.rpcClient))
+  });
+
+  if (window.rpcVoting && window.rpcIntegration) {
+    const client = window.rpcIntegration.getRpcClient?.() || window.rpcIntegration.rpcClient;
+    if (client) {
+      console.log('[SidePanel] Initializing RPC voting...');
+      try {
+        window.rpcVoting.setRpcClient(client);
+        await window.rpcVoting.initialize();
+      } catch (error) {
+        console.error('[SidePanel] RPC voting initialization failed:', error);
+      }
+    } else {
+      console.warn('[SidePanel] RPC Client missing, skipping voting initialization');
+    }
+  }
+
   // Initial render of recommendations
   await loadAndRenderRecommendations();
   
@@ -83,6 +105,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       await updateStaleDataIndicator();
     }
   }, 30000);
+
+  // Start epoch countdown
+  startEpochCountdown();
 });
 
 function setupTabs() {
@@ -262,16 +287,27 @@ function setupListeners() {
         const originalText = btn.textContent;
         btn.textContent = 'Selecting...';
         btn.disabled = true;
+
+        const isRpcActive = (window.rpcVoting && window.rpcVoting.isRpcMode) || 
+                            (document.getElementById('votingMethodRpc') && document.getElementById('votingMethodRpc').checked);
         
         try {
-          await sendMessageToContentScript({ 
-            type: 'SELECT_POOLS', 
-            poolIds: pools,
-            forceSelect: true  // Don't unselect already-selected pools
-          });
-          showStatus(`Selected top ${pools.length} pools`, 'success');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          await loadAndRenderRecommendations();
+          if (isRpcActive) {
+            // RPC Mode: Local update
+            pools.forEach(poolId => updatePoolStyling(poolId, true));
+            if (window.rpcVoting) window.rpcVoting.updateVoteTotal();
+            showStatus(`Selected top ${pools.length} pools`, 'success');
+          } else {
+            // Web UI Mode: Page interaction
+            await sendMessageToContentScript({ 
+              type: 'SELECT_POOLS', 
+              poolIds: pools,
+              forceSelect: true
+            });
+            showStatus(`Selected top ${pools.length} pools`, 'success');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await loadAndRenderRecommendations();
+          }
         } catch (e) {
           console.error('Error selecting top pools:', e);
           showStatus('Selection failed', 'error');
@@ -294,16 +330,27 @@ function setupListeners() {
         const originalText = btn.textContent;
         btn.textContent = 'Selecting...';
         btn.disabled = true;
+
+        const isRpcActive = (window.rpcVoting && window.rpcVoting.isRpcMode) || 
+                            (document.getElementById('votingMethodRpc') && document.getElementById('votingMethodRpc').checked);
         
         try {
-          await sendMessageToContentScript({ 
-            type: 'SELECT_POOLS', 
-            poolIds: pools,
-            forceSelect: true  // Don't unselect already-selected pools
-          });
-          showStatus(`Selected ${pools.length} pools`, 'success');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          await loadAndRenderRecommendations();
+          if (isRpcActive) {
+             // RPC Mode: Local update
+            pools.forEach(poolId => updatePoolStyling(poolId, true));
+            if (window.rpcVoting) window.rpcVoting.updateVoteTotal();
+            showStatus(`Selected ${pools.length} pools`, 'success');
+          } else {
+            // Web UI Mode: Page interaction
+            await sendMessageToContentScript({ 
+              type: 'SELECT_POOLS', 
+              poolIds: pools,
+              forceSelect: true  // Don't unselect already-selected pools
+            });
+            showStatus(`Selected ${pools.length} pools`, 'success');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await loadAndRenderRecommendations();
+          }
         } catch (e) {
           console.error('Error selecting pools:', e);
           showStatus('Selection failed', 'error');
@@ -321,13 +368,30 @@ function setupListeners() {
       const originalText = btn.textContent;
       btn.textContent = 'Clearing...';
       btn.disabled = true;
+
+      const isRpcActive = (window.rpcVoting && window.rpcVoting.isRpcMode) || 
+                          (document.getElementById('votingMethodRpc') && document.getElementById('votingMethodRpc').checked);
       
       try {
-        await sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
-        showStatus('All votes cleared', 'success');
-        // Wait slightly for page state to settle
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await loadAndRenderRecommendations();
+        if (isRpcActive) {
+          // RPC Mode: Local update
+          const pools = getCurrentRecommendationIds();
+          pools.forEach(poolId => updatePoolStyling(poolId, false));
+          // Clear percentages in RPC module
+          if (window.rpcVoting) {
+            window.rpcVoting.poolPercentages.clear();
+            window.rpcVoting.updatePercentageInputs();
+            window.rpcVoting.updateVoteTotal();
+          }
+          showStatus('All votes cleared', 'success');
+        } else {
+          // Web UI Mode: Page interaction
+          await sendMessageToContentScript({ type: 'CLEAR_ALL_VOTES' });
+          showStatus('All votes cleared', 'success');
+          // Wait slightly for page state to settle
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await loadAndRenderRecommendations();
+        }
       } catch (e) {
         console.error('Error clearing votes:', e);
         showStatus('Clear failed', 'error');
@@ -496,6 +560,35 @@ function setupListeners() {
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
     });
+  });
+
+  // Voting method radio buttons
+  const votingMethodRadios = document.querySelectorAll('input[name="votingMethod"]');
+  votingMethodRadios.forEach(radio => {
+    radio.addEventListener('change', async () => {
+      await autoSaveSettings();
+      showStatus(`Voting method changed to ${radio.value === 'rpc' ? 'RPC Direct' : 'Web UI'}`, 'info');
+
+      // Re-render recommendations to update UI for the new mode
+      if (document.querySelector('.tab[data-tab="recommendations"]').classList.contains('active')) {
+        await loadAndRenderRecommendations();
+      }
+    });
+  });
+
+  // Listen for showStatus events from RPC voting module
+  document.addEventListener('showStatus', (event) => {
+    if (event.detail) {
+      showStatus(event.detail.message, event.detail.type);
+    }
+  });
+
+  // Listen for pool selection changes from RPC voting module
+  document.addEventListener('poolSelectionChanged', () => {
+    // Notify RPC voting module if it exists
+    if (window.rpcVoting) {
+      window.rpcVoting.updateVoteTotal();
+    }
   });
 }
 
@@ -729,16 +822,25 @@ function populateForm(settings) {
     const el = document.getElementById(id);
     if (el && val !== undefined && val !== null) el.value = val;
   };
-  
+
   setVal('votingPower', settings.votingPower);
   setVal('topN', settings.topN);
   setVal('minRewards', settings.minRewards);
   setVal('maxPoolPercentage', settings.maxPoolPercentage);
   setVal('sortBy', settings.sortBy);
   setVal('settingsPoolNameFilter', settings.poolNameFilter);
-  
+
   if (settings.hideVamm !== undefined) document.getElementById('hideVamm').checked = settings.hideVamm;
   if (settings.enableOverlay !== undefined) document.getElementById('enableOverlay').checked = settings.enableOverlay;
+  if (settings.apiDiscoveryEnabled !== undefined) document.getElementById('apiDiscoveryEnabled').checked = settings.apiDiscoveryEnabled;
+
+  // Set voting method
+  const votingMethod = settings.votingMethod || 'rpc';
+  if (votingMethod === 'rpc') {
+    document.getElementById('votingMethodRpc').checked = true;
+  } else {
+    document.getElementById('votingMethodWeb').checked = true;
+  }
 }
 
 /**
@@ -764,6 +866,8 @@ async function isPoolDataStale() {
     const now = Date.now();
     const age = now - timestamp;
     
+    console.log(`[SidePanel] Data age: ${(age/1000).toFixed(1)}s. IsOnPage: ${isOnVotingPage}`);
+
     // If we're on the voting page, use a more lenient threshold (10 minutes)
     // since the user is actively viewing the page and can see if data is outdated
     if (isOnVotingPage) {
@@ -934,8 +1038,36 @@ async function loadAndRenderRecommendations() {
     container.innerHTML = html;
 
     // Refresh selection state for newly rendered pools
-    setTimeout(() => {
+    setTimeout(async () => {
       refreshSelectionState();
+
+      // Check RPC mode and add percentage inputs
+      // Use explicit check from storage or window state to be safe
+      const isRpcActive = (window.rpcVoting && window.rpcVoting.isRpcMode) || 
+                          (document.getElementById('votingMethodRpc') && document.getElementById('votingMethodRpc').checked);
+
+      // Retry mechanism for window.rpcVoting availability
+      let attempts = 0;
+      while (!window.rpcVoting && attempts < 5) {
+        console.log('[SidePanel] Waiting for window.rpcVoting...', attempts);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      console.log('[SidePanel] Post-render check:', { 
+        hasRpcVoting: !!window.rpcVoting, 
+        isRpcMode: window.rpcVoting?.isRpcMode,
+        isRadioChecked: document.getElementById('votingMethodRpc')?.checked,
+        shouldAddInputs: isRpcActive
+      });
+
+      if (isRpcActive && window.rpcVoting) {
+        console.log('[SidePanel] Re-adding percentage inputs after pool render');
+        // Force inputs to be added
+        window.rpcVoting.addPercentageInputsToPools();
+        // Also ensure UI elements are shown correctly
+        window.rpcVoting.updateUIForMode(); 
+      }
     }, 100);
 
     // Attach listeners to "Select" buttons
@@ -950,6 +1082,24 @@ async function loadAndRenderRecommendations() {
           const poolId = e.target.dataset.id;
           const isSelected = e.target.textContent === 'Deselect';
           
+          // Check if RPC mode is active
+          const isRpcActive = (window.rpcVoting && window.rpcVoting.isRpcMode) || 
+                              (document.getElementById('votingMethodRpc') && document.getElementById('votingMethodRpc').checked);
+
+          console.log('[SidePanel] Clicked select. Pool:', poolId, 'isRpcActive:', isRpcActive);
+
+          if (isRpcActive) {
+            // RPC Mode: Handle selection locally without touching the page DOM
+            updatePoolStyling(poolId, !isSelected);
+            
+            // Notify RPC voting module to update totals if needed
+            if (window.rpcVoting) {
+              window.rpcVoting.updateVoteTotal();
+            }
+            return;
+          }
+
+          // Web UI Mode: Interact with page DOM
           e.target.textContent = isSelected ? 'Clearing...' : 'Selecting...';
           e.target.disabled = true;
           
@@ -1080,7 +1230,7 @@ async function refreshSelectionState() {
 
 // Reuse existing logic for saving settings
 async function loadSettings() {
-  const result = await chrome.storage.local.get(['blackholeSettings']);
+  const result = await chrome.storage.local.get(['blackholeSettings', 'votingMethod']);
   const defaults = {
     votingPower: null,
     topN: 10,
@@ -1090,12 +1240,16 @@ async function loadSettings() {
     hideVamm: false,
     enableOverlay: true,
     poolNameFilter: null,
-    apiDiscoveryEnabled: false  // Default: off
+    apiDiscoveryEnabled: false,  // Default: off
+    votingMethod: result.votingMethod || 'rpc'  // Default: RPC
   };
   return { ...defaults, ...(result.blackholeSettings || {}) };
 }
 
 async function autoSaveSettings() {
+  const votingMethodRpc = document.getElementById('votingMethodRpc');
+  const votingMethod = votingMethodRpc?.checked ? 'rpc' : 'web';
+
   const settings = {
     votingPower: parseFloatInput('votingPower'),
     topN: parseIntInput('topN', 10),
@@ -1107,8 +1261,11 @@ async function autoSaveSettings() {
     enableOverlay: document.getElementById('enableOverlay').checked,
     poolNameFilter: document.getElementById('settingsPoolNameFilter').value.trim() || null
   };
-  
-  await chrome.storage.local.set({ blackholeSettings: settings });
+
+  await chrome.storage.local.set({
+    blackholeSettings: settings,
+    votingMethod: votingMethod
+  });
   
   // Notify content script
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -1180,6 +1337,66 @@ async function updateStatus() {
   
   html += '</p>';
   summaryEl.innerHTML = html;
+}
+
+/**
+ * Start epoch countdown timer
+ */
+function startEpochCountdown() {
+  const container = document.getElementById('epochCountdownContainer');
+  const timer = document.getElementById('epochCountdown');
+  
+  if (!container || !timer) return;
+  
+  // Try to get client
+  const client = window.rpcIntegration?.getRpcClient?.() || window.rpcIntegration?.rpcClient;
+  
+  // Fallback if client not ready immediately
+  if (!client) {
+    setTimeout(startEpochCountdown, 1000);
+    return;
+  }
+  
+  container.style.display = 'block';
+  
+  const update = () => {
+    try {
+      if (typeof client.getNextEpochStart !== 'function') return;
+
+      const now = Math.floor(Date.now() / 1000);
+      const nextEpoch = client.getNextEpochStart();
+      const diff = nextEpoch - now;
+      
+      if (diff <= 0) {
+        timer.textContent = 'Ending...';
+        return;
+      }
+      
+      const days = Math.floor(diff / 86400);
+      const hours = Math.floor((diff % 86400) / 3600);
+      const minutes = Math.floor((diff % 3600) / 60);
+      const seconds = diff % 60;
+      
+      const countdownStr = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+      
+      // Add local date/time
+      const endDate = new Date(nextEpoch * 1000);
+      const dayName = endDate.toLocaleDateString(undefined, { weekday: 'long' });
+      const datePart = endDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+      const timePart = endDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+      
+      // Get timezone name (e.g., "Mountain Daylight Time" or "MST")
+      const tzName = Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(endDate)
+                        .find(p => p.type === 'timeZoneName').value;
+
+      timer.textContent = `${countdownStr} / ${dayName} (${datePart}), ${timePart} ${tzName}`;
+    } catch (e) {
+      console.warn('Countdown error:', e);
+    }
+  };
+  
+  update();
+  setInterval(update, 1000);
 }
 
 function showStatus(msg, type) {

@@ -10,6 +10,9 @@ console.log('[RPC] rpc-integration.js loading...');
 // Import RPC modules
 // Note: These will be loaded in sidepanel.html before this script
 
+// Shared RPC client instance
+let rpcClient = null;
+
 /**
  * Fetch all pool data via RPC and store in chrome.storage
  * @param {Object} options - Fetch options
@@ -27,6 +30,13 @@ async function fetchPoolDataViaRpc(options = {}) {
   try {
     // Initialize provider
     const provider = new RpcPoolProvider();
+    
+    // Use shared client if available to share cache/decimals
+    if (rpcClient) {
+      provider.client = rpcClient;
+    } else {
+      rpcClient = provider.client;
+    }
 
     // Fetch pools
     const pools = await provider.fetchAllPools({ includeGauges: true, limit });
@@ -193,11 +203,18 @@ async function initializeRpcIntegration() {
 
 // Export functions for use in sidepanel
 if (typeof window !== 'undefined') {
+  // Ensure client is initialized
+  if (!rpcClient && typeof BlackholeRpcClient !== 'undefined') {
+    rpcClient = new BlackholeRpcClient();
+  }
+
   window.rpcIntegration = {
     fetchPoolDataViaRpc,
     smartRefreshPoolData,
     initializeRpcIntegration,
     determineFetchMethod,
+    getRpcClient: () => rpcClient, // Getter for client
+    rpcClient, // Expose the client instance (legacy)
   };
   console.log('[RPC] rpc-integration loaded successfully, window.rpcIntegration available:', typeof window.rpcIntegration !== 'undefined');
 }
