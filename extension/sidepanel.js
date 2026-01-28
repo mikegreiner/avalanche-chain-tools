@@ -1342,51 +1342,89 @@ async function updateStatus() {
 /**
  * Start epoch countdown timer
  */
-function startEpochCountdown() {
+async function startEpochCountdown() {
   const container = document.getElementById('epochCountdownContainer');
   const timer = document.getElementById('epochCountdown');
-  
+
   if (!container || !timer) return;
-  
+
   // Try to get client
   const client = window.rpcIntegration?.getRpcClient?.() || window.rpcIntegration?.rpcClient;
-  
+
   // Fallback if client not ready immediately
   if (!client) {
     setTimeout(startEpochCountdown, 1000);
     return;
   }
-  
-  container.style.display = 'block';
-  
-  const update = () => {
-    try {
-      if (typeof client.getNextEpochStart !== 'function') return;
 
+  container.style.display = 'block';
+
+  // Cache for epoch end time (fetched from contract)
+  let cachedNextEpoch = null;
+  let lastFetchTime = 0;
+  const REFETCH_INTERVAL = 5 * 60 * 1000; // Re-fetch every 5 minutes
+  const VOTING_DEADLINE_OFFSET = 3600; // Voting closes 1 hour before epoch ends
+
+  // Fetch voting deadline from contract
+  // Note: Contract returns epoch end time, but voting closes 1 hour earlier
+  const fetchVotingDeadline = async () => {
+    try {
+      if (typeof client.getNextEpochStartFromContract !== 'function') {
+        console.warn('[Countdown] Contract method not available, using fallback');
+        return client.getNextEpochStart() - VOTING_DEADLINE_OFFSET;
+      }
+
+      const epochEnd = await client.getNextEpochStartFromContract();
+      const votingDeadline = epochEnd - VOTING_DEADLINE_OFFSET;
+      console.log('[Countdown] Epoch ends at:', epochEnd, new Date(epochEnd * 1000).toLocaleString());
+      console.log('[Countdown] Voting deadline:', votingDeadline, new Date(votingDeadline * 1000).toLocaleString());
+      return votingDeadline;
+    } catch (error) {
+      console.error('[Countdown] Error fetching epoch, using fallback:', error);
+      return client.getNextEpochStart() - VOTING_DEADLINE_OFFSET;
+    }
+  };
+
+  // Initial fetch
+  cachedNextEpoch = await fetchVotingDeadline();
+  lastFetchTime = Date.now();
+
+  const update = async () => {
+    try {
       const now = Math.floor(Date.now() / 1000);
-      const nextEpoch = client.getNextEpochStart();
-      const diff = nextEpoch - now;
-      
+
+      // Re-fetch if cache is stale or deadline has passed
+      if (!cachedNextEpoch ||
+          (Date.now() - lastFetchTime) > REFETCH_INTERVAL ||
+          cachedNextEpoch <= now) {
+        cachedNextEpoch = await fetchVotingDeadline();
+        lastFetchTime = Date.now();
+      }
+
+      const diff = cachedNextEpoch - now;
+
       if (diff <= 0) {
-        timer.textContent = 'Ending...';
+        timer.textContent = 'Voting closed!';
+        // Force re-fetch on next update
+        cachedNextEpoch = null;
         return;
       }
-      
+
       const days = Math.floor(diff / 86400);
       const hours = Math.floor((diff % 86400) / 3600);
       const minutes = Math.floor((diff % 3600) / 60);
       const seconds = diff % 60;
-      
+
       const countdownStr = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-      
+
       // Add local date/time
-      const endDate = new Date(nextEpoch * 1000);
-      const dayName = endDate.toLocaleDateString(undefined, { weekday: 'long' });
-      const datePart = endDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
-      const timePart = endDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
-      
+      const deadlineDate = new Date(cachedNextEpoch * 1000);
+      const dayName = deadlineDate.toLocaleDateString(undefined, { weekday: 'long' });
+      const datePart = deadlineDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+      const timePart = deadlineDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+
       // Get timezone name (e.g., "Mountain Daylight Time" or "MST")
-      const tzName = Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(endDate)
+      const tzName = Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(deadlineDate)
                         .find(p => p.type === 'timeZoneName').value;
 
       timer.textContent = `${countdownStr} / ${dayName} (${datePart}), ${timePart} ${tzName}`;
@@ -1394,7 +1432,7 @@ function startEpochCountdown() {
       console.warn('Countdown error:', e);
     }
   };
-  
+
   update();
   setInterval(update, 1000);
 }

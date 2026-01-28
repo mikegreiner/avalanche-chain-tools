@@ -17,7 +17,8 @@ class VoteTransactionBuilder {
     this.VOTER_CONTRACT = '0xE30D0C8532721551a51a9FeC7FB233759964d9e3';
 
     // vote(uint256 tokenId, address[] _poolVote, uint256[] _weights)
-    this.VOTE_SELECTOR = '0x7ac09bf7';
+    // Note: No 0x prefix - will be added when returning encoded data
+    this.VOTE_SELECTOR = '7ac09bf7';
   }
 
   /**

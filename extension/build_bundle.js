@@ -174,6 +174,12 @@ ${stripModules(poolJs)}
 ${stripModules(rpcJs)}
 `;
 
+    // 2b2. Include BlackholeRpcClient (full RPC client with contract methods)
+    let blackholeRpcJs = fs.readFileSync(path.join(LIB_DIR, 'blackhole-rpc-client.js'), 'utf8');
+    bundle += `// --- From blackhole-rpc-client.js ---
+${stripModules(blackholeRpcJs)}
+`;
+
     // 2c. Include RpcPoolProvider (needed by PoolDataProvider)
     let rpcPoolJs = fs.readFileSync(path.join(LIB_DIR, 'rpc-pool-provider.js'), 'utf8');
     bundle += `// --- From rpc-pool-provider.js ---

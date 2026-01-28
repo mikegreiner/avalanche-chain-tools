@@ -92,7 +92,7 @@ class BlackholeRpcClient {
       'allPairsLength()': '0x574f2ba3',
       'allPairs(uint256)': '0x1e3dd18b',
       'getFee(address,bool)': '0xcc56b2c5',
-      'getNextEpochStart()': '0x8bf2fa94',
+      'getNextEpochStart()': '0x65c5f94a',
       // Fee/bribe related selectors
       'tokenRewardsPerEpoch(address,uint256)': '0x92777b29',
       'rewardsListLength()': '0xe6886396',
@@ -326,8 +326,33 @@ class BlackholeRpcClient {
   }
 
   /**
+   * Get the start timestamp of the next epoch from the EPOCH_MANAGER contract
+   * This is the authoritative source that matches the Blackhole DEX website
+   * @returns {Promise<number>} - Unix timestamp in seconds
+   */
+  async getNextEpochStartFromContract() {
+    try {
+      const selector = await this.keccak256('getNextEpochStart()');
+      const result = await this.ethCall(this.CONTRACTS.EPOCH_MANAGER, selector);
+
+      if (!result) {
+        console.warn('[RPC] Failed to get epoch from contract, using local calculation');
+        return this.getCurrentEpochStart() + this.SECONDS_PER_WEEK;
+      }
+
+      const epochEnd = this.decodeUint256(result);
+      return Number(epochEnd);
+    } catch (error) {
+      console.error('[RPC] Error fetching epoch from contract:', error);
+      // Fallback to local calculation
+      return this.getCurrentEpochStart() + this.SECONDS_PER_WEEK;
+    }
+  }
+
+  /**
    * Get the start timestamp of the next epoch (which is the end of the current one)
-   * @returns {number} - Unix timestamp
+   * DEPRECATED: Use getNextEpochStartFromContract() instead for accurate time
+   * @returns {number} - Unix timestamp (local calculation, may be inaccurate)
    */
   getNextEpochStart() {
     return this.getCurrentEpochStart() + this.SECONDS_PER_WEEK;
