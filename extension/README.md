@@ -1,8 +1,8 @@
 # Blackhole DEX Tools Browser Extension
 
-**Version:** 1.1.2
+**Version:** 1.2.0
 
-A browser extension that brings powerful pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections using a convenient side panel.
+A browser extension that brings powerful pool analysis and voting tools directly to the Blackhole DEX voting page. Get personalized pool recommendations, split votes evenly, and manage your voting selections using a convenient side panel. Now with **RPC Direct Mode** for 20x faster pool data fetching and direct on-chain voting via MetaMask!
 
 ## 🚀 Quick Start
 
@@ -69,11 +69,34 @@ A browser extension that brings powerful pool analysis and voting tools directly
 - **Select All**: Select all currently visible recommendations
 - **Clear All**: Deselect all pools across all pages (auto-scrolls to top)
 - **Split Votes**: Automatically calculate and fill in even percentages
-- **RPC Direct Mode** (New):
-  - Fetches pool data 20x faster using direct RPC calls
-  - Interact with your wallet directly from the sidebar
-  - Bypasses slow website UI for pool selection and voting
-  - Shows epoch countdown timer
+
+### 🚀 RPC Direct Mode (New in v1.2.0)
+Vote directly on-chain via MetaMask, bypassing the website UI entirely!
+
+**Key Features:**
+- **20x Faster**: Pool data fetching via RPC (~5s vs 100s+ for DOM scraping)
+- **Direct Wallet Integration**: Connect MetaMask to vote directly from the sidebar
+- **Transaction Preview**: See exactly what you're voting for before signing
+- **Voting Deadline Countdown**: Shows time remaining until voting closes (1 hour before epoch ends)
+- **Percentage-Based Voting**: Assign vote percentages to multiple pools, system handles the math
+
+**How to Use:**
+1. Go to **Settings** tab → Select **RPC Direct** voting mode (default)
+2. Click **Connect Wallet** and approve MetaMask connection
+3. Select your veBLACK NFT from the dropdown
+4. Back in **Recommendations** tab, select pools and assign percentages
+5. Click **Preview Vote** to review your transaction
+6. Click **Submit to MetaMask** to sign and send
+
+**Important Notes:**
+- Voting deadline is **1 hour before** the epoch ends (matches Blackhole website)
+- You can switch back to **Web UI** mode in Settings if needed
+- See [README_RPC.md](README_RPC.md) for technical details
+
+**Web UI Mode:**
+- Traditional mode using the Blackhole website interface
+- Select pools → Click "Split Votes" → Click "Vote" on page
+- Slower but doesn't require wallet connection in extension
 
 ## 🛠️ Development
 

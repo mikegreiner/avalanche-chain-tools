@@ -4,6 +4,45 @@ All notable changes to the published tools will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-01-28
+
+### Added - Browser Extension
+- **Version**: 1.2.0
+- **RPC Direct Voting Mode**: Vote directly on-chain via MetaMask, bypassing the website UI
+  - Connect wallet directly from sidebar
+  - Select veBLACK NFT and assign vote percentages to pools
+  - Preview transaction before signing
+  - Submit votes directly to Voter contract via MetaMask
+  - 20x faster pool data fetching using direct RPC calls (~5s vs 100s+)
+- **Voting Deadline Countdown**: Shows accurate countdown to voting deadline
+  - Fetches epoch end time from EPOCH_MANAGER contract on-chain
+  - Displays voting deadline (1 hour before epoch ends) to match Blackhole website
+  - Shows both countdown timer and local date/time with timezone
+- **Mode Selection**: Toggle between RPC Direct and Web UI modes in Settings
+  - RPC Direct: Fast, wallet-based, direct on-chain voting
+  - Web UI: Traditional mode using Blackhole website interface
+
+### Fixed - Browser Extension
+- **Version**: 1.2.0
+- **Transaction Encoding Bug**: Fixed double 0x prefix in vote transaction data
+  - Removed 0x prefix from VOTE_SELECTOR constant
+  - Prevents "Cannot convert string to Uint8Array" MetaMask error
+  - Resolves malformed transaction data (0x0x7ac09bf7...)
+- **Epoch Function Selector**: Fixed incorrect getNextEpochStart function selector
+  - Changed from 0x8bf2fa94 to correct 0x65c5f94a
+  - Added getNextEpochStartFromContract() for authoritative epoch timing
+  - Countdown now matches Blackhole website exactly
+- **Content Bundle**: Added BlackholeRpcClient to content-bundle.js
+  - Fixes "BlackholeRpcClient is not defined" error in content script
+  - Properly includes all RPC functionality in bundled code
+
+### Verified - Browser Extension
+- **Version**: 1.2.0
+- Successfully submitted production vote transaction via RPC Direct mode
+- Transaction: 0xb898c71d1cfe592ad1f3faf79aa3872934765054ad1c2c979f57ea0f84268b1d
+- Split 18,330 votes evenly across 3 pools (CL200-BTC.b/XAUt0, CL200-BTC.b/USDt, CL1-WAVAX/USDC)
+- Confirmed on-chain with correct vote distribution (33.33% each)
+
 ## [1.1.3] - 2026-01-14
 
 ### Fixed - Browser Extension

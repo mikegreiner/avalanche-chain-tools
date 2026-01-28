@@ -1,7 +1,7 @@
 {
   "name": "extension",
-  "version": "1.0.0",
-  "description": "**Version:** 1.1.1",
+  "version": "1.2.0",
+  "description": "Blackhole DEX Tools Browser Extension v1.2.0",
   "main": "background.js",
   "directories": {
     "lib": "lib",
